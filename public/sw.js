@@ -1,12 +1,4 @@
-// The app shell, kept so the page opens even while the server does not answer
-// — a tablet reloading at the moment the show machine restarts gets the page
-// and its "reconnecting" notice, and is back the moment the server is, rather
-// than a browser error page that stays up until someone reloads it by hand.
-//
-// Network first, always: the server is on the same network, so the cached
-// copy is only for when it cannot be reached, and a new build shows on the
-// next load. Nothing under /api or /socket.io is ever cached — that is live
-// state, and a stale answer from it would be worse than none.
+// Network-first shell cache for server outages. Never cache live /api or /socket.io traffic.
 
 // v2: the page is an ES module now, and part of it is in /chunks/.
 const CACHE = 'lightshow-shell-v2';

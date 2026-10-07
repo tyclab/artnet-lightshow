@@ -1,23 +1,4 @@
-"""
-Stage 6 — the moments a show is built around.
-
-Sections say what the music *is*; this stage says what it *does*: where it
-falls away, where it climbs, where it lands. These are the events an operator
-would put a marker on, and they are the ones worth spending the rig's biggest
-gestures on.
-
-  drop       energy transition that rises hard and then holds
-  buildup    the rising tension immediately before one
-  break      a sustained fall — the recovery a show needs to have contrast
-  silence    genuine near-zero passages, which must be respected, not lit
-  spike      a short excursion above the local baseline (a crash, a stab)
-
-The recurring difficulty is that all five look alike in an energy curve if you
-only measure the slope. What separates them is what happens *after*: a drop
-sustains, a spike does not; a break sustains downwards, a dip does not. So
-every detector here measures both sides of the transition and scores them
-independently, and the confidence it reports is how well the two agree.
-"""
+"""Stage 6 — the moments a show is built around."""
 
 from dataclasses import dataclass, field
 
@@ -35,7 +16,6 @@ class Drop:
     breakdown: float
     sustain: float
     snap: str = 'raw'
-    #: 'proper' (breakdown then sustained slam) or 'hype' (impact without one).
     kind: str = 'hype'
 
     def to_dict(self):
@@ -55,7 +35,6 @@ class Span:
     start: float
     end: float
     intensity: float = 0.0
-    #: For build-ups: how far the roll subdivides by the end (1, 2, 4, 8...).
     subdivision: int = 1
 
     def to_dict(self):
@@ -74,11 +53,9 @@ class Dynamics:
     breaks: list = field(default_factory=list)
     silences: list = field(default_factory=list)
     spikes: list = field(default_factory=list)
-    #: Combined 0..1 impact curve on the frame grid — what the detectors read.
     impact: np.ndarray = field(default_factory=lambda: np.zeros(0))
 
 
-# ── The curve the detectors read ────────────────────────────────────────────
 
 def impact_curve(features, bands, rhythm):
     """
@@ -104,7 +81,6 @@ def impact_curve(features, bands, rhythm):
     return dsp.robust_norm(smooth)
 
 
-# ── Drops ───────────────────────────────────────────────────────────────────
 
 def _window_mean(curve, centre, span, before):
     lo = max(0, centre - span) if before else centre
@@ -138,7 +114,6 @@ def detect_drops(impact, times, frame_rate, beats, downbeats, config: DynamicsCo
     long_span = max(4, int(frame_rate * 4.0))
     sustain_span = max(4, int(frame_rate * config.drop_sustain_sec))
 
-    # Rise measured as the step between the second before and the second after.
     rise = np.zeros(impact.size)
     for i in range(short, impact.size - short):
         rise[i] = (_window_mean(impact, i, short, before=False)
@@ -155,11 +130,6 @@ def detect_drops(impact, times, frame_rate, beats, downbeats, config: DynamicsCo
 
     drops = []
     for i in candidates:
-        # A drop needs a breakdown before it and a sustain after it, and at the
-        # edges of the file there is no before and no after. Without this the
-        # fade-in from digital silence at the top of every track reads as a
-        # textbook drop — a large rise from nothing, sustained for the rest of
-        # the song — and the show fires its biggest gesture two seconds in.
         if i < long_span or i + sustain_span >= impact.size:
             continue
         rise_value = float(rise[i])
@@ -225,7 +195,6 @@ def _thin_drops(drops, times, config: DynamicsConfig):
     return sorted(kept, key=lambda d: d.t)
 
 
-# ── Build-ups ───────────────────────────────────────────────────────────────
 
 def detect_buildups(impact, features, times, frame_rate, drops, onsets,
                     config: DynamicsConfig):
@@ -263,16 +232,7 @@ def detect_buildups(impact, features, times, frame_rate, drops, onsets,
         if combined.size < min_span:
             continue
 
-        # The build-up starts where the music was quietest before the drop, not
-        # wherever the slope last happened to be positive: walking back on the
-        # slope alone keeps going through the whole preceding section, because
-        # a verse rises gently too. Anchor on the minimum, then trim forward
-        # until the stretch really is mostly rising.
         smooth = dsp.moving_average(combined, max(3, int(frame_rate * 0.5)))
-        # Take the start that makes the window *most* like a ramp, not the
-        # earliest one that merely passes. A window of "flat verse, then riser"
-        # still correlates with time well enough to pass a threshold, so an
-        # earliest-passing search hands back the verse as part of the build-up.
         anchor = int(np.argmin(smooth))
         step = max(1, int(frame_rate * 0.25))
         best_start, best_trend = None, config.buildup_trend
@@ -338,7 +298,6 @@ def roll_subdivision(onsets, start, end, base_divisions=(1, 2, 4, 8)):
     return best
 
 
-# ── Breaks, silences, spikes ────────────────────────────────────────────────
 
 def detect_breaks(impact, times, frame_rate, config: DynamicsConfig):
     """Sustained falls — where the show should pull back and let the room breathe."""
@@ -368,9 +327,6 @@ def detect_silences(features, config: DynamicsConfig):
     """Contiguous near-silent passages. The show must go dark here, not idle."""
     if features.rms.size == 0:
         return []
-    # Smoothed over a beat's worth of frames: the raw RMS curve dips to near
-    # zero *between* kicks, and an unsmoothed test reports a silence in the
-    # gaps of a four-on-the-floor track — several hundred of them.
     energy = dsp.robust_norm(
         dsp.moving_average(features.rms, max(3, int(features.frame_rate * 0.5))))
     quiet = energy < config.silence_threshold
@@ -440,7 +396,6 @@ def _clip_breaks(breaks, drops):
     return clipped
 
 
-# ── Entry point ─────────────────────────────────────────────────────────────
 
 def analyse(features, bands, rhythm, config: DynamicsConfig = None) -> Dynamics:
     config = config or DynamicsConfig()

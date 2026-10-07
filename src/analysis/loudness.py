@@ -1,16 +1,4 @@
-"""
-ITU-R BS.1770-4 loudness measurement (the LUFS scale broadcasters use).
-
-Why this and not RMS: RMS says how big the numbers are, LUFS says how loud it
-sounds. K-weighting rolls off the sub bass and lifts the presence region the
-way an ear does, and the gating throws away the silence between phrases so a
-sparse track is not measured as quiet just because it has gaps in it. The
-lighting engine wants the perceptual number — that is what "this section is
-louder" has to mean for a cue to feel right.
-
-Implemented directly rather than pulled in as a dependency: it is two biquads
-and a gated mean, and the analyser already carries enough install weight.
-"""
+"""ITU-R BS.1770-4 loudness measurement (the LUFS scale broadcasters use)."""
 
 import numpy as np
 
@@ -70,7 +58,6 @@ def _lfilter(b, a, x):
         from scipy.signal import lfilter
         return lfilter(b, a, x)
     except Exception:
-        # Direct form II transposed, so the module still works without scipy.
         y = np.zeros_like(x)
         z1 = z2 = 0.0
         for i, xi in enumerate(x):

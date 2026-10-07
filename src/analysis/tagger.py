@@ -1,23 +1,4 @@
-"""
-Optional AudioSet tagging with PANNs (Cnn14, 527 classes).
-
-This is the pipeline's only learned component. Everything else is signal
-processing with explicit rules; this is the part that answers questions DSP
-cannot — "is this electronic dance music", "is someone singing", "is that a
-distorted guitar" — because those are cultural categories, not spectral ones.
-
-The model is a fixed pretrained checkpoint run on CPU, not something the show
-trains or fine-tunes: it costs a few seconds per track alongside the rest of
-the analysis, and every consumer of its output treats a missing answer as
-"unknown" rather than as an error. A rig without torch installed still runs a
-complete show; it just makes its genre decisions from tempo and brightness.
-
-The file bootstrapping below looks defensive because it is. `panns_inference`
-downloads its own data files with `wget` at *import* time and then reads the
-labels CSV unconditionally — so on a machine without wget the import prints a
-shell error and raises. Everything here therefore makes sure the files exist
-*before* the import, since there is no "after".
-"""
+"""Optional AudioSet tagging with PANNs (Cnn14, 527 classes)."""
 
 import os
 import sys
@@ -34,10 +15,6 @@ _MIN_CHECKPOINT_BYTES = int(3e8)
 
 SAMPLE_RATE = 32000
 CHUNK_SECONDS = 10  # the clip length the model was trained on
-#: Ten-second chunks pushed through Cnn14 at once. The model stays on the CPU
-#: (see `tag`), so this is bounded by working memory rather than by the card:
-#: four chunks is a couple of hundred megabytes of activations and keeps the
-#: analyser well clear of the render loop's headroom.
 BATCH_CHUNKS = max(1, int(os.environ.get('ARTNET_TAGGER_BATCH', '4')))
 
 
@@ -77,13 +54,8 @@ def checkpoint_present():
 
 
 def _run_setup(extra_args, note):
-    """
-    Fetch the data files through `scripts/setup-panns.py` (urllib with verified
-    digests) rather than leaving it to the package's `wget`.
-
-    The exit code is deliberately not the verdict: the script exits 2 for
-    "files are in place but torch is missing", which is a fine outcome here —
-    only the files were wanted. Callers decide by looking at the filesystem.
+    """Fetch digest-verified data through setup-panns.py.
+    Check files afterwards: exit 2 can mean data is ready but torch is absent.
     """
     if not os.path.isfile(_SETUP):
         return
@@ -105,14 +77,8 @@ def ensure_labels():
 
 
 def ready():
-    """
-    Can a track be tagged without fetching anything? Package, checkpoint and
-    labels all present — asked without importing the package.
-
-    The analysis only ever asks this. It used to fetch whatever was missing
-    itself, which put a 310 MB download inside a track's analysis, with the
-    track waiting on venue wifi. Fetching is `scripts/setup-panns.py` and the
-    model manager's job, before the show.
+    """Check package, checkpoint and labels without importing or downloading.
+    Provision missing files with setup-panns.py or the model manager before playback.
     """
     return installed() and checkpoint_present() and os.path.isfile(_LABELS)
 
@@ -194,10 +160,6 @@ def tag(samples=None, sample_rate=None, path=None):
     if not pieces:
         return None
 
-    # Chunks of the same length go through together. A four-minute track is
-    # roughly two dozen of them, and one call per chunk spends more time in
-    # Python and in per-call setup than in the network itself. Only the last
-    # chunk runs short, so in practice this is one batched call plus one.
     total = None
     used = 0
     for group in _batched(pieces, BATCH_CHUNKS):

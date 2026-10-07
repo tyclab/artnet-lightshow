@@ -1,33 +1,4 @@
-"""
-Stage 4 — onsets, tempo, beats, bars, downbeats.
-
-The old engine thresholded energy and called the crossings beats. That fails in
-the two places it matters most: it finds beats in a sustained pad, and it loses
-them the moment a track ducks the kick for a bar. This stage instead follows
-the standard MIR chain —
-
-    onset envelope  ->  tempo  ->  beat grid  ->  metre  ->  downbeats
-
-— where each step constrains the next, so a missing kick costs a *confidence*
-rather than a lost beat, and the grid keeps running through a breakdown.
-
-Three things here are worth calling out as deliberate:
-
-* Tempo is chosen with a log-normal prior around 120 BPM. Autocorrelation is
-  fundamentally ambiguous between a tempo and its double, and every "the show
-  ran at half speed" bug is that ambiguity resolved the wrong way. The prior is
-  the standard fix and it is why the tempo curve below is clamped to the global
-  estimate rather than trusted frame by frame.
-
-* Beat confidence is per beat, not per track. A show that knows *which* beats
-  it is sure of can accent those and let the rest pass, which is exactly what a
-  human operator does when the mix gets muddy.
-
-* Downbeats are found by scoring every (metre, phase) hypothesis against the
-  low end, the spectral novelty and the harmonic change, rather than by
-  assuming beat one is the loudest. Beat one is often *not* the loudest — in
-  most dance music the loudest beat is wherever the snare is.
-"""
+"""Stage 4 — onsets, tempo, beats, bars, downbeats."""
 
 from dataclasses import dataclass, field
 
@@ -40,27 +11,19 @@ from .config import RhythmConfig
 @dataclass
 class Rhythm:
     bpm: float = 120.0
-    #: 0..1 — how steady the tempo is across the track.
     stability: float = 1.0
-    #: Which tracker produced the grid. Always 'model' now; the field stays
-    #: because the cached documents and the web client both read it.
     source: str = 'model'
     beats: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    #: Per-beat 0..1 strength (normalised onset energy at the beat).
     strengths: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    #: Per-beat 0..1 confidence (strength × how well it fits the grid).
     confidences: np.ndarray = field(default_factory=lambda: np.zeros(0))
     onsets: np.ndarray = field(default_factory=lambda: np.zeros(0))
     onset_strengths: np.ndarray = field(default_factory=lambda: np.zeros(0))
     downbeats: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    #: Index into `beats` of each downbeat.
     downbeat_indices: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=int))
     meter: int = 4
     downbeat_confidence: float = 0.0
-    #: Local tempo over time as (times, bpm).
     tempo_times: np.ndarray = field(default_factory=lambda: np.zeros(0))
     tempo_values: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    #: 0..1 curve on the frame grid: how much rhythmic activity is happening.
     intensity: np.ndarray = field(default_factory=lambda: np.zeros(0))
 
     @property
@@ -87,7 +50,6 @@ class Rhythm:
         return float(np.clip((t - start) / span, 0.0, 1.0))
 
 
-# ── Tempo ───────────────────────────────────────────────────────────────────
 
 class ModelUnavailable(RuntimeError):
     """The beat model could not be loaded or run. Not the same as "no beats
@@ -110,32 +72,10 @@ def tempo_prior(bpms, centre, std):
 
 
 def pulse_score(onset_envelope, lag_frames, window=1, pulses_per_window=12):
-    """
-    How well a pulse train at `lag_frames` explains the onset envelope.
-    Returns (score, phase_frames) where the phase is the best one in the first
-    window.
-
-    This is the step that resolves the ambiguities autocorrelation cannot.
-    Autocorrelation asks "does the signal look like itself a beat later", which
-    a hi-hat pattern answers yes to at every subdivision. A pulse train asks the
-    better question: "if I put a light on every one of these instants, how much
-    of the music do I hit, and how much of what I hit is loud?"
-
-    Two terms, multiplied, because either alone picks the wrong answer:
-
-      precision  mean envelope at the pulses over the overall mean. High when
-                 the pulses land on transients — but a pulse train at half the
-                 tempo scores just as well, since it lands on every other kick.
-      recall     share of the envelope's total energy that falls near a pulse.
-                 This is what half tempo cannot fake: it misses half the beats,
-                 so it captures about half the energy.
-
-    Scored over short windows and averaged, not over the whole track at once.
-    A candidate lag is only accurate to a fraction of a frame, and over a
-    three-minute track that error accumulates into hundreds of milliseconds of
-    walk-off — which would score the *correct* tempo worse than a wrong one
-    that happens to be closer to an exact number of frames. Re-phasing every
-    dozen pulses measures the fit rather than the rounding.
+    """Return (score, phase_frames) for pulses spaced lag_frames apart.
+    Score is precision (mean onset energy at pulses / overall mean) times recall
+    (share of total onset energy near a pulse); recall rejects half-tempo matches.
+    Rephase in short windows so fractional-frame lag error does not accumulate.
     """
     env = np.asarray(onset_envelope, dtype=float)
     n = env.size
@@ -184,20 +124,9 @@ def pulse_score(onset_envelope, lag_frames, window=1, pulses_per_window=12):
 
 
 def estimate_tempo(onset_envelope, sr, hop_length, config: RhythmConfig):
-    """
-    Global tempo from the onset autocorrelation, weighted by the tempo prior,
-    then re-ranked by how well each candidate's pulse train lands on the music.
-
-    This is the *live* estimator. Offline, the beat model decides the tempo and
-    this is not called: a whole track is available there, and a model that has
-    heard how music is counted beats any amount of reasoning about periodicity.
-    Live there is no whole track — only the last ten seconds — and a transformer
-    over a rolling window costs more latency than a show can spend, so the
-    signal chain stays here where its weaknesses are affordable. It sees a
-    steady window and only has to get the pulse right, not the octave: the
-    caller folds octave flips onto the running tempo.
-
-    Returns (bpm, confidence).
+    """Return (bpm, confidence) from onset autocorrelation, prior and pulse-fit ranking.
+    Used for live rolling windows; offline analysis uses the beat model.
+    The live caller folds octave flips onto its running tempo.
     """
     env = np.asarray(onset_envelope, dtype=float)
     if env.size < 16:
@@ -218,9 +147,6 @@ def estimate_tempo(onset_envelope, sr, hop_length, config: RhythmConfig):
     score[in_range] = np.maximum(ac[in_range], 0.0) * tempo_prior(
         bpms[in_range], config.tempo_prior_bpm, config.tempo_prior_std)
 
-    # Reinforce each candidate with its own harmonics: a true beat period also
-    # shows a peak at 2× and 3× the lag. This is what stops a strong eighth-note
-    # hat pattern from winning over the quarter-note pulse it sits on.
     reinforced = score.copy()
     for multiple in (2, 3, 4):
         idx = lags * multiple
@@ -231,9 +157,6 @@ def estimate_tempo(onset_envelope, sr, hop_length, config: RhythmConfig):
     if not np.any(reinforced > 0):
         return config.tempo_prior_bpm, 0.0
 
-    # Re-rank the strongest handful of candidates by pulse-train fit. Ten is
-    # enough to hold the true tempo plus its half, double, and the 3:2 relative
-    # that trips up triple metre, without paying for a full search.
     candidates = np.argsort(reinforced)[::-1][:10]
     candidates = [int(c) for c in candidates if reinforced[c] > 0 and c > 0]
     if not candidates:
@@ -250,8 +173,6 @@ def estimate_tempo(onset_envelope, sr, hop_length, config: RhythmConfig):
         fit, _phase = pulse_score(env, lag)
         prior = float(tempo_prior([bpm], config.tempo_prior_bpm,
                                   config.tempo_prior_std)[0])
-        # Autocorrelation contributes, but the pulse fit decides: the two
-        # disagree exactly where autocorrelation is known to be wrong.
         ranked.append((fit * prior + 0.25 * float(reinforced[lag_idx]), bpm, fit))
 
     if not ranked:
@@ -282,18 +203,8 @@ def _refine_peak(values, index):
 
 
 def refine_period(beat_times):
-    """
-    Least-squares beat period from the whole grid, in seconds.
-
-    Beat times land on STFT frames, so the interval between two of them is
-    quantised to ~23 ms — at 140 BPM that is 3.5 BPM of error in the median
-    interval alone, and the show's beat clock inherits it. Fitting a line
-    through *every* beat recovers the sub-frame period, because the rounding
-    pattern across a hundred beats carries the fraction the individual
-    intervals throw away.
-
-    Returns (period_seconds, r_squared). A low r² means the tempo is not
-    constant and the caller should keep the local estimate instead.
+    """Fit a least-squares period over the full beat grid to recover sub-frame timing.
+    Return (period_seconds, r_squared); low r_squared means retain the local estimate.
     """
     beats = np.asarray(beat_times, dtype=float)
     if beats.size < 8:
@@ -309,17 +220,8 @@ def refine_period(beat_times):
 
 def fine_onsets(percussive, sr, n_fft=512, hop_length=128, delta=0.10,
                 min_gap_sec=0.03):
-    """
-    Onsets on a high-resolution grid, used to fix the *phase* of the beat grid.
-
-    Tempo tracking wants a long window — it is measuring a periodicity of
-    hundreds of milliseconds and a short window just adds noise. Phase wants
-    the opposite: a 2048-sample window at 22 kHz smears a transient across
-    93 ms and reports its onset around 25 ms late, every time, which is a
-    systematic quarter-frame of DMX latency on every cue in the show. A 512
-    sample window puts the same onsets within about 5 ms.
-
-    Returns (times, strengths).
+    """Return high-resolution (times, strengths) for beat-phase correction.
+    A 512-sample window avoids the transient delay of the 2048-sample tempo window.
     """
     import librosa
     try:
@@ -398,7 +300,6 @@ def _stability(values):
     return dsp.clamp01(0.6 * within + 0.4 * np.exp(-6.0 * spread))
 
 
-# ── Beats ───────────────────────────────────────────────────────────────────
 
 def beat_strengths(onset_envelope, beat_frames):
     """
@@ -440,16 +341,13 @@ def beat_confidences(beat_times, strengths):
     median = float(np.median(intervals)) if intervals.size else 0.0
     if median <= 0:
         return strengths.copy()
-    # Deviation of the interval *into* each beat, as a fraction of the median.
     deviation = np.concatenate([[0.0], np.abs(intervals - median) / median])
     regularity = np.exp(-4.0 * deviation)
     n = min(times.size, strengths.size, regularity.size)
     return np.clip(0.6 * strengths[:n] + 0.4 * regularity[:n], 0.0, 1.0)
 
 
-# ── Metre and downbeats ─────────────────────────────────────────────────────
 
-# ── Rhythmic intensity ──────────────────────────────────────────────────────
 
 def rhythmic_intensity(features, beat_times, window_sec=2.0):
     """
@@ -475,7 +373,6 @@ def rhythmic_intensity(features, beat_times, window_sec=2.0):
     return dsp.robust_norm(0.6 * dsp.unit_norm(density) + 0.4 * dsp.unit_norm(rate))
 
 
-# ── Model-backed tracking ───────────────────────────────────────────────────
 
 def _thin_double_beats(beats, min_ratio=0.5):
     """
@@ -509,8 +406,6 @@ def _thin_double_beats(beats, min_ratio=0.5):
         if t - kept[-1] >= floor:
             kept.append(float(t))
             continue
-        # Too close to the last one. Whichever of the two lands nearer the
-        # expected position wins; with only one beat so far, keep the earlier.
         if len(kept) < 2:
             continue
         expected = kept[-2] + period
@@ -520,41 +415,18 @@ def _thin_double_beats(beats, min_ratio=0.5):
 
 
 def model_beats(audio, config: RhythmConfig):
-    """
-    Beats and downbeats from Beat This! (Foscarin et al., ISMIR 2024).
-
-    This replaces the autocorrelation → prior → pulse-fit → dynamic-programming
-    chain that used to live here. That chain was carefully built and it still
-    got "I Want It That Way" at 198 BPM, because every part of it reasons about
-    *periodicity*, and periodicity genuinely does not distinguish a pop song
-    counted at 99 from the same song counted at 198. A model trained on music
-    has heard how that song is counted.
-
-    The downbeats are the bigger win. The old scorer weighed low-end energy,
-    spectral novelty and harmonic change across every (metre, phase)
-    hypothesis, and on real tracks returned confidences of 0.05 and 0.14 — it
-    was guessing. The model returns downbeats directly.
-
-    Returns (beats, downbeats) in seconds. Both come back empty for audio with
-    no beats in it — silence, applause, a field recording — which is an answer,
-    not a failure. Raises `ModelUnavailable` when the model itself cannot run,
-    which is a failure, and one the operator has to hear about rather than have
-    quietly papered over.
+    """Return Beat This! beat and downbeat times in seconds (Foscarin et al., ISMIR 2024).
+    Beatless audio returns empty arrays. ModelUnavailable means inference failed
+    and must reach the operator; do not disguise it as a beatless track.
     """
     from . import models
     signal = np.asarray(audio.mono, dtype=np.float32)
     try:
         try:
             tracker = models.beat_tracker(on='cpu' if models.gpu_fault() else None)
-            # First in line for the card: everything after this stage waits
-            # on the grid, and nothing waits on the separator yet.
             with models.inference('beat_this', first=True):
                 beats, downbeats = tracker(signal, audio.sample_rate)
         except Exception as exc:
-            # A faulted GPU FFT stays broken for the process, and a card with
-            # no room left is no use either; the beat grid is the one answer
-            # the show cannot do without, so it gets a second go on the CPU
-            # rather than failing the track.
             if not (models.gpu_fault(exc) or models.out_of_memory(exc, 'the beat model')):
                 raise
             beats, downbeats = models.beat_tracker(on='cpu')(signal, audio.sample_rate)
@@ -573,26 +445,9 @@ def model_beats(audio, config: RhythmConfig):
 
 
 def decode_downbeats(beats, activations, meters=(4, 3)):
-    """
-    A regular bar grid fitted to the model's downbeat activations.
-
-    Beat This! emits downbeats frame by frame with no constraint that bars come
-    out the same length, and on anything it finds ambiguous they do not: on the
-    waltz fixture it marks two thirds of the beats as a downbeat. Taken
-    literally that is bars of one, two and four beats in the same eight bars,
-    and a lighting cue on "every bar" then fires at random.
-
-    The reference implementation solves this with an HMM in the DBN
-    post-processor, which means madmom, which means Cython and a numpy pin.
-    This does the same job on the beat grid instead: score every (metre, phase)
-    pair by how well its bar lines explain the activations, and take the best.
-
-    The score is precision × recall, the same product used to pick the tempo
-    octave. Recall alone would always favour the shortest metre, since bar lines
-    every two beats are a superset of bar lines every four; precision punishes
-    the empty bar lines that come with it.
-
-    Returns (downbeats, indices into `beats`, metre, 0..1 confidence).
+    """Fit a regular bar grid to the model activations on the beat grid.
+    Rank metre/phase pairs by precision times recall; recall alone favors short bars.
+    Return (downbeats, indices into beats, metre, confidence in 0..1).
     """
     beats = np.asarray(beats, dtype=float)
     activations = np.asarray(activations, dtype=float)
@@ -623,7 +478,6 @@ def decode_downbeats(beats, activations, meters=(4, 3)):
     return beats[indices], indices, meter, dsp.clamp01(float(score))
 
 
-# ── Entry point ─────────────────────────────────────────────────────────────
 
 def analyse(audio, features, config: RhythmConfig = None, model_result=None) -> Rhythm:
     """
@@ -637,8 +491,6 @@ def analyse(audio, features, config: RhythmConfig = None, model_result=None) -> 
     config = config or RhythmConfig()
     sr, hop = features.sample_rate, features.hop_length
 
-    # The rhythm stage reads the gain-levelled signal: a quiet intro should
-    # give up its beats as readily as the chorus does.
     try:
         levelled_onset = librosa.onset.onset_strength(
             y=audio.levelled, sr=sr, hop_length=hop)
@@ -652,33 +504,20 @@ def analyse(audio, features, config: RhythmConfig = None, model_result=None) -> 
         onset_env[:blend_len] = (0.6 * dsp.robust_norm(features.percussive_onset[:blend_len])
                                  + 0.4 * dsp.robust_norm(levelled_onset[:blend_len]))
 
-    # The model, and only the model. Every octave error this pipeline used to
-    # make came from reasoning about periodicity, and periodicity genuinely
-    # cannot tell a song counted at 99 from the same song counted at 198 — a
-    # listener can, because they have heard how songs are counted. So has this.
     beats, model_downbeats = model_result() if model_result else model_beats(audio, config)
     source = 'model'
     frames = librosa.time_to_frames(beats, sr=sr, hop_length=hop) \
         if beats.size else np.zeros(0, dtype=int)
 
-    # The grid is the answer: the tempo to report is the one the beats the model
-    # laid down actually describe.
     bpm = float(config.tempo_prior_bpm)
     if beats.size > 4:
         period = float(np.median(np.diff(beats)))
         fitted, r2 = refine_period(beats)
-        # A tight linear fit means the grid really is constant-tempo, and the
-        # fitted slope is the better number — it averages out the model's 20 ms
-        # output grid over the whole track. A loose one means the track moves,
-        # and the median interval is the honest summary.
         if r2 > 0.999 and fitted > 0:
             period = fitted
         if period > 0 and config.tempo_min <= 60.0 / period <= config.tempo_max:
             bpm = 60.0 / period
 
-    # Stability is measured against the model's tempo rather than used to pick
-    # it: how far local tempo wanders from the grid is a property of the track
-    # that the show engine reads, not a step in deciding what the tempo is.
     t_times, t_values, stability = tempo_curve(onset_env, sr, hop, bpm, config)
 
     strengths = beat_strengths(onset_env, frames)

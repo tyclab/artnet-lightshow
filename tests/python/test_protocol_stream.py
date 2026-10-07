@@ -63,18 +63,12 @@ class TheAnswersHaveStdoutToThemselves(unittest.TestCase):
     def test_threads_swapping_stdout_cannot_take_the_replies(self):
         run = subprocess.run([sys.executable, '-c', SCRIPT, str(SRC)], capture_output=True, timeout=120)
         self.assertEqual(run.returncode, 0, run.stderr.decode(errors='replace'))
-        # The answer and nothing else. (A print after that interleaving may
-        # land in the first thread's buffer rather than the log; the pipeline
-        # no longer swaps stdout for anything but stderr, and it is the
-        # answers that must never go.)
         self.assertEqual(run.stdout, b'{"id": 1, "result": {}}\n')
         self.assertIn(b'a native library writing to descriptor 1', run.stderr)
 
 
 class SKeyKeepsItsChatterToItself(unittest.TestCase):
     def test_its_print_is_silenced_without_touching_stdout(self):
-        # A module of its own, as S-KEY's key_detection is: its print is the
-        # module's to shadow.
         module = types.ModuleType('key_detection')
         exec(
             "import sys\n"

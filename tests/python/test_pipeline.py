@@ -15,9 +15,6 @@ from support import AudioTestCase, analyse_track, needs_audio
 from analysis import schema
 
 
-# Field names the web client, the timeline view and the on-disk cache all read.
-# Removing one is a UI regression that no test of the analyser would otherwise
-# catch, because the analyser would still be perfectly correct.
 COMPATIBILITY_FIELDS = [
     'duration', 'bpm', 'tempoCurve', 'tempoStability', 'beatSource', 'beats',
     'beatStrengths', 'downbeats', 'meter', 'downbeatConfidence', 'key', 'scale',

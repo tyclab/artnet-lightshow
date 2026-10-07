@@ -1,23 +1,4 @@
-"""
-Stage 1 — turn an arbitrary audio file into the signals the rest of the
-pipeline is allowed to assume.
-
-Everything downstream reads thresholds off absolute numbers ("energy above
-0.55", "a rise of 0.22"). Those numbers only mean anything if the input has
-been put on a known scale first, which is what this stage is for:
-
-  * decode once, keeping both channels, and resample to the analysis rate
-  * measure real loudness (BS.1770 LUFS) and normalise to a fixed target
-  * remove subsonic rumble and, when the recording needs it, broadband noise
-  * derive a separate gain-levelled copy for the rhythm stage only
-  * split harmonic from percussive content
-
-The gain-levelled copy deserves a note. Onset and beat tracking work better on
-a signal with a constant level — a quiet intro should give up its beats as
-readily as the chorus. Feature extraction wants the opposite: the difference
-between the intro and the chorus *is* the information. So this stage produces
-both and hands each stage the one it needs, rather than picking one compromise.
-"""
+"""Stage 1 — turn an arbitrary audio file into the signals the rest of the pipeline is allowed to assume."""
 
 import os
 import sys
@@ -33,44 +14,27 @@ from .config import PreprocessConfig
 class PreparedAudio:
     """Everything the later stages are allowed to read about the audio."""
 
-    #: Mono, loudness-normalised, filtered. The reference signal for features.
     mono: np.ndarray
-    #: Same signal with slow gain levelling applied. Rhythm stages only.
     levelled: np.ndarray
-    #: Harmonic and percussive components of `mono`.
     harmonic: np.ndarray
     percussive: np.ndarray
     sample_rate: int
     duration: float
-    #: Wideband mono at `wideband_rate`, for the `air` band and the tagger.
-    #: None when the source had no usable bandwidth above the analysis rate.
     wideband: np.ndarray = None
     wideband_rate: int = 0
-    #: Stereo measurements. `width` is 0 for a mono source.
     width: float = 0.0
     correlation: float = 1.0
     side_curve: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    #: Loudness report, in LUFS / LU / dBFS.
     integrated_lufs: float = -np.inf
     loudness_range: float = 0.0
     true_peak_db: float = -np.inf
     applied_gain_db: float = 0.0
-    #: Estimated broadband noise floor and the signal-to-noise ratio measured
-    #: against it, both in dB on the spectrogram's own scale, plus whether
-    #: spectral subtraction was applied.
     noise_floor_db: float = -np.inf
     snr_db: float = np.inf
     denoised: bool = False
-    #: Seconds trimmed from the head when aligning to a known track length.
     trim_offset: float = 0.0
-    #: The file this came from and how many channels it had, so source
-    #: separation can have the real stereo at its own rate instead of the
-    #: mono analysis signal. See `load_for_separation`.
     source_path: str = ''
     source_channels: int = 1
-    #: The decoded file at its own rate, up to two channels, untrimmed and
-    #: without gain: what every other rate is resampled from, so the file is
-    #: decoded once per track. None when it was not kept.
     source: np.ndarray = None
     source_rate: int = 0
 
@@ -79,7 +43,6 @@ def _log(msg):
     print(f'[preprocess] {msg}', file=sys.stderr)
 
 
-# ── Loading ─────────────────────────────────────────────────────────────────
 
 def decode(path):
     """
@@ -118,7 +81,6 @@ def _load_stereo(path, target_sr):
     return resample(y, sr, target_sr), int(target_sr)
 
 
-# ── Filtering ───────────────────────────────────────────────────────────────
 
 def highpass(x, sr, cutoff_hz, order=2):
     """Butterworth high-pass. Removes DC offset and subsonic rumble, both of
@@ -154,24 +116,14 @@ def estimate_noise_floor(mono, sr, n_fft, hop_length, percentile):
         quiet = spec[:, np.argsort(frame_energy)[:max(3, spec.shape[1] // 20)]]
     noise = np.median(quiet, axis=1)
     noise_level = float(np.sqrt(np.mean(noise ** 2)))
-    # The 75th percentile frame stands in for "the music": the mean is dragged
-    # down by every gap between phrases.
     signal_level = float(np.percentile(frame_energy, 75))
     to_db = lambda v: 20.0 * np.log10(v) if v > 0 else -np.inf
     return noise, to_db(noise_level), to_db(signal_level)
 
 
 def _should_denoise(snr_db, noise_spectrum, snr_threshold=20.0, flatness_threshold=0.40):
-    """
-    Two conditions, because a low SNR on its own does not mean noisy audio.
-
-    On a track with no silence in it the "quietest frames" are still music, so
-    the noise estimate comes out high and the SNR comes out low — on perfectly
-    clean audio. The second condition separates the two cases: a real noise
-    floor is broadband and roughly flat, while music masquerading as one has
-    harmonic structure and a heavy low end. Spectral flatness (geometric over
-    arithmetic mean) tells them apart in one number: clean material measures
-    below 0.25 even when its SNR looks poor, hiss and room tone above 0.9.
+    """Require low SNR and a spectrally flat noise floor before denoising.
+    Quiet music can imply poor SNR; spectral flatness distinguishes it from hiss.
     """
     if not np.isfinite(snr_db) or snr_db >= snr_threshold:
         return False
@@ -202,7 +154,6 @@ def spectral_subtract(mono, sr, noise_spectrum, n_fft, hop_length, strength):
     return out.astype(np.float32)
 
 
-# ── Gain ────────────────────────────────────────────────────────────────────
 
 def normalise_loudness(channels, sr, target_lufs, max_gain_db):
     """
@@ -229,8 +180,6 @@ def adaptive_gain(mono, sr, window_sec=3.0, floor_db=-45.0, max_boost_db=18.0):
     if mono.size == 0:
         return mono
     win = max(1, int(round(window_sec * sr)))
-    # RMS envelope on a coarse grid, then interpolated back — a full-rate
-    # rolling RMS over a 4-minute track is pure waste.
     step = max(1, win // 8)
     starts = np.arange(0, max(1, mono.size - win + 1), step)
     if starts.size < 2:
@@ -253,7 +202,6 @@ def adaptive_gain(mono, sr, window_sec=3.0, floor_db=-45.0, max_boost_db=18.0):
     return out.astype(np.float32)
 
 
-# ── Alignment ───────────────────────────────────────────────────────────────
 
 def trim_to_duration(mono, sr, target_sec, tolerance_sec=1.5):
     """
@@ -284,7 +232,6 @@ def trim_to_duration(mono, sr, target_sec, tolerance_sec=1.5):
 
     head = int(loud[0]) * frame
     tail = min(mono.size, (int(loud[-1]) + 1) * frame)
-    # Only trim what the excess allows, and never cut into the music itself.
     head = min(head, int(excess * sr))
     trimmed = mono[head:tail]
     wanted = int(round(target_sec * sr))
@@ -294,7 +241,6 @@ def trim_to_duration(mono, sr, target_sec, tolerance_sec=1.5):
     return trimmed.astype(np.float32), head / float(sr)
 
 
-# ── Entry point ─────────────────────────────────────────────────────────────
 
 def prepare(path, config: PreprocessConfig = None, target_duration_sec=None):
     """Run the whole preprocessing stage and return a `PreparedAudio`."""
@@ -308,7 +254,6 @@ def prepare(path, config: PreprocessConfig = None, target_duration_sec=None):
     sr = int(config.sample_rate)
     channels = resample(source, native, sr)
 
-    # ── Stereo measurements, taken before anything is collapsed to mono ──
     if channels.shape[0] >= 2:
         left, right = channels[0], channels[1]
         mid = 0.5 * (left + right)
@@ -331,7 +276,6 @@ def prepare(path, config: PreprocessConfig = None, target_duration_sec=None):
 
     mono = highpass(mono, sr, config.highpass_hz)
 
-    # ── Noise ──
     noise_spectrum, noise_db, signal_db = estimate_noise_floor(
         mono, sr, config.n_fft, config.hop_length, config.noise_floor_percentile)
     snr_db = signal_db - noise_db if np.isfinite(noise_db) and np.isfinite(signal_db) \
@@ -362,7 +306,6 @@ def prepare(path, config: PreprocessConfig = None, target_duration_sec=None):
         _log(f'HPSS unavailable ({exc}); falling back to the full signal')
         harmonic, percussive = mono, mono
 
-    # ── Wideband pass for `air` and the tagger ──
     wideband, wb_rate = None, 0
     if native > sr:
         try:
@@ -406,18 +349,9 @@ def prepare(path, config: PreprocessConfig = None, target_duration_sec=None):
 
 
 def load_for_separation(audio: PreparedAudio, rate):
-    """
-    The source as a source separator wants it: stereo, at `rate`, trimmed and
-    gain-matched to exactly the span the mono analysis signal covers.
-
-    Separation used to be handed the mono analysis signal, resampled up and
-    copied into two identical channels. That throws away the two things a
-    stereo-trained separator leans on hardest: the difference between the
-    channels, and everything above 11 kHz. Returns None for a mono source or
-    when the file cannot be read again, and the caller falls back to mono.
-
-    Resampled from the decode `prepare` kept; the file is read again only when
-    there is none.
+    """Return stereo audio at rate, gain-matched and trimmed to the mono analysis span.
+    Reuse prepare's decode or reread the source; return None for mono/unreadable input
+    so the caller can fall back to mono. Preserve stereo cues and high frequencies.
     """
     if audio.source_channels < 2:
         return None

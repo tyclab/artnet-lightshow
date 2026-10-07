@@ -1,11 +1,4 @@
-// The colour table and the palette banks are hand-written, and the failure mode
-// when they drift is quiet: a new preset lands three degrees from an existing
-// one, a look picks up two colours from the same family, and from the floor
-// half the buttons start doing the same thing. Nothing throws, nothing looks
-// wrong in code review, the rig just gets duller.
-//
-// These tests are the design rules from presets.js and palettes.js written down
-// so an edit has to argue with them.
+// Keep perceptually distinct preset hues and palette banks from converging as the catalogue changes.
 
 import test from 'node:test';
 import assert from 'node:assert';

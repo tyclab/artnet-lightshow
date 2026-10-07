@@ -1,34 +1,4 @@
-"""
-Live mode — the same event vocabulary, from a stream, with no future.
-
-Every offline stage above is allowed to look at the whole track: the tempo is
-whatever best explains four minutes of onsets, a drop is a rise that *held* for
-four seconds, a chorus is a section that comes back. None of that is available
-here. So the live analyser is not a port of the offline one; it is a different
-implementation of the same interface, and the differences are all consequences
-of that one fact:
-
-* Thresholds are adaptive rather than global. There is no track-wide percentile
-  to normalise against, so everything is measured against a rolling window —
-  median plus a multiple of the median absolute deviation, which is robust to
-  the outliers a fixed standard deviation is not.
-
-* The beat grid is *predicted*, not tracked. An oscillator runs at the current
-  tempo estimate, and twice a second its phase is re-fitted to the last few
-  seconds of onsets — the phase that lines the most onset strength up on a
-  grid of that tempo — and moved part of the way there. This is what keeps the
-  show on the beat through a bar where the kick drops out. Nudging it from
-  each onset instead, as it once was, let every hat and snare push the
-  predicted beat a little later, and at a fine hop the beat ran away from the
-  music entirely.
-
-* Drops are called on the rise, not on the sustain. Waiting four seconds to
-  confirm a drop is correct offline and useless live. Confidence is reported
-  lower to match, and the show engine spends a smaller gesture on it.
-
-Latency is one hop — 23 ms at the default settings — plus whatever the caller's
-own buffering adds.
-"""
+"""Live mode — the same event vocabulary, from a stream, with no future."""
 
 from collections import deque
 from dataclasses import dataclass, field
@@ -126,7 +96,6 @@ class StreamingAnalyzer:
             for name, (low, high) in BANDS.items()
         }
 
-    # ── Public API ──────────────────────────────────────────────────────────
 
     @property
     def time(self):
@@ -153,8 +122,6 @@ class StreamingAnalyzer:
         """
         if self._next_beat_frame is None or self._period_frames <= 0:
             return None
-        # Not through _phase(), whose wrap reads a beat that is a frame overdue
-        # (it fires on the next frame) as one just begun: a whole beat back.
         return self._beat_count - (self._next_beat_frame - self._frame_index) / self._period_frames
 
     def last_frame(self):
@@ -198,7 +165,6 @@ class StreamingAnalyzer:
         while self._buffer.size >= self.n_fft:
             frame = self._buffer[:self.n_fft]
             self._buffer = self._buffer[self.hop:]
-            # A view, and safe to keep: the buffer is only ever replaced, never written into.
             self._newest = frame
             events.extend(self._process(frame))
             self._frame_index += 1
@@ -207,7 +173,6 @@ class StreamingAnalyzer:
     def reset(self):
         self.__init__(self.config, self.sample_rate)
 
-    # ── Per-frame processing ────────────────────────────────────────────────
 
     def _process(self, frame):
         spectrum = np.abs(np.fft.rfft(frame * self._window))
@@ -222,8 +187,6 @@ class StreamingAnalyzer:
             band_levels[name] = level
             self._band_history[name].append(level)
 
-        # Half-wave rectified spectral flux — the same onset function as
-        # offline, which is what keeps the two modes' timing comparable.
         if self._previous_spectrum is None:
             flux = 0.0
         else:
@@ -249,7 +212,6 @@ class StreamingAnalyzer:
         events.extend(self._dynamics_events(energy))
         return events
 
-    # ── Adaptive onset detection ────────────────────────────────────────────
 
     def _detect_onset(self, flux):
         """
@@ -285,7 +247,6 @@ class StreamingAnalyzer:
                                 effect='pulse', data={'live': True}))
         return events
 
-    # ── Tempo and phase ─────────────────────────────────────────────────────
 
     def _estimate_tempo(self):
         """
@@ -312,25 +273,12 @@ class StreamingAnalyzer:
             return
 
         frame_rate = self.sample_rate / float(self.hop)
-        # Fold octave flips onto the running tempo before smoothing. When the
-        # kick drops out for a breakdown the estimator legitimately reports half
-        # tempo, and averaging 174 with 87 lands on 130 — a tempo the track has
-        # never played. Folding keeps the grid where it was and lets the level
-        # change do the talking.
         bpm = _fold_octave(bpm, self._bpm)
-        # Smooth towards the new estimate rather than jumping. A live tempo
-        # that snaps between 128 and 64 makes the rig stutter; one that eases
-        # is wrong for a second and then right.
         self._bpm = bpm if self._bpm <= 0 else 0.7 * self._bpm + 0.3 * bpm
         self._period_frames = 60.0 * frame_rate / max(1e-6, self._bpm)
         was_locked = self._locked
         self._locked = confidence > 0.25
 
-        # Phase has to be *found*, not assumed. Starting the oscillator a beat
-        # from now puts it on a random phase, and the pull from onsets can only
-        # correct a third of a beat — so a grid that starts an eighth out never
-        # converges. Searching the recent onset history for the phase that best
-        # explains it costs one pass and lands the grid immediately.
         if self._next_beat_frame is None or not was_locked:
             self._align_phase(window)
 
@@ -354,7 +302,6 @@ class StreamingAnalyzer:
             value = float(np.mean(window[idx]))
             if value > best_score:
                 best_phase, best_score = phase, value
-        # Absolute frame of the last predicted beat inside the window.
         last_in_window = best_phase + period * int((window.size - 1 - best_phase) // period)
         offset = (window.size - 1) - last_in_window
         return self._frame_index - offset + period
@@ -383,13 +330,9 @@ class StreamingAnalyzer:
         if target is None:
             return
         period = self._period_frames
-        # Wrap into ±half a beat: a whole beat either way is the same grid.
         error = (target - self._next_beat_frame + period / 2.0) % period - period / 2.0
         self._next_beat_frame += error * self.config.phase_lock_strength
 
-        # Frequency term: errors that keep pointing the same way mean the
-        # *period* is wrong, not the phase. Clamped so a run of syncopation
-        # cannot walk the tempo away.
         self._period_frames += error * self.config.frequency_lock_strength
         if self._bpm > 0:
             frame_rate = self.sample_rate / float(self.hop)
@@ -427,7 +370,6 @@ class StreamingAnalyzer:
             self._next_beat_frame += self._period_frames
         return events
 
-    # ── Dynamics ────────────────────────────────────────────────────────────
 
     def _dynamics_events(self, energy):
         """
@@ -470,7 +412,6 @@ class StreamingAnalyzer:
                     duration=self.config.tempo_refresh_sec, effect='ramp',
                     data={'live': True}))
 
-        # A sustained shift in level is the live stand-in for a section change.
         long_term = float(np.mean(window))
         if self._section_energy is None:
             self._section_energy = long_term
@@ -506,7 +447,6 @@ class StreamingAnalyzer:
             self._in_silence = False
         return events
 
-    # ── Helpers ─────────────────────────────────────────────────────────────
 
     def _cooldown(self, key, seconds):
         now = self.time

@@ -1,9 +1,4 @@
-// Start the light show server.
-//
-// The server is TypeScript (src/main.ts), run as it is by Node's built-in type
-// stripping, which Node 22.18 turned on by default. There is no build step,
-// so a Node without it would fail on the first type annotation with a syntax
-// error that says nothing about why; this says it first.
+// Check native TypeScript support before loading the server.
 if (!process.features?.typescript) {
   const [major, minor] = process.versions.node.split('.').map(Number);
   const recentEnough = major > 22 || (major === 22 && minor >= 18);
@@ -19,10 +14,7 @@ if (!process.features?.typescript) {
 // is (whose Deezer ARL the supervisor looks for) and turn the supervisor off.
 await import('./src/load-env.ts');
 
-// Under a supervisor that starts it again if it crashes or hangs
-// (src/supervisor.ts) — unless this is the supervised server itself, or the
-// supervisor is turned off: --no-supervisor, LIGHTSHOW_SUPERVISOR=0, or
-// `node --watch`, which restarts on its own terms.
+// Avoid nested supervisors when another process or Node watch owns restarts.
 const direct = process.env.LIGHTSHOW_SUPERVISED === '1'
   || process.env.LIGHTSHOW_SUPERVISOR === '0'
   || process.argv.includes('--no-supervisor')

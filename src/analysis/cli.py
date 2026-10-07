@@ -1,27 +1,4 @@
-"""
-Command line and worker entry points.
-
-Three ways in:
-
-    python src/analyze.py <file|url> [--target-duration S] [--report out.html]
-        One-shot analysis to stdout as JSON, optionally also writing a debug
-        report next to it.
-
-    python src/analyze.py --worker
-        Persistent NDJSON worker. One request per line on stdin, one response
-        per line on stdout. This is how the Node server drives it, and it
-        exists so the multi-second cost of importing librosa and loading the
-        tagger is paid once per server rather than once per track.
-
-    python src/analyze.py --live [--rate 22050]
-        Reads raw 32-bit float mono PCM from stdin and writes musical events to
-        stdout as NDJSON, as they happen.
-
-stdout is reserved for machine-readable output in every mode. Everything human
-goes to stderr — a stray print on stdout corrupts the protocol. The worker and
-the one-shot analysis take it for themselves before anything else runs (see
-_claim_stdout), so nothing a library does to `sys.stdout` can reach it.
-"""
+"""Command line and worker entry points."""
 
 import json
 import os
@@ -36,7 +13,6 @@ def _log(message):
     print(f'[analyze] {message}', file=sys.stderr, flush=True)
 
 
-# ── Sources ─────────────────────────────────────────────────────────────────
 
 def download(url):
     """Fetch a remote file to a temp path. Returns the path."""
@@ -47,8 +23,6 @@ def download(url):
     try:
         urllib.request.urlretrieve(url, path)
     except BaseException:
-        # The caller never learns the path of a download that failed, so this
-        # is the only place that can remove it.
         try:
             os.remove(path)
         except OSError:
@@ -64,23 +38,11 @@ def resolve(source):
     return source, False
 
 
-# ── Worker ──────────────────────────────────────────────────────────────────
 
 def _claim_stdout():
-    """
-    Take stdout for the answers alone, and send everything else to stderr.
-
-    Returns a stream on a copy of stdout's file descriptor; from then on
-    `sys.stdout`, and descriptor 1 itself, are stderr. A library's print, a
-    native library writing to descriptor 1, and a `contextlib.redirect_stdout`
-    all end up in the log, and none of them can reach the answers.
-
-    That last one is why this exists. `redirect_stdout` swaps `sys.stdout` for
-    the whole process, and the pipeline runs models on threads of their own:
-    S-KEY swapped it for a buffer while SongFormer, on another thread, swapped
-    it for stderr, and the two put back each other's value. `sys.stdout` was
-    left pointing at S-KEY's buffer, every reply after that was written into
-    it, and the server waited ten minutes for an analysis that had finished.
+    """Reserve a duplicate stdout descriptor for NDJSON replies; redirect FD 1 to stderr.
+    This keeps native writes and competing model threads' redirect_stdout calls out
+    of the reply stream. The returned stream owns the duplicate descriptor.
     """
     sys.stdout.flush()
     channel = os.fdopen(os.dup(sys.stdout.fileno()), 'w', encoding='utf-8', newline='\n')
@@ -184,8 +146,6 @@ def worker_loop(out=None):
             traceback.print_exc(file=sys.stderr)
             response = {'id': request_id, 'error': str(exc)}
         if models.gpu_fault():
-            # A faulted GPU FFT stays broken for the life of the process. The
-            # track has its answer; ask for a fresh worker for the next one.
             response['recycle'] = True
         out.write(_encode_reply(response) + '\n')
         out.flush()
@@ -229,7 +189,6 @@ def _warm_up():
             _log(f'tagger preload skipped: {exc}')
 
 
-# ── Live ────────────────────────────────────────────────────────────────────
 
 def live_loop(rate, block=None):
     """
@@ -258,7 +217,6 @@ def live_loop(rate, block=None):
         raw = stream.read1(block * 4) if hasattr(stream, 'read1') else stream.read(block * 4)
         if not raw:
             break
-        # A read ends wherever the pipe did, which need not be on a sample.
         raw = pending + raw
         whole = len(raw) - len(raw) % 4
         raw, pending = raw[:whole], raw[whole:]
@@ -270,7 +228,6 @@ def live_loop(rate, block=None):
         sys.stdout.flush()
 
 
-# ── One-shot ────────────────────────────────────────────────────────────────
 
 def analyse_once(source, target_duration=None, report_path=None):
     path, temporary = resolve(source)
@@ -302,7 +259,6 @@ def write_report(document, audio_path, report_path):
     _log(f'report written to {report_path}')
 
 
-# ── Argument handling ───────────────────────────────────────────────────────
 
 USAGE = """usage:
   analyze.py <file|url> [--target-duration SEC] [--report OUT.html] [--out OUT.json]

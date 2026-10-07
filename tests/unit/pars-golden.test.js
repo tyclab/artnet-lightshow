@@ -1,15 +1,4 @@
-// What a rig of pars puts out, pinned byte for byte.
-//
-// Pixel support rebuilds the pattern layer, the rehearsal preview and parts of
-// the director around cells. A rig with no multi-cell fixture must not notice:
-// every frame the engine sends, every colour the preview draws and every scene
-// the director plans stays exactly what it was. These hashes were taken before
-// that work started; a change to any of them is a change to every existing show
-// — so one only ever changes on purpose, with the reason written down here.
-//
-// Everything that would make a frame depend on when it ran is pinned: the
-// monotonic clock, the musical clock (a fake master deck), and the dice the
-// random patterns roll.
+// Pin par render bytes with deterministic clocks/randomness. Update hashes only for explained behavior changes.
 
 import test from 'node:test';
 import assert from 'node:assert';

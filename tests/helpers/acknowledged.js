@@ -1,6 +1,4 @@
-// The photosensitivity acknowledgement, given for engine-driven frames that
-// play the strobe energies: the live engine renders those only with it. Held
-// in memory and taken back after; nothing is written to a settings file.
+// Temporarily acknowledge flashes in memory only; the returned callback restores settings.
 import { settings } from '../../src/server/settings.ts';
 
 /** Acknowledge until the returned function is called. */

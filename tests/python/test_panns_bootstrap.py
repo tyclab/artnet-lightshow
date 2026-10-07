@@ -25,8 +25,6 @@ sys.path.insert(0, str(REPO / 'src'))
 class PannsBootstrapOrdering(unittest.TestCase):
     def setUp(self):
         from analysis import tagger
-        # A fresh copy per test: these tests monkey-patch module globals, and a
-        # shared instance would leak a patched path into the next test.
         self.ea = importlib.reload(tagger)
 
     def test_installed_check_does_not_execute_the_package(self):
@@ -40,7 +38,6 @@ class PannsBootstrapOrdering(unittest.TestCase):
             pkg = Path(tmp) / 'panns_inference'
             pkg.mkdir()
             marker = Path(tmp) / 'was-imported'
-            # A stand-in whose import has an observable side effect.
             (pkg / '__init__.py').write_text(
                 f'open({str(marker)!r}, "w").close()\n'
                 'raise RuntimeError("import should not have happened")\n'

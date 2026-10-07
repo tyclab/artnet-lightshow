@@ -1,23 +1,5 @@
-/**
- * Toasts — the app's one way of saying something went wrong, or offering to
- * take it back.
- *
- * A plain script loaded before the app's bundle, so anything on the page — the
- * app, the token prompt — says things the same way.
- *
- * The server rejects input on six socket paths and every REST route answers
- * `{ ok: false, error }`, and until this existed none of it reached the
- * operator: a refused DMX address just snapped back on the next broadcast,
- * which reads as the app eating your input. Anything the server refuses should
- * say so, out loud, where you are looking.
- *
- *   Toast.push({ message, kind, action, timeout })
- *   Toast.error(message)
- *   Toast.info(message)
- *
- * `action` is `{ label, onClick }` and is how undo is offered.
- * Returns a function that dismisses the toast early.
- */
+// Shared notifications: push({message, kind, action, timeout}), error(message), info(message).
+// An action is {label, onClick}; push returns a dismissal function.
 (function () {
   'use strict';
 

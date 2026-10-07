@@ -1,10 +1,4 @@
-"""Optional pretrained model adapters used by the offline analysis path.
-
-The core pipeline remains installable without model weights.  Each adapter
-returns a small, serialisable result and reports provenance; callers can keep
-the deterministic DSP fallback when an optional package or checkpoint is not
-available.
-"""
+"""Optional pretrained model adapters used by the offline analysis path."""
 
 from __future__ import annotations
 
@@ -47,13 +41,9 @@ def _load_muq(kind, model_id):
         return None
 
     def build():
-        # Built where it lives: in RAM when models are kept there between
-        # passes (models.offloading), on the device otherwise.
         target = models.home()
         kwargs = {"local_files_only": True}
         if kind == "MuQMuLan":
-            # MuLan's checkpoint also constructs a MuQ backbone. Use the
-            # already provisioned local checkpoint instead of fetching it.
             with open(Path(model_id) / "config.json") as handle:
                 config = json.load(handle)
             config["audio_model"]["name"] = _model_path("muq", "ARTNET_MUQ_MODEL")
@@ -67,8 +57,6 @@ def _load_muq(kind, model_id):
             cls = getattr(module, kind)
             binary = Path(model_id) / "pytorch_model.bin"
             if kind == "MuQMuLan" and binary.is_file() and not (Path(model_id) / "model.safetensors").is_file():
-                # HubMixin 0.x assumes local checkpoints are safetensors, but
-                # the published MuLan checkpoint uses the PyTorch format.
                 import torch
                 model = cls(config=kwargs["config"])
                 model.load_state_dict(torch.load(binary, map_location="cpu", weights_only=True), strict=True)
@@ -105,25 +93,9 @@ def preload():
             print(f"[models] {kind} warm-up skipped: {exc}", file=sys.stderr)
 
 
-#: Windows pushed through MuQ in one forward pass. The windows overlap four to
-#: one, so a track is hundreds of them and one-at-a-time leaves the card idle
-#: between kernel launches while Python walks the loop.
-#:
-#: Four, not eight. The activations grow in step with the batch (0.15 GB a
-#: window), but MuQ's first convolution does not: from six windows up, cuDNN
-#: picks an algorithm for it with a 4 GB workspace, and on an RTX 2070 SUPER
-#: eight windows peaked at 4.3 GB where four peak at 0.6 GB. The pass then
-#: holds nearly all of an 8 GB card — the "expandable_segments: memory mapping
-#: failed" warnings in the log — and the desktop, the browser and whatever
-#: else is on the card have nothing left. Measured per window, four is as fast
-#: as eight (44 ms either way); two is about 5 % slower.
+# Four windows avoid the 4 GB cuDNN workspace selected at six or more on an 8 GB GPU.
 _MUQ_BATCH = max(1, int(os.environ.get("ARTNET_MUQ_BATCH", "4")))
 
-#: Decimal places an embedding keeps. A track is about a hundred and twenty
-#: 1024-wide vectors, and at full float precision they were most of a
-#: several-megabyte document that went over a socket to the browser and into
-#: the cache. Four places is far below the spread between two windows'
-#: vectors, so no similarity a consumer computes can tell the difference.
 EMBEDDING_DIGITS = 4
 
 
@@ -142,17 +114,8 @@ def _to_24k(waveform, sample_rate: int):
 
 
 def muq_embeddings(waveform, sample_rate: int, *, step_sec: float = 2.0):
-    """Extract MuQ windows when ``muq`` and a configured checkpoint exist.
-
-    MuQ requires 24 kHz input and fp32 inference.  The adapter intentionally
-    does not download weights during a show; set ``ARTNET_MUQ_MODEL`` to a
-    local checkpoint directory and provision it before playback.
-
-    Windows are encoded in batches. An eight-second window every two seconds
-    means a four-minute track is about a hundred and twenty forward passes, and
-    run one at a time each is small enough that the launch overhead costs more
-    than the arithmetic. The windows themselves are unchanged, so the vectors
-    are the same ones the show engine was reading before.
+    """Extract batched MuQ windows from 24 kHz audio using fp32 inference.
+    Requires a local ARTNET_MUQ_MODEL checkpoint; never downloads during playback.
     """
     module = _optional("muq")
     model_id = _model_path("muq", "ARTNET_MUQ_MODEL")
@@ -165,9 +128,6 @@ def muq_embeddings(waveform, sample_rate: int, *, step_sec: float = 2.0):
     audio = _to_24k(waveform, sample_rate)
     hop = max(1, int(step_sec * 24000)); window = 8 * 24000
 
-    # Every window but the last few is exactly `window` long; only the tail
-    # runs short. Batching needs equal lengths, so the full ones go through
-    # together and the ragged tail goes through as it did before.
     starts = [s for s in range(0, len(audio), hop) if len(audio[s:s + window]) >= 24000]
     full = [s for s in starts if len(audio[s:s + window]) == window]
     tail = [s for s in starts if len(audio[s:s + window]) != window]
@@ -234,10 +194,6 @@ def mulan_scores(waveform, sample_rate: int, vocabularies):
     return models.run_pass("muq-mulan", run, modules=[model])
 
 
-# Text latents, keyed by the model instance, the exact label tuple and the
-# device they were computed on — a pass that falls back to the CPU cannot
-# compare against latents on the card. The model is held alongside its
-# latents so a dead object's id cannot be reused for a live one.
 _TEXT_LATENTS = {}
 
 
@@ -266,20 +222,9 @@ def semantic_scores(waveform, sample_rate: int, vocabulary):
 
 
 def muq_pass(waveform, sample_rate: int, vocabularies):
-    """
-    Every MuQ question about one track, asked in one visit to the card.
-
-    Both towers want the same 24 kHz signal, and resampling a four-minute track
-    is not free, so it happens once here rather than once inside each adapter.
-    Grouping them also lets the caller put the whole MuQ stage on a thread
-    beside the DSP: the embeddings used to run inline after the document was
-    assembled, which put the slowest optional model squarely on the critical
-    path for no reason — nothing later in the pipeline reads them.
-
-    The two are separate models with separate checkpoints, and one failing
-    says nothing about the other: MuLan's text tower missing used to cost the
-    track its embeddings too, and an embedding pass that ran out of memory
-    its genre. Each is asked on its own, and what fails comes back empty.
+    """Run MuQ embeddings and MuLan scores using one shared 24 kHz resampling pass.
+    The caller may overlap this stage with DSP. Checkpoints and failures remain
+    independent: a missing or failed tower returns empty results only for that tower.
     """
     audio = _to_24k(waveform, sample_rate)
     try:
@@ -375,20 +320,11 @@ def skey_key(audio_path: str, samples=None, sample_rate=None):
     else:
         module.load_audio = _skey_load_audio
     try:
-        # S-KEY prints its answer, emoji included, and on a Windows console
-        # the emoji alone raises — which the except below turned into "no
-        # key", every track. Its chatter goes nowhere; the return value is the
-        # answer. Silenced in its own module, not with redirect_stdout: that
-        # swaps sys.stdout for the whole process while other models run on
-        # other threads, and the two swaps put back each other's value (see
-        # cli._claim_stdout).
         module.print = lambda *args, **kwargs: None
         result = module.detect_key(audio_path, device=os.environ.get('ARTNET_ANALYSIS_DEVICE', 'cpu'))
         value = result[0] if isinstance(result, list) else result
         return {"value": str(value), "confidence": 1.0, "source": "s-key"}
     except Exception as exc:
-        # Returning None keeps the internal key estimate, so without this line
-        # a broken S-KEY looks exactly like a working one.
         print(f"[models] S-KEY unavailable ({type(exc).__name__}: {exc}); "
               "keeping the internal key estimate", file=sys.stderr)
         return None

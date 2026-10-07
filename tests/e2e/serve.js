@@ -1,12 +1,5 @@
-// The server the end-to-end tests drive: the real one, on its own port, with
-// its own throwaway config directory, and no output — a test run on a laptop
-// on the venue network must not light the rig, and must not touch the show
-// saved in config/.
-//
-// Its analysis cache is throwaway too, and holds one analysed track: a stand-in
-// audio file at E2E_TRACK whose analysis is already cached, so a spec can load
-// a track (POST /api/auto/analyze with that path) and read, rehearse and edit
-// its show without Python.
+// Isolate config/cache and disable physical outputs; never touch the live rig or show data.
+// Seed a cached analysis so browser tests need no Python.
 
 import fs from 'node:fs';
 import path from 'node:path';

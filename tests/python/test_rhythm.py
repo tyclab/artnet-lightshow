@@ -1,12 +1,4 @@
-"""
-Tempo, beats and metre against tracks whose grid is known exactly.
-
-The synthetic tracks in synth.py place every kick themselves, so the ground
-truth is not an estimate — it is the list of times the samples were written to.
-That makes it possible to assert on *timing accuracy* rather than only on
-plausibility, which is what actually matters here: a beat grid 40 ms out is a
-show where every cue lands late.
-"""
+"""Tempo, beats and metre against tracks whose grid is known exactly."""
 
 import unittest
 
