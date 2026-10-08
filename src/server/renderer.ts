@@ -39,6 +39,7 @@ import type { EffectInstance } from '../shared/effects/stepper.ts';
 import type { SequenceTable, SequenceTransport } from '../shared/effects/sequence.ts';
 import type { AudioMode, EffectCommand, EffectSlot, EffectSpec, FrameBase, HdMaster, Seed } from '../shared/effects/types.ts';
 import type { ChannelDefault, ChannelMap, Colour, Expression, Override, PixelMap, Profile, PulseReading, ShowDynamics, StageFixture } from '../types/rig.ts';
+import type { PixelInputFrame } from '../types/pixel-input.ts';
 
 export type { VoiceFrame } from '../shared/effects/layer.ts';
 export { effectContentKey };
@@ -100,6 +101,7 @@ export interface RenderInput {
   effect?: EffectSpec | null;
   effectRevision?: number;
   voices?: VoiceFrame[];
+  pixelInputs?: PixelInputFrame[];
   paletteOverride?: Colour[] | null;
   basePalette?: PaletteBody | null;
   overridePalette?: PaletteBody | null;
@@ -720,12 +722,12 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
   }
 
   function lightOf(u: number, fix: RenderFixture, energy: EnergyLook | null, fadeT: number,
-    target: ShowDynamics | null): LightValue {
+    target: ShowDynamics | null, pixel: Colour | null = null): LightValue {
     // Keep the shown base under bursts so later fades do not capture the burst.
     const layer = fade && fade.from[u] ? blendFixture(fade.from[u], unitColors[u], fadeT) : unitColors[u];
     shown[u] = layer;
     const clip = seqUnits ? seqLight[u] : null;
-    const below = clip ?? layer;
+    const below = pixel ? { ...pixel, dim: 255, strobe: 0 } : clip ?? layer;
 
     let col: Colour; let dim: number; let strobe: number;
     if (energy) {
@@ -745,8 +747,8 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     }
 
     const pinned = fix.override && fix.override.enabled;
-    if (!energy && !pinned && !ridesLevel(clip ? seqKind[u] : baseKind[u])) dim *= expression.level;
-    if (target?.level === 0 && !energy && !pinned) dim = 0;
+    if (!pixel && !energy && !pinned && !ridesLevel(clip ? seqKind[u] : baseKind[u])) dim *= expression.level;
+    if (!pixel && target?.level === 0 && !energy && !pinned) dim = 0;
     return { col, dim, strobe };
   }
 
@@ -930,6 +932,11 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     const all: LightValue[][] = [];
     const owned: (EnergyLook | null)[] = [];
     const clipped: boolean[] = [];
+    // Deadlines use the render thread's monotonic clock, even if control snapshots stop arriving.
+    const pixels = new Map((input.safety.acknowledged ? input.pixelInputs ?? [] : [])
+      .filter((p) => now < p.expiresAt && p.data instanceof Uint8Array && p.data.length === p.width * p.height * 3)
+      .map((p) => [p.fixtureId, p]));
+    const pixelOwners: (string | null)[] = new Array(rigNow.units.length).fill(null);
     const watch = !!voiceTop || baseKinds || seqUnits;
     let guarded = false;
     let strobed = false;
@@ -938,16 +945,26 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       const { start, count } = rigNow.ranges[i];
       const overridden = !!fix.override && (fix.override.enabled || fix.override.blackout);
       const lights: LightValue[] = [];
+      const profile = profileOf(fix), stream = pixels.get(fix.id);
+      const pixel = stream && profile.grid?.columns === stream.width && profile.grid.rows === stream.height
+        && profile.cells?.length === stream.width * stream.height ? stream : null;
       let first: EnergyLook | null = sync;
-      let clip = false;
+      let clip = !!pixel;
       for (let u = start; u < start + count; u++) {
-        if (seqUnits && seqLight[u] && !overridden) clip = true;
+        if (seqUnits && seqLight[u] && !overridden && !pixel) clip = true;
         const voice = sync || !voiceTop ? null : voiceTop[u];
         const top = sync ?? (voice ? { col: voice.colour, dim: 255 * voice.level, strobe: voice.strobe ?? 0 } : null);
         if (top && !first) first = top;
-        lights.push(lightOf(u, fix, top, fadeT, target));
+        let colour: Colour | null = null;
+        if (pixel && !top && !overridden) {
+          const cell = u - start, point = profile.cells![cell].at ?? { x: cell % pixel.width, y: Math.floor(cell / pixel.width) };
+          const at = (point.y * pixel.width + point.x) * 3;
+          colour = { r: pixel.data[at], g: pixel.data[at + 1], b: pixel.data[at + 2], w: 0, a: 0, uv: 0 };
+          pixelOwners[u] = `pixel:${pixel.leaseId}`;
+        }
+        lights.push(lightOf(u, fix, top, fadeT, target, colour));
         if (!watch) continue;
-        const kind = top ? (voice ? voice.kind ?? null : null) : overridden ? null : seqUnits && seqLight[u] ? seqKind[u] : baseKind[u];
+        const kind = top ? (voice ? voice.kind ?? null : null) : overridden || pixelOwners[u] ? null : seqUnits && seqLight[u] ? seqKind[u] : baseKind[u];
         topKind[u] = kind;
         if (hdGuarded(kind)) guarded = true;
         if (kind === 'strobe') strobed = true;
@@ -965,10 +982,10 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
         const override = fix.override && (fix.override.enabled || fix.override.blackout);
         const clip = seqUnits && seqLight[u];
         const kind = watch ? topKind[u] : null;
-        const owner = sync ? 'sync' : voice?.owner ?? (override ? 'override' : clip ? seqOwner[u] ?? 'sequence:black'
-          : input.effect ? baseOwner[u] ?? 'base:excluded' : `legacy:${input.pattern}`);
+        const owner = sync ? 'sync' : voice?.owner ?? (override ? 'override' : pixelOwners[u] ?? (clip ? seqOwner[u] ?? 'sequence:black'
+          : input.effect ? baseOwner[u] ?? 'base:excluded' : `legacy:${input.pattern}`));
         const cut = kind === 'energy.kill' || !voice && !sync && (!!fix.override?.blackout
-          || target?.level === 0 && !fix.override?.enabled || !!clip && input.sequenceTransport?.stop?.mode === 'black');
+          || !pixelOwners[u] && (target?.level === 0 && !fix.override?.enabled || !!clip && input.sequenceTransport?.stop?.mode === 'black'));
         const guardedLight = hardwareGuard.light(id, light.col, light.dim, effNow, capabilities[i], owner, cut);
         light.col = guardedLight.colour; light.dim = guardedLight.dim;
       }

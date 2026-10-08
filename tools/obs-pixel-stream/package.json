@@ -1,0 +1,17 @@
+{
+  "name": "lightshow-obs-pixel-stream",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Scene-only OBS capture for transient authenticated Lightshow pixel input",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node cli.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "socket.io-client": "4.8.3"
+  }
+}
