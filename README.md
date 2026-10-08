@@ -14,6 +14,8 @@ flowchart LR
   Audio[Audio file or live input] --> Analysis[Python analysis / live features]
   Analysis --> Show[Auto show and effect inputs]
   Analysis --> Clock
+  Screen[OBS scene capture] --> Pixels[Authenticated pixel input / temporary ownership]
+  Pixels --> Engine
   Clock --> Engine[Engine renderer / blackout / flash limits]
   Server --> Engine
   Show --> Engine
@@ -285,6 +287,71 @@ LEDs outside patched segments keep their previous values.
 Removing a fixture or disarming sends darkness and stops updates. WLED resumes
 its own effects after its configured realtime timeout. Set its fallback preset
 accordingly. Preflight checks reachability and changed LED counts.
+
+### Screen pictures on an LED panel
+
+An external RGB picture can replace the base picture of one patched DDP panel.
+The lighting server remains its only sender: fixture wiring, WLED's LED map,
+master blackout, brightness trims and hardware limits still apply. Manual
+overrides, pad voices and Identify retain priority over the external picture.
+Other fixtures continue their existing effects.
+
+The optional `tools/obs-pixel-stream` client captures a named OBS scene through
+OBS's authenticated WebSocket API. It captures the composed scene, not the desktop.
+It centre-crops the image to the panel's aspect ratio and sends row-major RGB
+pixels at 10 frames per second by default. Supply the panel's logical grid size,
+including gaps represented by its existing LED map; do not apply the physical
+wiring order a second time. A sparse curtain shows large shapes and colours, not
+the detail or text of a normal display.
+
+Input ownership is temporary and belongs to the authenticated socket. Only one
+client may drive a panel at a time. Missing frames, disconnection or explicit
+release return it to its existing effect; disarm clears ownership and stops
+outputs normally. Frames and ownership are never saved in the show. Pixel-input
+requests never arm the rig. The OBS client captures again only after it sees an
+armed server and acquires fresh ownership.
+
+On Windows with Node 22.18+, install and run the optional client from its folder:
+
+```powershell
+cd tools/obs-pixel-stream
+npm.cmd ci --omit=dev
+node cli.js --preview --scene "Party Visuals" --width 68 --height 42 --output curtain-preview.ppm
+node cli.js --scene "Party Visuals" --fixture 53 --width 68 --height 42
+```
+
+These values describe GamerTyc's curtain. Choose your own scene, fixture ID and
+logical dimensions for another installation. The preview command only reads OBS
+and writes a local PPM image; it never contacts the lightshow. Live mode requires
+outputs already armed and the existing photosensitivity acknowledgement. Stop it
+with Ctrl+C to release the panel. `--fit contain` adds black margins instead of
+cropping. `--help` lists configuration paths and frame-rate options.
+
+The client reads the OBS password from the current user's OBS WebSocket settings
+and the lightshow URL/token-file reference from the installed Party Visuals
+configuration. Credentials stay out of command arguments and logs. OBS must have
+its authenticated WebSocket server enabled; no additional listener is created.
+
+Custom senders use the existing authenticated Socket.IO connection, with
+`auth: { token, protocol: 2 }`. Each request uses an acknowledgement callback:
+
+| Event | Payload | Successful acknowledgement |
+| --- | --- | --- |
+| `pixel-input:claim` | `{ fixtureId, width, height }` | `{ ok: true, leaseId, ttlMs: 2000, maxFps: 20, format: 'rgb24', order: 'row-major' }` |
+| `pixel-input:frame` | `{ fixtureId, leaseId, data }` | `{ ok: true }` |
+| `pixel-input:release` | `{ fixtureId, leaseId }` | `{ ok: true }` |
+
+`data` is a binary `Uint8Array` or Buffer of exactly `width * height * 3` RGB
+bytes. A target must be a full, non-zoned RGB DDP grid with at most 4096 cells.
+Accepted frames renew the two-second timeout; rejected frames do not. Claims
+belong to one socket and cannot survive disconnection or disarm. Rate-limit and
+validation errors return `{ ok: false, code, error }`; repeated message flooding
+disconnects the sender. Authenticated `GET /api/pixel-input` reports active input
+dimensions and remaining time, without exposing ownership keys or pixel data.
+
+Fullscreen browser mode is sufficient for a visualizer on one television. OBS
+is useful when the same composed picture also supplies an LED panel or when
+Companion should control scene visibility; it is not the audio visualizer itself.
 
 ### OpenRGB
 

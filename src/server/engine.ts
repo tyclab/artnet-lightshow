@@ -24,6 +24,7 @@ import type { MusicalTime } from './conductor.ts';
 import type { SequenceFrame } from './sequencer.ts';
 import { validateSpec } from '../shared/effects/registry.ts';
 import { effectContentKey } from '../shared/effects/layer.ts';
+import { pixelInputs } from './pixel-input-live.ts';
 
 export type EngineThread = 'worker' | 'main';
 
@@ -204,6 +205,7 @@ function renderInput(): RenderInput {
     effect,
     effectRevision,
     voices: voiceFrames(),
+    pixelInputs: pixelInputs.frames(thread === 'worker' ? WORKER_CLOCK_SHIFT : 0),
     paletteOverride: state.paletteOverride,
     basePalette: state.basePalette,
     overridePalette: state.overridePalette,
