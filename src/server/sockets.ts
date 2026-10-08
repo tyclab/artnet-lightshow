@@ -14,6 +14,8 @@ import { presetLookup } from './routes/voices.ts';
 import { ddpConflict } from './ddp-routes.ts';
 import { HttpError, messageOf } from '../errors.ts';
 import { PROTOCOL, ROOM, TOPICS } from './protocol.ts';
+import { pixelInputs } from './pixel-input-live.ts';
+import { PixelInputError } from './pixel-input.ts';
 import type { Server, Socket } from 'socket.io';
 import type { MidiPorts } from './midi-connect.ts';
 import type { Publisher, Snapshot } from './protocol.ts';
@@ -119,6 +121,21 @@ function attachSockets(io: Server, { midi, integrations }: {
 
   io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
+    let pixelWindow = 0, pixelMessages = 0;
+    for (const operation of ['claim', 'frame', 'release'] as const) socket.on(`pixel-input:${operation}`, (payload: unknown, ack?: (answer: unknown) => void) => {
+      const now = performance.now();
+      if (now - pixelWindow >= 1000) { pixelWindow = now; pixelMessages = 0; }
+      if (++pixelMessages > 60) {
+        if (typeof ack === 'function') ack({ ok: false, code: 'RATE_LIMIT', error: 'Too many pixel-input messages' });
+        socket.disconnect(true); return;
+      }
+      try {
+        const answer = pixelInputs[operation](socket.id, payload);
+        if (typeof ack === 'function') ack(answer);
+      } catch (err) {
+        if (typeof ack === 'function') ack({ ok: false, code: err instanceof PixelInputError ? err.code : 'INVALID', error: messageOf(err) });
+      }
+    });
     if (protocolOf(socket) === PROTOCOL) {
       socket.join(ROOM.v2);
       socket.emit('snapshot', publisher.snapshot(getClientState()));
@@ -301,6 +318,7 @@ function attachSockets(io: Server, { midi, integrations }: {
     });
 
     socket.on('disconnect', () => {
+      pixelInputs.disconnect(socket.id);
       voices.disconnect(socket.id);
       console.log('Client disconnected:', socket.id);
     });

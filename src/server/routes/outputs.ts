@@ -9,6 +9,7 @@ import { discoverBridges } from '../hue.ts';
 import { settings } from '../settings.ts';
 import { state, placeAddresslessFixtures } from '../state.ts';
 import { showStore } from '../show-store.ts';
+import { pixelInputs } from '../pixel-input-live.ts';
 import { messageOf } from '../../errors.ts';
 import type { Express, Response } from 'express';
 import type { ArtNode } from '../artnet.ts';
@@ -19,6 +20,7 @@ import type { RouteContext } from './common.ts';
 
 export function attachOutputRoutes(app: Express, ctx: RouteContext): void {
   const { applier, integrations, hueAreas, huePair } = ctx;
+  app.get('/api/pixel-input', (_req, res) => res.json({ ok: true, inputs: pixelInputs.status() }));
 
   // Disarm voices even when outputs are already off so rehearsal cannot preserve a hidden latch.
   const answerArmed = (res: Response, on: boolean) => {

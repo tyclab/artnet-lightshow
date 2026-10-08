@@ -364,6 +364,20 @@ export function UpdateActions(self) {
 			callback: ({ options }) => self.connection?.strobeBurst(options.ms),
 		},
 
+		sequence_transport: {
+			name: 'Sequence: play / resume, pause or stop',
+			options: [{
+				type: 'dropdown', id: 'mode', label: 'Control', default: 'play',
+				choices: [
+					{ id: 'play', label: 'Play / resume the loaded sequence' },
+					{ id: 'pause', label: 'Pause (clips keep running)' },
+					{ id: 'stop', label: 'Stop (hold the last picture)' },
+					{ id: 'blackout', label: 'Stop (black sequence base)' },
+				],
+			}],
+			callback: ({ options }) => self.connection?.sequenceTransport(options.mode),
+		},
+
 		// Momentary, the way a busking button wants it: on while the button is
 		// down, gone the moment it comes up — and gone on its own within a
 		// second and a bit if Companion crashes or the network drops with the

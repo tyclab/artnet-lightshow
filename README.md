@@ -19,6 +19,8 @@ flowchart LR
   Audio[Audio file or live input] --> Analysis[Python analysis / live features]
   Analysis --> Show[Auto show and effect inputs]
   Analysis --> Clock
+  Screen[Music Assistant browser canvas] --> Pixels[Authenticated pixel input / temporary ownership]
+  Pixels --> Engine
   Clock --> Engine[Engine renderer / blackout / flash limits]
   Server --> Engine
   Show --> Engine
@@ -331,6 +333,80 @@ LEDs outside patched segments keep their previous values.
 Removing a fixture or disarming sends darkness and stops updates. WLED resumes
 its own effects after its configured realtime timeout. Set its fallback preset
 accordingly. Preflight checks reachability and changed LED counts.
+
+### Screen pictures on an LED panel
+
+An external RGB picture can replace the base picture of one patched DDP panel.
+The lighting server remains its only sender: fixture wiring, WLED's LED map,
+master blackout, brightness trims and hardware limits still apply. Manual
+overrides, pad voices and Identify retain priority over the external picture.
+Other fixtures continue their existing effects.
+
+The optional `tools/browser-visuals` helper uses Music Assistant's existing
+MilkDrop canvas in a dedicated fullscreen Chrome profile. It removes the artwork,
+timeline and visual tint, and follows the local Party Visuals on/off switch.
+Music Assistant remains the renderer and audio source. OBS is not required.
+
+The default mode only manages the display: it does not read the lightshow token,
+connect to the lighting server or claim a fixture. Add `--curtain` to stream the
+same canvas to one patched panel. Pixels are downsampled to its logical grid at
+no more than 10 frames per second, with centre-cover cropping by default.
+Include gaps in the supplied grid dimensions; WLED applies its physical map once.
+A sparse curtain displays large shapes and colours rather than fine text.
+
+On Windows with Node 22.18+, install the helper and use the browser launcher from
+[party-visuals](https://github.com/tyclab/party-visuals). The launcher creates a
+dedicated persistent Chrome profile, waits for the selected TV and supplies an
+ephemeral loopback debugging port. The helper accesses only the configured Music
+Assistant origin, now-playing route and player. Sign in normally in this profile;
+credentials are not passed through the visualizer URL or command arguments.
+
+```powershell
+cd tools/browser-visuals
+npm.cmd ci --omit=dev
+$profile = "$env:LOCALAPPDATA\PartyVisuals\browser-profile"
+$url = 'http://10.27.2.42:8095/#/now-playing?player=02%3A01%3Abb%3A12%3A81%3A49&frameless=1'
+node cli.js --browser-profile $profile --visualizer-url $url
+node cli.js --browser-profile $profile --visualizer-url $url --preview --output curtain-preview.ppm
+node cli.js --browser-profile $profile --visualizer-url $url --curtain --fixture 53 --width 68 --height 42
+```
+
+These defaults describe GamerTyc's curtain and SHD player. Supply the intended
+player URL, fixture and grid for another installation. Preview writes a local PPM
+image and never connects to the lightshow. `--fit contain` adds black margins;
+`--help` lists all options. The local browser helper uses the existing NodeCG
+`wash.on` control for visibility; intensity still applies to the legacy graphics.
+An unavailable control endpoint covers the display and releases pixel input.
+
+Curtain mode reads the existing Party Visuals lightshow URL and token-file
+reference only in its local process. The lightshow credential never reaches the
+browser. Outputs must already be armed, with photosensitivity acknowledged.
+Ownership belongs to the authenticated socket; only one sender can claim a panel.
+Accepted frames renew its two-second timeout. Disconnect, disarm, missing frames
+or explicit release return the panel to its existing effect. The render worker
+enforces expiry independently. Frames and ownership are not saved in the show,
+and this helper never arms outputs. Ctrl+C or the launcher's stop request releases
+ownership cleanly.
+
+Custom senders use the existing authenticated Socket.IO connection, with
+`auth: { token, protocol: 2 }`. Each request uses an acknowledgement callback:
+
+| Event | Payload | Successful acknowledgement |
+| --- | --- | --- |
+| `pixel-input:claim` | `{ fixtureId, width, height }` | `{ ok: true, leaseId, ttlMs: 2000, maxFps: 20, format: 'rgb24', order: 'row-major' }` |
+| `pixel-input:frame` | `{ fixtureId, leaseId, data }` | `{ ok: true }` |
+| `pixel-input:release` | `{ fixtureId, leaseId }` | `{ ok: true }` |
+
+`data` is a binary `Uint8Array` or Buffer of exactly `width * height * 3` RGB
+bytes. A target must be a full, non-zoned RGB DDP grid with at most 4096 cells.
+Accepted frames renew the two-second timeout; rejected frames do not. Claims
+belong to one socket and cannot survive disconnection or disarm. Rate-limit and
+validation errors return `{ ok: false, code, error }`; repeated message flooding
+disconnects the sender. Authenticated `GET /api/pixel-input` reports active input
+dimensions and remaining time, without exposing ownership keys or pixel data.
+
+Fullscreen Chrome displays the native visualizer directly; the optional curtain
+feed reads that same canvas without a desktop capture or OBS process.
 
 ### OpenRGB
 
@@ -739,7 +815,7 @@ then place or symlink the module inside the configured Developer modules folder.
 Add an ArtNet Lightshow connection with host, port and access token.
 
 Presets cover busking palettes, energy holds, transport, cues, pads, strobe
-bursts, generated-show controls and fixture controls. Hold buttons renew until
+bursts, generated-show controls, sequence transport and fixture controls. Hold buttons renew until
 release; once and loop pads launch once per press. Server catalogs populate
 actions and feedback. The module uses Socket.IO protocol 2. See
 [installation](companion-module/INSTALL.md) and

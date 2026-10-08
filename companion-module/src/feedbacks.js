@@ -92,6 +92,18 @@ export function UpdateFeedbacks(self) {
 			callback: ({ options }) => self.liveState.palette === options.palette,
 		},
 
+		sequence_state: {
+			type: 'boolean',
+			name: 'Sequence transport state',
+			defaultStyle: { bgcolor: combineRgb(0, 140, 100), color: WHITE },
+			options: [{
+				type: 'dropdown', id: 'state', label: 'State', default: 'playing',
+				choices: ['playing', 'paused', 'stopped'].map((id) => ({ id, label: id })),
+			}],
+			callback: ({ options }) => ['playing', 'paused', 'stopped'].includes(options.state)
+				&& !!self.liveState.sequence?.[options.state],
+		},
+
 		blackout_active: {
 			type: 'boolean',
 			name: 'Master blackout active',

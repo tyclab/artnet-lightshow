@@ -69,7 +69,7 @@ export default [
 
   // ── Node server (ES modules) ──────────────────────────────────────────────
   {
-    files: ['server.js', 'eslint.config.js', 'playwright.config.js', 'src/**/*.js', 'scripts/**/*.js', 'tests/**/*.js'],
+    files: ['server.js', 'eslint.config.js', 'playwright.config.js', 'src/**/*.js', 'scripts/**/*.js', 'tests/**/*.js', 'tools/browser-visuals/**/*.js'],
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'module',
