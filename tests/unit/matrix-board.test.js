@@ -3,17 +3,35 @@ import assert from 'node:assert';
 
 import { VoiceManager } from '../../src/server/voices.ts';
 import { MatrixBoard, MATRIX_KEY, MATRIX_LEASE_MS } from '../../src/server/matrix.ts';
+import { harness, row } from '../helpers/ldj-harness.js';
+import { parseHex } from '../../src/shared/palette-model.ts';
 
 const RED = '#FF0000';
 const GREEN = '#00FF00';
 const BLUE = '#0000FF';
+
+test('Matrix press preserves six emitters through board render dispatch', (t) => {
+  const { board, spec } = bench(t);
+  board.setMode('solid');
+  board.press('six', '#123456789abc');
+  const saved = spec();
+  const output = harness(saved.kind, row(1), { spec: saved }).draw(0);
+  assert.deepStrictEqual(output[0].colour, parseHex('#123456789ABC'));
+});
+
+test('Matrix RGBW input treats the fourth byte as white', (t) => {
+  const { board, spec } = bench(t);
+  board.setMode('solid');
+  board.press('white', '#00000080');
+  assert.deepStrictEqual(spec().palette, ['#00000080']);
+});
 
 /** A board over a real manager on the test's own clock, setTimeout mocked to match. */
 function bench(t, { acknowledged = true } = {}) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const c = { now: 1000, acknowledged };
   const voices = new VoiceManager({
-    now: () => c.now, beatPos: () => 0, bpm: () => 120, acknowledged: () => c.acknowledged, anyRunning: () => false,
+    now: () => c.now, beatPos: () => 0, bpm: () => 120, acknowledged: () => c.acknowledged, anyRunning: () => false, onChange() {},
   });
   const board = new MatrixBoard({ voices, now: () => c.now, acknowledged: () => c.acknowledged });
   const advance = (ms) => { c.now += ms; t.mock.timers.tick(ms); };

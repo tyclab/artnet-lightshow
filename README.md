@@ -1,9 +1,14 @@
-# ArtNet Lightshow
+# ArtNet Lightshow — Tyclab
 
 Lighting controller for Art-Net, sACN, WLED/DDP, OpenRGB and Philips Hue
 Entertainment. Control it from the browser, MIDI, Bitfocus Companion or REST.
 Manual looks, effects, pads and sequences work without Python; analysed shows
 and live audio use the optional analysis environment.
+
+This is the [Tyclab fork](https://github.com/tyclab/artnet-lightshow) of
+[LightD31's controller](https://github.com/LightD31/artnet-lightshow), with its
+own tested deployment revisions. Upstream changes are reviewed before adoption;
+an upstream release is not a release of this fork.
 
 ## Signal flow
 
@@ -20,6 +25,8 @@ flowchart LR
   Server --> Engine
   Show --> Engine
   Engine --> Preview[Browser preview]
+  Room[Private room export] --> RoomAPI[Authenticated Stage room import]
+  RoomAPI --> Preview
   Engine --> Guard[Output arming / transport gates]
   Guard --> Outputs[Art-Net / sACN / DDP / OpenRGB / Hue]
 ```
@@ -46,9 +53,11 @@ start the pattern engine.
 
 ### Packaged builds
 
-Download from [Releases](https://github.com/LightD31/artnet-lightshow/releases).
-The packages include Node; the analysis environment is installed separately
-from the app when needed.
+This fork has no published release packages yet. Use a pinned source checkout,
+or build a package on the target operating system with `npm run package`.
+The [CI workflows](https://github.com/tyclab/artnet-lightshow/actions) test Windows
+and Linux packaging. Packages include Node; install the analysis environment
+separately from the app when needed.
 
 | Package | Start and data location |
 |---------|-------------------------|
@@ -126,6 +135,41 @@ returns 409. If a Deezer ARL is configured, an unsupervised Node process needs
 
 ## Views and controls
 
+For a live session, configure the fixtures and their positions in Rig, choose
+and edit a preset in Effects, then use Perform for pads, colours and transport.
+Use Sequence to arrange clips or run a playlist. Stage shows the current rig
+or a rehearsal. Arming is a separate action from preparing or previewing a look.
+Import a private floor model and place its lights with the
+[Stage room controls](docs/stage-room.md). Room geometry affects the preview;
+Rig positions still control spatial effects.
+
+To run reactive effects, configure and enable live input in Sources, select
+Reactive in Perform's Audio panel, and choose a Disco or Visualizer preset in
+Effects. Check the meters and preview before arming. Expand Audio response to
+adjust Party sensitivity, threshold, envelope and brightness, or the Light DJ
+trigger threshold. These settings apply globally and are saved by Apply.
+
+For a reusable sequence, create it in Sequence, open Edit, add lanes and clips,
+then Save it to the shelf. Playing or editing a loaded sequence does not save
+it to the shelf; the editor document is kept in a recovery file instead, and
+Undo/Redo step through its edits. Capture a range as a pattern to reuse it in
+another sequence or assign it to a pad; Perform is the live control surface for
+those pads. Starter playlists and generator builds an editable playlist from a
+starter set or the effect library and previews it before replacing the editor
+document. Show audio and pads stores the current audio response and pad deck
+with the loaded show; Pad layouts saves named decks and remaps their fixture
+targets onto another rig order.
+
+Perform also offers tempo capture from live audio, half and double tempo, live
+tempo and brightness automation, and colour controls for a running Visualizer.
+Fire and Ice are slow, strobe-free Party looks.
+
+The effect catalogue and show workflows cover the supported Hue Dynamics
+Party/Disco and Light DJ Entertainment scope. The detailed fields below describe
+the data contract as well as the browser controls. See
+[port coverage](docs/feature-coverage.md) for deliberate scope differences and
+the upstream adoption policy.
+
 An **effect** draws the lights. A **look** combines the base effect, colours and fixture
 settings. A **pattern** is a reusable sequence of clips. Favourites are quick access
 to effects; pad banks launch effects or patterns over the look.
@@ -198,8 +242,10 @@ Other settings apply immediately. The UI lists pending restart keys.
 | `config/show.json` | Fixture patch and custom profiles |
 | `config/cues.json` | Saved looks |
 | `config/midi-map.json` | Custom MIDI map |
-| `config/effects.json`, `palettes.json`, `pads.json`, `sequences.json` | Effect library, palettes, pad layout, sequences and reusable patterns |
+| `config/effects.json`, `palettes.json`, `pads.json`, `sequences.json` | Effect library, palettes, global pad deck, sequences, reusable patterns and named pad layouts |
+| `config/sequence-workspace.json` | Recovery copy of the loaded sequence, playhead and pending take |
 | `config/look.json` | Supervisor recovery snapshot |
+| `config/stage-room.json` | Optional private Stage geometry and light bindings; mode 0600 |
 | `cache/` | Analysis cache |
 | `logs/` | Structured logs |
 | `.venv/` | Managed analysis environment |
@@ -495,6 +541,14 @@ colours remain separate touches. Modes are `fireworks`, `flashes`, `pulses`,
 `cycle`, `solid`. Cell holds expire without renewal; releasing the final cell
 stops the voice. Stop-all or disarm clears the board and pending changes.
 
+Choose a built-in or saved palette for the grid. Gradient palettes are sampled
+into eight cells; ordinary palettes show their colours, including white, amber
+and UV channels. Random entries resolve once per selection or Reroll. Shuffle
+palette selects another palette. Lock colours turns taps into a retained
+selection while this browser keeps renewing its lease. Unlock, Release colours,
+changing palette, leaving the view, losing focus or disconnecting releases it.
+Locked colours are not restored after a restart.
+
 ### Strobe
 
 | Field | Values/default |
@@ -520,15 +574,48 @@ one shared lane and 4/4 at the current BPM. Edit exposes name, lanes, clips,
 mute/solo, pattern insertion and save/duplicate/delete. Deleting a saved
 sequence requires confirmation; Unload releases the current sequence.
 
+Unsaved changes are marked, and replacing or unloading them asks for confirmation.
+Timing and playlist settings are under Edit; saved tempo, music mode and initial
+palette take effect on Play. Select a clip to edit its timing/targets or open its
+effect settings. Apply to clip embeds that edited effect without changing its
+source preset. Hold to audition uses the clip's targets and releases on exit.
+Playlist rows support click or keyboard activation to start/jump; activating the
+playing row stops it. Saved patterns can be renamed, mapped to lanes or deleted.
+Clips can carry a name; selected clips can be grouped, moved together by beats
+or lanes, and ungrouped. Command rows have Run now.
+
+Undo and Redo cover whole edits of the loaded sequence, up to 50 steps, and are
+shared by every client; loading another sequence clears them. The loaded
+sequence, its playhead and any unfinished take autosave to
+`config/sequence-workspace.json`. A restart reopens that document stopped; a
+pending take opens in Review and is never kept or played automatically. A
+recovery file that cannot be read stays untouched and autosave pauses until
+"Archive recovery file and use current show" renames it aside.
+
+Show audio and pads captures the Party audio response, all sixteen pads and the
+active pad layout into the loaded sequence's `performance`. While such a show is
+loaded, Perform edits its copy, not the global defaults; Use global setup
+removes it. A named pad layout stores pads with fixture slots instead of ids;
+applying it previews the mapping onto the show's track lanes, or the patch order
+without track lanes, and refuses unmapped slots. Missing pad content is listed
+and only left empty after it is explicitly allowed.
+
+Starter playlists and generator offers Universal and Bonus Light DJ sets, the
+rig-compatible library, the whole library or an empty playlist. Rapid-flash
+effects are omitted unless included; self-paced strobes and classic looks are
+always omitted and listed with the reason.
+
 | Field | Meaning |
 |-------|---------|
 | `mode` | `arrangement` or `playlist` |
 | `lanes` | Up to three shared lanes; at most one track lane per fixture |
-| `clips` | `id`, `laneId`, `startBeat`, `lengthBeats`, `loopBeats`, exactly one `presetId`/`effect`, `targets`, `mute` |
+| `clips` | `id`, `laneId`, `startBeat`, `lengthBeats`, `loopBeats`, exactly one `presetId`/`effect`, `targets`, `mute`, optional `name` |
+| `clipGroups` | `{ id, clipIds }` with at least two clips; a clip belongs to one group |
 | `commands` | Palette, tempo, brightness or goto commands at beats |
 | `automation` | Tempo or brightness automation |
 | `loop`, `snap`, `timeSignature`, `bpm`, `musicMode` | Loop bounds, grid and timing |
-| `options` | `autoplay`, `shuffle`, `randomPaletteOnLoop`, `initialPalette` |
+| `options` | `autoplay`, `shuffle`, `randomPaletteOnLoop`, `initialPalette`, `randomizeInitialPalette` |
+| `performance` | Optional show-owned `{ master, pads, activePadLayoutId }` |
 
 A track clip wins over shared lanes; a later shared lane wins over an earlier
 one; later clip start wins within a lane. Solo excludes other lanes and mute
@@ -771,6 +858,7 @@ All endpoints return JSON. When a token is configured, send it as an
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/state` | Full current state (`armed` says whether anything leaves the machine) |
+| GET · PUT · DELETE | `/api/stage/room` | Private Stage room model; writes require the current `If-Match` revision. See [room format](docs/stage-room.md) |
 | POST | `/api/set` | Patch state fields (JSON body) |
 | POST | `/api/tap` | Tap tempo |
 | POST | `/api/play` · `/api/stop` | Start / stop the pattern engine |
@@ -816,6 +904,11 @@ A refused effect for want of the acknowledgement answers
 | POST | `/api/pads/:bank/:slot/press` · `/renew` · `/release` | Press a pad from REST (`{ token? }` or `?token=`, default `rest`), keep its hold, let it go. `renew` within 1.2 s extends a live hold and never launches (`{ renewed }`, false for a `once`, a `loop` or a hold ended); the same press within 1.2 s also renews a hold |
 | POST | `/api/pads/:bank/:slot/toggle` | Start or stop a pad as a loop |
 | POST | `/api/pads/:bank/:slot/once` | Fire it once (`?ms=` for a length) |
+| GET | `/api/show-setup` | The effective audio response and pads, whether the loaded show owns them, the fixture order and the layout names, with an `expected` revision token |
+| GET · POST | `/api/pad-layouts` | The named pad layouts · save the current deck as one (`{ name, expected }`, 201) |
+| GET · PUT · DELETE | `/api/pad-layouts/:id` | One layout · rename it or recapture the deck (`{ name, capture?, expected }`) · delete it (`{ expected }`) |
+| POST | `/api/pad-layouts/:id/preview` | `{ mapping? }` — fixture slots onto the current order, missing slots and missing content |
+| POST | `/api/pad-layouts/:id/apply` | `{ expected, mapping?, allowMissingContent? }` — replace the deck; 409 for unmapped slots, missing content not allowed, a stale `expected` or a take awaiting review |
 | GET | `/api/strobe` | `{ active, mode, settings }`, as every strobe route answers |
 | PUT | `/api/strobe` | Strobe settings, any of them (see **Strobe**) |
 | POST | `/api/strobe/on` · `/api/strobe/off` | Latch (ends at the cap) · stop every strobe voice |
@@ -846,13 +939,22 @@ Transport routes answer `{ ok, status }`; with no sequence loaded they answer
 | POST | `/api/sequence/capture-pattern` | `{ fromBeat, toBeat, laneIds, name }` from the loaded sequence (201) |
 | POST | `/api/sequence/record` | `{ mode: 'overdub' \| 'replace', countInBeats?, quantise? }` (0–1024 and 0–64 beats, default 0) — start a take |
 | POST | `/api/sequence/record/stop` | `{ keep }` — keep or discard the take; answers `{ ok, added, removed, status }`, and for a kept take that wrote something `range: { fromBeat, toBeat }` and `beyondRange: [{ id, laneId, startBeat, lengthBeats, beforeBeats, afterBeats }]` |
+| POST | `/api/sequence/record/review` | Stop the take's capture and keep it pending for Keep or Discard |
+| POST | `/api/sequence/undo` · `/api/sequence/redo` | `{ revision }` — step the shared edit history; 409 unless `revision` is the loaded sequence's current one |
+| GET | `/api/sequence/workspace` | Recovery status (`dirty`, `recovered`, `pending`, `blocked`, `error`) and the autosaved document |
+| POST | `/api/sequence/workspace/start-fresh` | Rename an unreadable recovery file aside and resume autosave from the current sequence |
+| POST | `/api/sequence/setup` | `{ expected, action: 'capture' \| 'global' }` — store the current audio response and pads in the loaded sequence, or remove them |
+| POST | `/api/sequence/command/:id/run` | Run one command row now |
+| GET · POST | `/api/sequence/generator` | The playlist templates · `{ template, name?, lengthBeats?, includeRapid? }` → `{ sequence, skipped, rapid }`, nothing loaded |
+| GET · PUT · DELETE | `/api/performance/automation` | Live tempo/brightness automation status · `{ axis, settings }` start one axis (409 while a sequence plays or the look is stopped or blacked out) · stop both |
+| GET | `/api/performance/input` | The live input's latest tempo reading for tempo capture |
 
 ### Audio
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/audio` | The audio settings, the levels heard and the detectors |
-| PUT | `/api/audio` | `{ mode?, master?, ldjTrigger? }` — `master` by field, the rest kept; answers `{ ok, changed, settings, detectors }` |
+| PUT | `/api/audio` | `{ mode?, master?, ldjTrigger?, scopeId? }` — `master` by field, the rest kept; with a show-owned setup loaded, `master` edits that show, and a `scopeId` naming another show answers 409; answers `{ ok, changed, settings, detectors }` |
 
 ### Fixtures, profiles and shows
 

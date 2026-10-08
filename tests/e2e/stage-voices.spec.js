@@ -34,10 +34,12 @@ async function samples(page, count) {
 const distance = (a, b) => Math.max(Math.abs(a.r - b.r), Math.abs(a.g - b.g), Math.abs(a.b - b.b));
 
 test('voices appear over the stage look and disappear when stopped', async ({ page, context, request }) => {
+  const originalLook = await state(request);
   await reset(request);
   // A still look and no sequence playing, so anything that moves on the stage is a voice.
   await request.post('/api/sequence/stop', { data: {} });
-  await set(request, { pattern: 'solid' });
+  // Two saturated colours, so a voice drawing in the palette differs from the solid look.
+  await set(request, { pattern: 'solid', basePalette: { colours: ['#FF0000000000', '#0000FF000000'] }, overridePalette: null });
   // A preset that plays before the acknowledgement: the catalogue marks the ones that do not.
   const start = await state(request);
   const preset = (start.patterns || []).find((p) => 'rapidFlash' in p && !p.rapidFlash && !/strobe/i.test(`${p.id} ${p.family || ''}`));
@@ -58,7 +60,6 @@ test('voices appear over the stage look and disappear when stopped', async ({ pa
     await expect(preview.locator('.playing-voice')).toHaveCount(0);
     const baseline = await now.textContent();
     const look = await samples(page, 6);
-    const lookLum = Math.max(...look.map((s) => s.lum));
 
     // Held: named, and the stage no longer looks like the look alone.
     const press = await (await request.post(`/api/pads/${BANK}/${SLOT}/press`, { data: {} })).json();
@@ -77,7 +78,10 @@ test('voices appear over the stage look and disappear when stopped', async ({ pa
     await expect.poll(async () => fromLook(await stageSample(page)),
       { message: 'the stage goes back to the look', timeout: 5000 }).toBeLessThan(2);
 
-    // The strobe: named, and some frame brighter than the look.
+    // The strobe: named, and some frame brighter than a dim look.
+    await set(request, { basePalette: { colours: ['#400000000000'] } });
+    await expect.poll(async () => fromLook(await stageSample(page)), { message: 'the dim look reaches the stage', timeout: 5000 }).toBeGreaterThan(0.5);
+    const lookLum = Math.max(...(await samples(page, 6)).map((s) => s.lum));
     expect((await request.post('/api/safety/acknowledge', { data: {} })).ok()).toBe(true);
     expect((await request.post('/api/strobe/on', { data: {} })).ok()).toBe(true);
     await until(request, (s) => !!s.strobe?.active);
@@ -94,5 +98,8 @@ test('voices appear over the stage look and disappear when stopped', async ({ pa
     await request.put(`/api/pads/${BANK}/${SLOT}`, { data: original });
     await request.put('/api/settings', { data: { safety: { photosensitivityAcknowledged: acknowledged } } });
     await reset(request);
+    await set(request, { basePalette: originalLook.basePalette, overridePalette: originalLook.overridePalette });
+    if (originalLook.palette) await set(request, { palette: originalLook.palette });
+    if (originalLook.paletteOverrideId) await request.put('/api/palette-override', { data: { paletteId: originalLook.paletteOverrideId } });
   }
 });

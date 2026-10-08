@@ -17,11 +17,11 @@ export function beatsPerBar(ts) {
   return (ts.beats * 4) / ts.unit;
 }
 
-export function positionText(status, perBar) {
+export function positionText(status, perBar, beatSize = 1) {
   if (!status || !Number.isFinite(status.beat)) return '–';
   const bar = status.bar || Math.floor(status.beat / perBar) + 1;
-  const inBar = Math.floor(status.beat - (bar - 1) * perBar + 1e-6) + 1;
-  return `${bar}.${Math.min(Math.max(inBar, 1), Math.ceil(perBar))}`;
+  const inBar = Math.floor((status.beat - (bar - 1) * perBar) / beatSize + 1e-6) + 1;
+  return `${bar}.${Math.min(Math.max(inBar, 1), Math.ceil(perBar / beatSize))}`;
 }
 
 export function previewOptions(s, { table = null, library = null } = {}) {
@@ -53,7 +53,7 @@ export function nowPlaying(s, perBar = s.sequence?.beatsPerBar || 4) {
   const seq = playing.sequence;
   if (seq) {
     const state = { playing: 'playing', paused: 'paused', hold: 'holding frame', black: 'blackout', ended: 'ended', loaded: 'loaded' }[seq.mode];
-    parts.push(`Sequence: ${seq.name || seq.id} (${state}) bar ${positionText(seq, perBar).replace('.', ' beat ')}`);
+    parts.push(`Sequence: ${seq.name || seq.id} (${state}) bar ${positionText(seq, perBar, seq.beatSize || 1).replace('.', ' beat ')}`);
     if (seq.activeClips.length) parts.push(`Clips: ${seq.activeClips.map((clip) => `${clip.lane}: ${clip.name}`).join(', ')}`);
   }
   if (playing.voices.length) parts.push(`Voices: ${playing.voices.map((voice) => voice.label).join(', ')}`);

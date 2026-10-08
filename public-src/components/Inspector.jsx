@@ -1,11 +1,14 @@
 import { HardwareFit } from './HardwareFit.jsx';
 import { ADMISSION_LABELS } from './setup/Hardware.jsx';
 import { gradientSettings } from './GradientEditor.jsx';
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import { api, librarySig, patchLibrary, pick } from '../state.js';
 import { PaletteEditor, isHexColour, normaliseHex, pickerValue } from './PaletteEditor.jsx';
 import { parseHex, toHex, HEX_COLOUR } from '../../src/shared/palette-model.ts';
 import { FieldInput } from './setup/FieldInput.jsx';
+import { useVoicePads } from '../voice-pad.js';
+import { useSafetyGate } from './Photosensitivity.jsx';
+import { requiresAcknowledgement } from '../../src/shared/effects/registry.ts';
 
 /**
  * The preset picked in the Effects list, with every setting its family can
@@ -407,7 +410,7 @@ function DiscoControls({ spec, fixtures, setParam }) {
       <Section title="Band per fixture" />
       <div class="insp-grid">
         {fixtures.map((f) => (
-          <SelectField key={f.id} label={f.name || `Fixture ${f.id}`} path={`assign.${f.id}`} value={assign[String(f.id)] || ''}
+          <SelectField key={f.id} label={f.label || `Fixture ${f.id}`} path={`assign.${f.id}`} value={assign[String(f.id)] || ''}
             options={{ '': 'Automatic', bass: 'Bass', voice: 'Voice', treble: 'Treble' }} onChange={(v) => assignFixture(String(f.id), v)} />
         ))}
       </div>
@@ -433,11 +436,12 @@ function ParamControls({ spec, caps, families, lib, fixtures, setParam, setKind 
 
 // ── The card ────────────────────────────────────────────────────────────────
 
-export function Inspector({ id, onSelect, onPlay, onClose }) {
+export function Inspector({ id, onSelect, onPlay, onClose, inline = null, onApply, auditionTargets = 'shared', auditionUnavailable = null }) {
   const s = pick(['families', 'patterns', 'fixtures', 'pattern']);
   const lib = librarySig.value;
   const families = s.families || lib.families || [];
-  const preset = id ? findPreset(id, lib, s.patterns || []) : null;
+  const preset = inline ? { id: inline.key, name: inline.name, spec: inline.spec, source: 'clip' }
+    : id ? findPreset(id, lib, s.patterns || []) : null;
   // The draft follows the preset: a new id or a save from anywhere starts it afresh.
   const key = preset ? `${preset.source}:${preset.id}:${preset.updatedAt || ''}` : null;
   const base = useMemo(() => (preset && preset.spec ? { name: preset.name, spec: clone(preset.spec) } : null), [key]);
@@ -448,11 +452,17 @@ export function Inspector({ id, onSelect, onPlay, onClose }) {
   const [remember, setRemember] = useState(false);
   const [preference, setPreference] = useState(readRecommendedPreference);
   const [paletteInvalid, setPaletteInvalid] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState(null);
   // Bumped by Revert, Apply recommended and a family change: the palette editor starts afresh.
   const [paletteEpoch, setPaletteEpoch] = useState(0);
   const draft = edits.key === key && edits.draft ? edits.draft : base;
   const dirty = !!draft && JSON.stringify(draft) !== JSON.stringify(base);
   const update = (fn) => setEdits({ key, draft: fn(draft) });
+  const audition = useVoicePads();
+  const gate = useSafetyGate();
+  const auditionKey = JSON.stringify(auditionTargets);
+  useEffect(() => { audition.releaseAll(); }, [key, draft?.spec, auditionKey, auditionUnavailable]);
 
   const title = (
     <div class="card-title">
@@ -528,16 +538,31 @@ export function Inspector({ id, onSelect, onPlay, onClose }) {
     if (!res.ok) return;
     setNaming(false);
     setCopyName('');
-    setEdits({ key: null, draft: null });
-    if (onSelect) onSelect(res.preset.id);
+    if (!inline) {
+      setEdits({ key: null, draft: null });
+      if (onSelect) onSelect(res.preset.id);
+    }
   };
   const remove = async () => {
     const res = await deletePreset(preset.id);
     if (res.ok && onSelect) onSelect(null);
   };
 
-  const playing = s.pattern === preset.id;
+  const apply = async () => {
+    if (applying || paletteInvalid) return;
+    audition.releaseAll();
+    setApplying(true);
+    setApplyError(null);
+    try {
+      const result = await onApply(draft.spec);
+      if (!result?.ok) setApplyError(result?.error || 'The clip could not be updated. Your draft is still here.');
+    } finally { setApplying(false); }
+  };
+  const playing = !inline && s.pattern === preset.id;
   const palettes = lib.palettes || { builtin: [], user: [] };
+  const auditionProps = requiresAcknowledgement(spec) && !gate.acknowledged
+    ? { onClick: () => gate.guard(draft.name, () => {}), 'data-safety': 'ask' }
+    : audition.holdProps('inspector-audition', { effect: spec, targets: auditionTargets });
   return (
     <div class="card effect-inspector">
       {title}
@@ -545,6 +570,7 @@ export function Inspector({ id, onSelect, onPlay, onClose }) {
         <strong>{preset.name}</strong>
         {preset.source === 'builtin' && <span class="setting-badge">Built-in</span>}
         {preset.source === 'user' && <span class="setting-badge">Yours</span>}
+        {inline && <span class="setting-badge">Clip draft</span>}
         {spec.rapidFlash && <span class="setting-badge pending">Rapid flash</span>}
         {playing && <span class="setting-badge">On stage</span>}
         {dirty && <span class="insp-dirty">Changed</span>}
@@ -552,9 +578,9 @@ export function Inspector({ id, onSelect, onPlay, onClose }) {
       {preset.desc && <p class="effect-inspector-desc">{preset.desc}</p>}
 
       <div class="insp-grid">
-        <Field label="Name" path="name">
+        {!inline && <Field label="Name" path="name">
           <input id={fid('name')} type="text" value={draft.name} maxLength={80} onInput={(e) => update((d) => ({ ...d, name: e.target.value }))} />
-        </Field>
+        </Field>}
         {siblings.length > 0 && (
           <Field label="Family" path="family">
             <select id={fid('family')} value={family?.id || ''} onChange={onFamily}>
@@ -596,13 +622,21 @@ export function Inspector({ id, onSelect, onPlay, onClose }) {
       )}
 
       <div class="insp-actions">
-        {onPlay && !playing && <button type="button" class="btn sm" onClick={() => onPlay(preset.id)}>Play</button>}
+        {onPlay && !playing && <button type="button" class="btn sm" disabled={dirty}
+          title={dirty ? 'Save your changes to play them as the base look, or hold Audition to try them.' : undefined}
+          onClick={() => onPlay(preset.id)}>Play</button>}
+        <button type="button" class="btn sm" disabled={paletteInvalid || !!auditionUnavailable} aria-pressed={audition.held.has('inspector-audition')}
+          {...auditionProps}>Hold to audition</button>
+        {inline && <button type="button" class="btn sm" disabled={paletteInvalid || applying} onClick={apply}>Apply to clip</button>}
         {preset.source === 'user' && <button type="button" class="btn sm" disabled={!dirty || paletteInvalid} onClick={saveInPlace}>Save</button>}
         {!naming && <button type="button" class="btn sm" onClick={() => { setNaming(true); setCopyName(`${draft.name} copy`); }}>Save as…</button>}
         {dirty && <button type="button" class="btn sm" onClick={() => { freshPalette(); setEdits({ key: null, draft: null }); }}>Revert</button>}
         {def && def.defaults && <button type="button" class="btn sm" title="The family's recommended settings, as the app ships them" onClick={() => applyRecommended()}>Apply recommended</button>}
         {preset.source === 'user' && <button type="button" class="btn sm danger" onClick={remove}>Delete</button>}
       </div>
+      {auditionUnavailable && <p class="effect-inspector-desc" role="status">{auditionUnavailable}</p>}
+      {applyError && <p role="alert">{applyError}</p>}
+      {gate.dialog}
       {naming && (
         <div class="cue-save-row">
           <input class="cue-name-input" aria-label="Preset name" placeholder="Preset name" value={copyName} autoFocus maxLength={80}

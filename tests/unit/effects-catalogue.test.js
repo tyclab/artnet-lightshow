@@ -205,7 +205,7 @@ test("Simple ADSR staggers red, green and blue", () => {
 
 test("catalogue presets render finite single-lamp output", () => {
   const added = CATALOGUE.filter((p) => !p.legacy && p.app !== 'ldj');
-  assert.strictEqual(added.length, 34);
+  assert.strictEqual(added.length, 36);
   for (const p of added) {
     const spec = { ...p.spec, palette: ['#00FF00'] };
     const inst = { id: p.id, spec, seed: seedFrom(p.id), anchorBeat: 0, startedAtMs: 0, targets: null };
@@ -291,10 +291,10 @@ test("control presets resolve to energy and strobe kinds", () => {
 });
 
 test("catalogue ids are unique across apps and legacy patterns", () => {
-  assert.strictEqual(CATALOGUE.length, 214);
-  assert.strictEqual(CATALOGUE.filter((p) => !p.legacy).length, 196);
+  assert.strictEqual(CATALOGUE.length, 216);
+  assert.strictEqual(CATALOGUE.filter((p) => !p.legacy).length, 198);
   const count = (app) => CATALOGUE.filter((p) => p.app === app).length;
-  assert.deepStrictEqual([count('ldj'), count('hd'), count('own')], [162, 27, 25]);
+  assert.deepStrictEqual([count('ldj'), count('hd'), count('own')], [162, 27, 27]);
   const keys = CATALOGUE.flatMap((p) => [p.id, ...(p.aliases ?? [])]);
   assert.strictEqual(new Set(keys).size, keys.length);
   for (const p of CATALOGUE.filter((c) => !c.legacy)) {
@@ -376,7 +376,7 @@ test("pickers expose every preset with effective acknowledgement", () => {
   assert.deepStrictEqual(PRESET_ROWS.map((p) => p.id), CATALOGUE.filter((p) => !p.legacy).map((p) => p.id));
   for (const row of PRESET_ROWS) {
     const p = presetById(row.id);
-    assert.deepStrictEqual(Object.keys(row), ['id', 'name', 'desc', 'app', 'family', 'rapidFlash', 'scope'], row.id);
+    assert.deepStrictEqual(Object.keys(row), ['id', 'name', 'desc', ...(p.party ? ['party'] : []), ...(p.pixel ? ['pixel'] : []), 'app', 'family', 'rapidFlash', 'scope'], row.id);
     assert.deepStrictEqual([row.name, row.desc, row.app, row.family], [p.name, p.desc, p.app, p.family], row.id);
     assert.strictEqual(row.rapidFlash, requiresAcknowledgement(p.spec), row.id);
     assert.strictEqual(row.scope, p.spec.scope ?? null, row.id);

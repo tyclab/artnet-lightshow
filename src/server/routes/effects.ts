@@ -87,6 +87,24 @@ export function attachEffectRoutes(app: Express, ctx: RouteContext): void {
   });
 
   app.delete('/api/palettes/:id', (req, res) => {
+    const id = req.params.id;
+    if (palettes().get(id)?.source !== 'user') return res.status(404).json({ ok: false, error: 'No such palette of your own' });
+    const references: string[] = [];
+    if (state.palette === id) references.push('Base palette on stage');
+    if (state.paletteOverrideId === id) references.push('Palette override on stage');
+    const sequence = ctx.integrations.sequence;
+    const current = sequence.sequencer.current();
+    if (sequence.sequencer.paletteRestoreId() === id) references.push(`Restored after sequence stops: ${current?.name ?? 'Sequence'}`);
+    for (const [label, seq] of [
+      ...(current ? [['Loaded sequence', current] as const] : []),
+      ...sequence.store.list().map((seq) => ['Saved sequence', seq] as const),
+    ]) {
+      if (seq.options.initialPalette === id || seq.commands.some((cmd) => cmd.type === 'palette' && cmd.value === id)) {
+        references.push(`${label}: ${seq.name}`);
+      }
+    }
+    if (references.length) return res.status(409).json({ ok: false, references,
+      error: `This palette is used by ${references.join('; ')}. Choose another palette there before deleting it.` });
     if (!palettes().remove(req.params.id)) return res.status(404).json({ ok: false, error: 'No such palette of your own' });
     res.json({ ok: true });
   });

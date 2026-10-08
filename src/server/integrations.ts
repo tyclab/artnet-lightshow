@@ -21,16 +21,21 @@ import { AutoSync } from '../auto-sync.ts';
 import LiveDirector from '../show/live-director.ts';
 import { PATTERNS } from './presets.ts';
 import { settings } from './settings.ts';
-import { baseEffect, effectChanged, identify, setAudioSource, setEffectSource, setSequenceSource } from './engine.ts';
+import { baseEffect, effectChanged, identify, setAudioSource, setEffectSource, setSequenceSource, setMasterSource } from './engine.ts';
 import { AudioFeatures, feedOf, resolveDetectors } from './audio-features.ts';
 import { BIN_HZ } from '../shared/spectrum-bands.ts';
 import { safety } from './safety.ts';
 import { EffectLibrary } from './effect-library.ts';
+import { ALL_PALETTES } from './palette-catalogue.ts';
 import { PaletteStore } from './palette-store.ts';
 import { PadStore, Pads, patternPlayer } from './pads.ts';
 import { presetLookup } from './routes/voices.ts';
 import { padTakeOf, sequenceBeatAhead, Sequencer } from './sequencer.ts';
+import path from 'node:path';
+import { SequenceWorkspace } from './sequence-workspace.ts';
 import { SequenceStore } from './sequence-store.ts';
+import { LiveAutomation } from './live-automation.ts';
+import { isArmed } from './armed.ts';
 import { toHex } from '../shared/effects/palette.ts';
 import { configFile } from './config-dir.ts';
 import type { Server } from 'socket.io';
@@ -125,11 +130,13 @@ function setupIntegrations({ io, midi, spotify, nowPlaying, deezerSource, prolin
     if (sequenceNews.unref) sequenceNews.unref();
   }
   const sequence = {
+    workspace: null as SequenceWorkspace | null,
     store: sequenceStore ?? new SequenceStore(configFile('sequences.json')).load(),
     sequencer: new Sequencer({
       resolve: (id) => library.effects.resolve(id),
       presetName: (id) => library.effects.summaries().find((preset) => preset.id === id)?.name ?? presetById(id)?.name ?? id,
       palette: (id) => library.palettes.materialize(id)?.map(toHex) ?? null,
+      paletteIds: () => [...ALL_PALETTES, ...library.palettes.list()].map((palette) => palette.id),
       paletteSettings: (id) => {
         const p = library.palettes.get(id)?.palette;
         if (!p) return null;
@@ -159,8 +166,27 @@ function setupIntegrations({ io, midi, spotify, nowPlaying, deezerSource, prolin
       pad: (bank, slot) => padTakeOf(pads.store.get(bank, slot), presetLookup(library)),
       beat: () => conductor.peek().beatPos,
       onRun: () => { reconcileFreeClock(); broadcastSoon(); },
+      validatePerformance: (next, before) => { if (next && before) pads.store.validate(next.pads, before.pads); },
     }),
   };
+  pads.store.setScope(() => sequence.sequencer.performance(), (next, activePadLayoutId) => {
+    const current = sequence.sequencer.current();
+    if (current?.performance) sequence.sequencer.load({ ...current, performance: { ...current.performance, pads: next, activePadLayoutId } });
+  });
+  pads.store.layoutExists = (id) => !!sequence.store.padLayout(id);
+  // Pad voices stop when another deck takes over, not when one pad of the same deck is edited.
+  const deckOf = () => JSON.stringify([sequence.sequencer.status().loaded?.id, !!sequence.sequencer.performance()]);
+  let padContext = deckOf();
+  sequence.sequencer.onChange((kind) => {
+    if (kind !== 'document' && kind !== 'unload') return;
+    const next = deckOf();
+    if (next !== padContext) pads.stopAll();
+    padContext = next;
+    broadcastSoon();
+  });
+  sequence.workspace = new SequenceWorkspace(path.join(path.dirname(sequence.store.file), 'sequence-workspace.json'), sequence.sequencer, (id) => sequence.store.get(id), broadcastSoon);
+  const effectiveMaster = () => sequence.sequencer.performance()?.master ?? settings.get('audio.master');
+  setMasterSource(effectiveMaster);
   const toSequenceBeat = (beat: number) => {
     const at = sequence.sequencer.status();
     return sequenceBeatAhead(at.beat, beat - conductor.peek().beatPos, at.loop);
@@ -178,10 +204,13 @@ function setupIntegrations({ io, midi, spotify, nowPlaying, deezerSource, prolin
     });
     broadcast();
   };
+  const liveAutomation = new LiveAutomation(() => ({ bpm: state.bpm, masterDimmer: state.masterDimmer,
+    running: state.running, masterBlackout: state.masterBlackout, armed: isArmed(), sequenceRunning: sequence.sequencer.runs() }),
+  (patch) => applyPatch(patch, { origin: 'sequence' }));
   setSequenceSource((reading) => {
     pads.sweep();
     const frame = sequence.sequencer.frame(reading);
-    if (sequence.sequencer.runs()) broadcastSoon();
+    if (liveAutomation.frame(reading) || sequence.sequencer.runs()) broadcastSoon();
     return frame;
   });
   setSequenceProvider(() => sequence.sequencer.status());
@@ -265,6 +294,7 @@ function setupIntegrations({ io, midi, spotify, nowPlaying, deezerSource, prolin
       },
       live: liveInput ? { ...liveInput.status(), director: liveDirector ? liveDirector.status() : null } : null,
       audio: liveAudio(),
+      liveAutomation: liveAutomation.status(),
       autoShow: autoShow.getClientState(),
       cues: cues.summaries(),
       effects: library.effects.summaries(),
@@ -273,6 +303,7 @@ function setupIntegrations({ io, midi, spotify, nowPlaying, deezerSource, prolin
       // The saved sequences and patterns by id and name, so one saved on another page reaches the pickers.
       sequences: sequence.store.summaries(),
       sequencePatterns: sequence.store.patternSummaries(),
+      padLayouts: sequence.store.padLayouts().map(({ id, name }) => ({ id, name })),
       warm: warmer.status(),
       midi: { enabled: midi.enabled, ports: midi.listPorts() },
       identify: identify.status(),
@@ -283,7 +314,7 @@ function setupIntegrations({ io, midi, spotify, nowPlaying, deezerSource, prolin
   setHooks({
     palette: (id) => library.palettes.materializeBody(id),
     broadcast,
-    handEdit: (edit) => sequence.sequencer.handEdit(edit),
+    handEdit: (edit) => { sequence.sequencer.handEdit(edit); liveAutomation.handEdit(edit); },
     prolinkEnable: () => {
       prolink.enable().catch((err) => {
         console.error('PRO DJ LINK enable failed:', messageOf(err));
@@ -393,7 +424,7 @@ function setupIntegrations({ io, midi, spotify, nowPlaying, deezerSource, prolin
     });
   }
   const audioFeatures = new AudioFeatures({
-    master: () => settings.get('audio.master'),
+    master: effectiveMaster,
     disco: () => detectors().disco,
     ldjTrigger: () => detectors().spl.trigger,
     binHz: BIN_HZ,
@@ -429,6 +460,8 @@ function setupIntegrations({ io, midi, spotify, nowPlaying, deezerSource, prolin
     const d = detectors();
     return {
       ...settings.group('audio'),
+      master: { ...effectiveMaster() },
+      scope: sequence.sequencer.performance() ? sequence.sequencer.status().loaded : null,
       ...heardNow,
       detectors: {
         spl: d.spl,
@@ -903,13 +936,18 @@ function setupIntegrations({ io, midi, spotify, nowPlaying, deezerSource, prolin
   });
   library.palettes.onChange(() => broadcast());
   pads.store.onChange(() => broadcast());
-  sequence.store.onChange(() => broadcast());
+  sequence.store.onChange(() => { sequence.workspace?.savedChanged(); broadcast(); });
 
   return {
     broadcast,
+    liveAutomation,
     publisher,
     warmer,
-    audio: { features: audioFeatures, summary: audioSummary, detectors },
+    audio: { features: audioFeatures, summary: audioSummary, detectors, captureInput: () => {
+      const reading = liveInput?.getReading();
+      return { listening: !!reading, source: liveInput?.status().source ?? null,
+        reading: reading ? { t: reading.t, bpm: reading.bpm, locked: reading.locked } : null };
+    } },
     library,
     pads,
     sequence,

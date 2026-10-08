@@ -3,24 +3,7 @@ import { newUserId } from '../effect-library.ts';
 import type { Express, Request, Response } from 'express';
 import type { RouteContext } from './common.ts';
 
-/**
- * The sequencer: the sequence loaded on the transport (GET/PUT
- * /api/sequence), the shelf of saved ones (/api/sequences), and the
- * transport's controls, each answered with its status.
- *
- * The loaded sequence is edited apart from the shelf: PUT /api/sequence
- * loads a whole sequence, or `{ id }` of one on the shelf, and saving it
- * back is a PUT to /api/sequences/:id. Nothing here arms the outputs.
- *
- * Hue Dynamics' patterns are kept on the shelf beside the sequences
- * (/api/sequence/patterns), dropped into the loaded sequence at a beat and
- * captured from it; a punch recording writes pad hits into it as clips.
- *
- * Errors fall through to the error handler: 400 for a sequence or a value
- * that does not validate, 404 for an id nothing has, 409 for a control with
- * nothing loaded, a clip that waits for the photosensitivity
- * acknowledgement, or an id the shelf has already.
- */
+// The loaded editor document is separate from the explicit saved-show shelf.
 export function attachSequenceRoutes(app: Express, ctx: RouteContext): void {
   // Read when a request comes, as the other domains read theirs.
   const sequencer = () => ctx.integrations.sequence.sequencer;
@@ -43,7 +26,9 @@ export function attachSequenceRoutes(app: Express, ctx: RouteContext): void {
       raw = shelf().get(body.id);
       if (!raw) return res.status(404).json({ ok: false, error: 'No such sequence' });
     }
+    const replacing = sequencer().current()?.id !== (raw as { id?: unknown })?.id;
     const sequence = sequencer().load(raw);
+    if (replacing) ctx.integrations.sequence.workspace?.flush();
     ctx.integrations.broadcast();
     res.json({ ok: true, sequence, status: sequencer().status() });
   });
@@ -51,8 +36,24 @@ export function attachSequenceRoutes(app: Express, ctx: RouteContext): void {
   // Nothing loaded: a stopped sequence holds its picture, and this is how the look comes back.
   app.delete('/api/sequence', (_req, res) => {
     sequencer().unload();
+    ctx.integrations.sequence.workspace?.flush();
     answer(res);
   });
+
+  app.get('/api/sequence/workspace', (_req, res) => {
+    const workspace = ctx.integrations.sequence.workspace;
+    res.json({ ok: true, workspace: workspace?.status() ?? null, document: workspace?.document() ?? null });
+  });
+  app.post('/api/sequence/workspace/start-fresh', (_req, res) => {
+    ctx.integrations.sequence.workspace?.startFresh();
+    answer(res);
+  });
+  for (const direction of ['undo', 'redo'] as const) app.post(`/api/sequence/${direction}`, (req, res) => {
+    const sequence = sequencer().replay(direction, (req.body as { revision?: unknown } | undefined)?.revision);
+    ctx.integrations.broadcast();
+    res.json({ ok: true, sequence, status: sequencer().status() });
+  });
+  app.post('/api/sequence/record/review', (_req, res) => { sequencer().reviewRecording(); answer(res); });
 
   app.get('/api/sequence/status', (_req, res) => res.json({ ok: true, status: sequencer().status() }));
 
@@ -130,6 +131,7 @@ export function attachSequenceRoutes(app: Express, ctx: RouteContext): void {
     sequencer().jump(req.params.clipId);
     answer(res);
   });
+  app.post('/api/sequence/command/:id/run', (req, res) => { sequencer().executeCommand(req.params.id); answer(res); });
   // The loop region, { on, startBeat, endBeat }, on the loaded sequence.
   app.post('/api/sequence/loop', (req, res) => {
     sequencer().setLoop(req.body ?? null);

@@ -1,3 +1,7 @@
+import type { WorkspaceStatus } from './sequence-workspace.ts';
+import { SequenceHistory } from './sequence-history.ts';
+import { performanceSchema } from '../shared/party-setup.ts';
+import type { ShowPerformance } from '../shared/party-setup.ts';
 import type { PaletteBody, GradientSettings } from '../shared/palette-model.ts';
 import type { BundleParams } from '../shared/effects/bundle.ts';
 import crypto from 'node:crypto';
@@ -36,6 +40,7 @@ export type { SequenceTable, SequenceTransport, TableClip };
 /** A clip plays one effect: given inline (`effect`) or a library preset by id (`presetId`). */
 export interface Clip {
   id: string;
+  name?: string;
   laneId: string;
   startBeat: number;
   lengthBeats: number;
@@ -69,6 +74,7 @@ export interface Automation {
 }
 
 export interface Sequence {
+  performance?: ShowPerformance;
   id: string;
   name: string;
   /** An arrangement plays every lane together; a playlist plays one lane's rows one at a time. */
@@ -80,6 +86,7 @@ export interface Sequence {
   snap: number;
   lanes: Lane[];
   clips: Clip[];
+  clipGroups?: { id: string; clipIds: string[] }[];
   commands: Command[];
   automation: { tempo: Automation | null; brightness: Automation | null };
   /**
@@ -87,7 +94,7 @@ export interface Sequence {
    * the next row at a row's end (off, the row loops until next), on by
    * default as in the app; it never starts a sequence, which only play does.
    */
-  options: { autoplay: boolean; shuffle: boolean; randomPaletteOnLoop: boolean; initialPalette: string | null };
+  options: { autoplay: boolean; shuffle: boolean; randomPaletteOnLoop: boolean; initialPalette: string | null; randomizeInitialPalette?: boolean };
 }
 
 /** What the engine takes from the sequencer each frame: the table, and its transport (null while it neither plays, pauses nor stops). */
@@ -113,6 +120,9 @@ export interface SequenceStatus {
   bar: number;
   /** The loaded sequence's bar, in beats (4 with none loaded): what `bar` counts in. */
   beatsPerBar: number;
+  beatSize: number;
+  history: { canUndo: boolean; canRedo: boolean };
+  workspace?: WorkspaceStatus;
   loop: Sequence['loop'];
   lanes: { id: string; clip: string | null }[];
   activeClips: { id: string; laneId: string; lane: string; name: string }[];
@@ -166,6 +176,7 @@ const laneSchema = z.object({
 
 const clipSchema = z.object({
   id: idSchema,
+  name: z.string().trim().max(80).optional(),
   laneId: idSchema,
   startBeat: beatSchema,
   lengthBeats: z.number().positive(),
@@ -244,10 +255,12 @@ export const sequenceSchema = z.object({
   bpm: z.number().min(BPM.min).max(BPM.max).nullable().default(null),
   timeSignature: timeSignatureSchema.default({ beats: 4, unit: 4 }),
   musicMode: z.enum(['off', 'tempo', 'reactive']).nullable().default(null),
+  performance: performanceSchema.optional(),
   loop: loopSchema.nullable().default(null),
   snap: z.number().positive().default(1),
   lanes: z.array(laneSchema).default([]),
   clips: z.array(clipSchema).default([]),
+  clipGroups: z.array(z.object({ id: idSchema, clipIds: z.array(idSchema).min(2) }).strict()).optional(),
   commands: z.array(commandSchema).default([]),
   automation: z.object({ tempo: automationSchema(BPM), brightness: automationSchema(BYTE) }).strict().default({ tempo: null, brightness: null }),
   options: z.object({
@@ -255,11 +268,19 @@ export const sequenceSchema = z.object({
     shuffle: z.boolean().default(false),
     randomPaletteOnLoop: z.boolean().default(false),
     initialPalette: idSchema.nullable().default(null),
+    randomizeInitialPalette: z.boolean().optional(),
   }).strict().default({ autoplay: true, shuffle: false, randomPaletteOnLoop: false, initialPalette: null }),
 }).strict().superRefine((seq, ctx) => {
   unique(ctx, seq.lanes, 'lanes');
   unique(ctx, seq.clips, 'clips');
   unique(ctx, seq.commands, 'commands');
+  unique(ctx, seq.clipGroups ?? [], 'clipGroups');
+  const members = new Set<string>();
+  const clips = new Set(seq.clips.map((clip) => clip.id));
+  seq.clipGroups?.forEach((group, i) => group.clipIds.forEach((id, j) => {
+    if (!clips.has(id) || members.has(id)) ctx.addIssue({ code: 'custom', path: ['clipGroups', i, 'clipIds', j], message: 'a group member must exist and belong to only one group' });
+    members.add(id);
+  }));
   if (seq.lanes.filter((l) => l.kind === 'shared').length > MAX_SHARED_LANES) {
     ctx.addIssue({ code: 'custom', path: ['lanes'], message: `at most ${MAX_SHARED_LANES} shared lanes` });
   }
@@ -379,13 +400,13 @@ export type PadTake = { presetId: string; targets: 'shared' | number[]; lengthBe
 export interface RemovedBeyond { id: string; laneId: string; startBeat: number; lengthBeats: number; beforeBeats: number; afterBeats: number }
 /** A stopped take: kept ones also give the range the take wrote and the removed clips that reached outside it. */
 export interface KeepResult { added: Clip[]; removed: string[]; range?: { fromBeat: number; toBeat: number }; beyondRange?: RemovedBeyond[] }
-export interface RecordingStatus { mode: RecordOptions['mode']; fromBeat: number; quantise: number; hits: number; full?: boolean }
+export interface RecordingStatus { phase: 'active' | 'review'; mode: RecordOptions['mode']; fromBeat: number; quantise: number; hits: number; full?: boolean }
 // A pattern hit keeps its id; `drop` is a sequencePattern pad, which maps as insertion does.
-interface StagedHit {
+export interface StagedHit {
   bank: number; slot: number; start: number; length: number; targets: 'shared' | number[]; open: boolean;
   presetId?: string; patternId?: string; pattern?: SequencePattern; drop?: boolean; once?: boolean; at?: number;
 }
-interface Recording { mode: RecordOptions['mode']; fromBeat: number; clockFrom: number; full?: boolean; quantise: number; sequenceId: string; revision: number; take: StagedHit[] }
+export interface Recording { phase?: 'active' | 'review'; mode: RecordOptions['mode']; fromBeat: number; clockFrom: number; full?: boolean; quantise: number; sequenceId: string; revision: number; take: StagedHit[] }
 
 /**
  * What a pad records: a preset with its length by the voice-duration
@@ -568,6 +589,7 @@ export interface SequencerOptions {
   /** A palette by id as the colours it puts on now (hex), or null for none. Built-in palettes when left out. */
   palette?: (id: string) => string[] | null;
   paletteSettings?: (id: string) => GradientSettings | null;
+  paletteIds?: () => readonly string[];
   /** Put on what the sequence changes: the main thread's patch, from the sequence (never as a hand on a control). */
   apply?: (patch: SequencePatch) => void;
   /**
@@ -594,6 +616,7 @@ export interface SequencerOptions {
   beat?: () => number;
   /** Told when the transport starts or stops moving (runs()): the free clock runs for it (state.ts). */
   onRun?: () => void;
+  validatePerformance?: (next: ShowPerformance | undefined, before: ShowPerformance | undefined) => void;
 }
 
 const EPS = 1e-9;
@@ -603,11 +626,20 @@ function builtinPalette(id: string): string[] | null {
   return p ? resolvePalette({ palette: [...p.colours] }, null, [], seedFrom(`palette:${id}`), 0).map(toHex) : null;
 }
 
+export type SequenceChange = 'document' | 'position' | 'take' | 'unload';
+export type PreparedSequenceLoad = Readonly<{ kind: 'sequence-load' }>;
+interface PreparedLoad { seq: Sequence; table: SequenceTable; key: string; revision: number }
+
 export class Sequencer {
+  declare _workspaceStatus: (() => WorkspaceStatus) | null;
+  declare _history: SequenceHistory;
+  declare _listeners: Set<(kind: SequenceChange) => void>;
+  declare _prepared: WeakMap<PreparedSequenceLoad, PreparedLoad>;
   declare _resolve: EffectResolver;
   declare _presetName: (id: string) => string;
   declare _paletteSettings: (id: string) => GradientSettings | null;
   declare _paletteOf: (id: string) => string[] | null;
+  declare _paletteIds: () => readonly string[];
   declare _apply: (patch: SequencePatch) => void;
   declare _current: () => { masterDimmer: number; bpm: number; paletteOverride?: readonly string[] | null; paletteOverrideId?: string | null; overridePalette?: PaletteBody | null };
   declare _musicMode: (mode: AudioMode) => void;
@@ -650,13 +682,19 @@ export class Sequencer {
   declare _pad: (bank: number, slot: number) => PadTake | null;
   declare _record: Recording | null;
   declare _onRun: () => void;
+  declare _validatePerformance: NonNullable<SequencerOptions['validatePerformance']>;
   // What runs() was when last told.
   declare _told: boolean;
 
-  constructor({ resolve, presetName = (id) => presetById(id)?.name ?? id, palette = builtinPalette, paletteSettings = () => null, apply = () => {}, current = () => ({ masterDimmer: 255, bpm: 120 }),
+  constructor({ resolve, presetName = (id) => presetById(id)?.name ?? id, palette = builtinPalette, paletteSettings = () => null, paletteIds = () => BUILTIN_PALETTES.map((p) => p.id), apply = () => {}, current = () => ({ masterDimmer: 255, bpm: 120 }),
     musicMode = () => {}, admit = (spec) => safety.requireAcknowledged(spec), now = () => performance.now(), seed,
-    fixtureIds = () => [], pattern = () => null, pad = () => null, beat, onRun = () => {} }: SequencerOptions) {
+    fixtureIds = () => [], pattern = () => null, pad = () => null, beat, onRun = () => {}, validatePerformance = () => {} }: SequencerOptions) {
+    this._workspaceStatus = null;
+    this._history = new SequenceHistory();
+    this._listeners = new Set();
+    this._prepared = new WeakMap();
     this._onRun = onRun;
+    this._validatePerformance = validatePerformance;
     this._told = false;
     this._fixtureIds = fixtureIds;
     this._clock = beat ?? (() => this._last?.beatPos ?? 0);
@@ -666,6 +704,7 @@ export class Sequencer {
     this._resolve = resolve;
     this._presetName = presetName;
     this._paletteOf = palette;
+    this._paletteIds = paletteIds;
     this._paletteSettings = paletteSettings;
     this._apply = apply;
     this._current = current;
@@ -702,32 +741,114 @@ export class Sequencer {
    * acknowledged is refused (409) while it plays. Another sequence stops the
    * one playing and lets its held picture go.
    */
-  load(raw: unknown): Sequence {
+  prepareLoad(raw: unknown, { admit = true, keepContent = false }: { admit?: boolean; keepContent?: boolean } = {}): PreparedSequenceLoad {
     const seq = validateSequence(raw);
-    const table = buildTable(seq, this._resolve, this._revision + 1);
-    this._checkPalettes(seq);
+    // Only pads changed on the loaded show are admitted; another show, a replay or a recovery keeps
+    // a stale reference assigned, refused at launch as a saved deck is.
+    const same = admit && this._loaded?.id === seq.id ? this._loaded.performance : undefined;
+    this._validatePerformance(seq.performance, same);
+    // keepContent: the clips play what they resolved to at load, so a preset deleted since cannot refuse the edit.
+    const kept = keepContent && this._loaded?.id === seq.id && this._table
+      ? new Map(this._loaded.clips.flatMap((clip, i) => clip.presetId ? [[clip.presetId, this._table!.clips[i].spec] as const] : [])) : null;
+    const table = buildTable(seq, kept ? (id) => kept.get(id) ?? this._resolve(id) : this._resolve, this._revision + 1);
+    if (!kept) this._checkPalettes(seq);
     const key = canonical([seq, table.clips.map((c) => c.spec)]);
+    if (key !== this._key && this._loaded?.id === seq.id && (this._mode === 'playing' || this._mode === 'paused')) {
+      for (const c of table.clips) this._admit(c.spec);
+    }
+    const token = Object.freeze({ kind: 'sequence-load' as const });
+    this._prepared.set(token, { seq, table, key, revision: this._revision });
+    return token;
+  }
+
+  commitPrepared(token: PreparedSequenceLoad): Sequence {
+    return this._commitPrepared(token);
+  }
+
+  load(raw: unknown): Sequence {
+    return this.commitPrepared(this.prepareLoad(raw));
+  }
+
+  _commitPrepared(token: PreparedSequenceLoad, replay?: 'undo' | 'redo'): Sequence {
+    const prepared = this._prepared.get(token);
+    if (!prepared || prepared.revision !== this._revision) throw new HttpError(409, 'Prepared sequence is stale; prepare the edit again');
+    this._prepared.delete(token);
+    const { seq, table, key } = prepared;
     if (key === this._key) return structuredClone(this._loaded!);
     const same = this._loaded?.id === seq.id;
-    if (same && (this._mode === 'playing' || this._mode === 'paused')) for (const c of table.clips) this._admit(c.spec);
     const before = this._loaded;
+    this._history.commit(before, seq, replay);
     this._revision++;
+    // Show setup and the loop region leave the clips alone, so a take in step stays keepable.
+    const outsideTake = (doc: Sequence) => canonical({ ...doc, performance: null, loop: null });
+    if (same && this._record?.revision === this._revision - 1 && outsideTake(before!) === outsideTake(seq)) this._record.revision = this._revision;
     this._loaded = deepFreeze(seq);
     this._key = key;
     this._table = deepFreeze({ ...table, revision: this._revision });
     this._end = sequenceEnd(seq);
     const commands = this._commands;
     this._commands = sortCommands(seq.commands);
-    if (!same) this._release();
+    if (!same) { this._record = null; this._release(); }
     else this._edited(before!, commands);
     this._tell();
+    this._changed('document');
     return structuredClone(this._loaded!);
+  }
+
+  replay(direction: 'undo' | 'redo', revision: unknown): Sequence {
+    if (revision !== this._revision) throw new HttpError(409, 'The sequence changed; review the current revision before replaying history');
+    if (this._record) throw new HttpError(409, 'Keep or discard the pending take before undo or redo');
+    const next = this._history.peek(direction);
+    if (!next) throw new HttpError(409, `Nothing to ${direction}`);
+    return this._commitPrepared(this.prepareLoad(next, { admit: false }), direction);
+  }
+
+  setWorkspaceStatus(provider: () => WorkspaceStatus): void { this._workspaceStatus = provider; }
+
+  onChange(listener: (kind: SequenceChange) => void): () => void {
+    this._listeners.add(listener);
+    return () => { this._listeners.delete(listener); };
+  }
+
+  _changed(kind: SequenceChange): void {
+    for (const listener of this._listeners) {
+      try { listener(kind); } catch (err) { console.warn('[sequence] change listener failed', err); }
+    }
+  }
+
+  pendingTake(): Recording | null {
+    return this._record ? structuredClone(this._record) : null;
+  }
+
+  validateRecoveryTargets(sequence: Sequence): void {
+    const patched = new Set(this._fixtureIds());
+    const targets = [
+      ...sequence.lanes.flatMap((lane) => lane.kind === 'track' ? [lane.fixtureId!] : []),
+      ...sequence.clips.flatMap((clip) => clip.targets === 'lane' ? [] : clip.targets),
+    ];
+    const missing = [...new Set(targets.filter((id) => !patched.has(id)))];
+    if (missing.length) throw new HttpError(409, `Recovered show needs unpatched fixtures: ${missing.join(', ')}`);
+  }
+
+  restoreTake(record: Recording, compatible: boolean): void {
+    if (record.sequenceId !== this._loaded?.id) throw new HttpError(409, 'The recovered take belongs to another sequence');
+    this._record = { ...structuredClone(record), revision: compatible ? this._revision : -1, phase: 'review', take: record.take.map((hit) => ({ ...structuredClone(hit), open: false })) };
+    this._changed('take');
+  }
+
+  reviewRecording(): RecordingStatus {
+    if (!this._record) throw new HttpError(409, 'Nothing is recording');
+    this._record.phase = 'review';
+    for (const hit of this._record.take) hit.open = false;
+    this._changed('take');
+    return this.recording()!;
   }
 
   /** Nothing loaded: the table goes, under a new revision, and the transport and any take with it. */
   unload(): void {
     if (!this._loaded) return;
     this._record = null;
+    this._history.clear();
     this._loaded = null;
     this._key = null;
     this._table = null;
@@ -736,11 +857,20 @@ export class Sequencer {
     this._revision++;
     this._release();
     this._tell();
+    this._changed('unload');
   }
 
   /** The loaded sequence as a copy, or null. */
   current(): Sequence | null {
     return this._loaded ? structuredClone(this._loaded) : null;
+  }
+
+  performance(): Readonly<ShowPerformance> | null {
+    return this._loaded?.performance ?? null;
+  }
+
+  paletteRestoreId(): string | null {
+    return this._paletteBefore?.paletteOverrideId ?? null;
   }
 
   /** The loaded sequence's clip table, frozen; the same object until the sequence changes. */
@@ -843,6 +973,7 @@ export class Sequencer {
     if (this._mode !== 'playing') return;
     this._mode = 'paused';
     this._ops.push({ type: 'pause' });
+    this._changed('position');
   }
 
   /**
@@ -910,10 +1041,7 @@ export class Sequencer {
   setLoop(raw: unknown): SequenceLoop | null {
     this._requireLoaded();
     const loop = validate(loopSchema.nullable(), raw ?? null, 'loop') as SequenceLoop | null;
-    const seq = { ...this._loaded!, loop };
-    this._loaded = deepFreeze(seq);
-    this._key = canonical([seq, this._table!.clips.map((c) => c.spec)]);
-    if (this._anchor || this._ops.length) this._ops.push({ type: 'loop' });
+    this.commitPrepared(this.prepareLoad({ ...this._loaded!, loop }, { keepContent: true }));
     return loop;
   }
 
@@ -941,12 +1069,21 @@ export class Sequencer {
   _move(to: (pos: number) => number | null): void {
     this._ops.push({ type: 'seek', to });
     if (this._run !== 'playing' && this._run !== 'paused') this._applyQueued(null);
+    this._changed('position');
   }
 
   // What a real start puts on: the sequence's tempo, audio mode and first palette.
   _startSettings(): void {
     const seq = this._loaded!;
-    if (seq.options.initialPalette !== null) {
+    if (seq.options.randomizeInitialPalette) {
+      const choices = this._paletteIds().map((id) => ({ id, colours: this._paletteOf(id) })).filter((entry) => entry.colours?.length);
+      if (choices.length) {
+        const current = this._current().paletteOverrideId ?? this._palette;
+        const choice = choices[pickNotLast(this._rng.seed, this._rng.iter++, choices.length, choices.findIndex((entry) => entry.id === current), PALETTE_KEY)];
+        this._palette = choice.id;
+        this._applyPalette({ paletteOverride: choice.colours!, paletteOverrideId: choice.id });
+      }
+    } else if (seq.options.initialPalette !== null) {
       const colours = this._paletteOf(seq.options.initialPalette);
       if (colours) {
         this._palette = seq.options.initialPalette;
@@ -1252,7 +1389,7 @@ export class Sequencer {
       }
       // With no loop ahead, the sequence's end, unless something else comes
       // first; while a take runs there is none, for the take to land in.
-      const last = this._record ? Infinity : this._end!;
+      const last = this._record && this._record.phase !== 'review' ? Infinity : this._end!;
       if (!wraps && end >= last - EPS && (event === null || last < end - EPS)) { end = Math.max(c.pos, last); event = 'end'; }
       // The commands up to there: past an end that is never reached (a wrap,
       // a shuffled row's end) only those before it.
@@ -1341,9 +1478,15 @@ export class Sequencer {
     }
   }
 
-  // Light DJ's random palette on loop: another built-in palette, never the
-  // one on: the override on the rig (a hand may have changed it since), else
-  // the one the sequence last put on.
+  executeCommand(id: string): void {
+    this._requireLoaded();
+    const command = this._commands.find((entry) => entry.id === id);
+    if (!command) throw new HttpError(404, 'No such command in the loaded sequence');
+    if (command.type === 'goto') this.seek(command.value);
+    else { this._command(command); this._flush(); }
+  }
+
+  // Exclude the live override so a manual palette change also affects the next draw.
   _randomPalette(): void {
     const ids = BUILTIN_PALETTES.map((p) => p.id);
     const current = this._current();
@@ -1465,6 +1608,7 @@ export class Sequencer {
     if (runs === this._told) return;
     this._told = runs;
     this._onRun();
+    this._changed('position');
   }
 
   /** The beat the last frame was handed (NaN before the first): the voices' containers are looked up there too. */
@@ -1555,16 +1699,17 @@ export class Sequencer {
     if (this._record) throw new HttpError(409, 'A recording runs already');
     const at = this.status();
     this._record = {
-      mode: opts.mode, quantise: opts.quantise, fromBeat: sequenceBeatAhead(at.beat, opts.countInBeats, at.loop), clockFrom: this._clock() + opts.countInBeats,
+      phase: 'active', mode: opts.mode, quantise: opts.quantise, fromBeat: sequenceBeatAhead(at.beat, opts.countInBeats, at.loop), clockFrom: this._clock() + opts.countInBeats,
       sequenceId: this._loaded.id, revision: this._revision, take: [],
     };
+    this._changed('take');
     return this.recording()!;
   }
 
   /** The recording running, or null. */
   recording(): RecordingStatus | null {
     const r = this._record;
-    return r ? { mode: r.mode, fromBeat: r.fromBeat, quantise: r.quantise, hits: r.take.length, ...(r.full ? { full: true } : {}) } : null;
+    return r ? { phase: r.phase ?? 'active', mode: r.mode, fromBeat: r.fromBeat, quantise: r.quantise, hits: r.take.length, ...(r.full ? { full: true } : {}) } : null;
   }
 
   /**
@@ -1576,6 +1721,7 @@ export class Sequencer {
   onPadHit({ bank, slot, startBeat, endBeat, lengthBeats, clockBeat, heldBeats, once = false }: PadHit): StagedHit | null {
     const rec = this._record;
     if (!rec) throw new HttpError(409, 'Nothing is recording');
+    if (rec.phase === 'review') return null;
     const q = rec.quantise;
     const snap = (b: number) => (q > 0 ? Math.round(b / q) * q : b);
     const held = heldBeats !== undefined && Number.isFinite(heldBeats) ? Math.max(0, heldBeats) : undefined;
@@ -1585,6 +1731,7 @@ export class Sequencer {
       const end = held !== undefined ? (open.at ?? open.start) + held : endBeat!;
       open.length = Math.max(snap(end) - open.start, q > 0 ? q : 0) || open.length;
       open.open = false;
+      this._changed('take');
       return { ...open };
     }
     if (!Number.isFinite(startBeat) || this._inCountIn(rec, startBeat, clockBeat) || this._full(rec)) return null;
@@ -1604,6 +1751,7 @@ export class Sequencer {
     const isOpen = !once && endBeat === undefined && lengthBeats === undefined && held === undefined;
     const hit: StagedHit = { bank, slot, start, at: startBeat, length, ...what, targets: structuredClone(content.targets), open: isOpen, ...(once ? { once } : {}) };
     rec.take.push(hit);
+    this._changed('take');
     return { ...hit };
   }
 
@@ -1614,12 +1762,14 @@ export class Sequencer {
   dropPattern(id: string, atBeat: number, clockBeat?: number): Clip[] {
     const rec = this._record;
     if (!rec) return this.insertPattern(id, atBeat);
+    if (rec.phase === 'review') throw new HttpError(409, 'Keep or discard the pending take first');
     // A running take keeps the sequence it was armed on: a drop in its count-in is not played.
     if (!Number.isFinite(atBeat) || this._inCountIn(rec, atBeat, clockBeat) || this._full(rec)) return [];
     const pattern = this._pattern(id);
     if (!pattern) throw new HttpError(404, `No such pattern: ${id}`);
     const q = rec.quantise;
     rec.take.push({ bank: -1, slot: -1, start: q > 0 ? Math.round(atBeat / q) * q : atBeat, length: 0, patternId: id, pattern: structuredClone(pattern), targets: 'shared', open: false, drop: true });
+    this._changed('take');
     return [];
   }
 
@@ -1641,17 +1791,18 @@ export class Sequencer {
    * shared lane, fixtures on their tracks (the rest on the first shared
    * lane), pattern hits expanded in the same batch; replace first removes
    * the whole clips it lands on. Discarded, or empty, nothing changes. A
-   * refused keep (another sequence or revision loaded, a pattern that no
+   * refused keep (a clip edit since the take began, a pattern that no
    * longer maps, more copies or clips than the caps) leaves the take running.
+   * Loading another sequence discards the take.
    */
   stopRecording(keep: boolean): KeepResult {
     const rec = this._record;
     if (!rec) throw new HttpError(409, 'Nothing is recording');
     if (!keep || rec.take.length === 0) {
       this._record = null;
+      this._changed('take');
       return { added: [], removed: [] };
     }
-    if (this._loaded?.id !== rec.sequenceId) throw new HttpError(409, 'Another sequence was loaded during the take: stop it without keeping');
     if (this._revision !== rec.revision) throw new HttpError(409, 'The sequence was edited during the take: stop it without keeping');
     const seq = this._editable();
     const taken = takenIds(seq);
@@ -1681,6 +1832,7 @@ export class Sequencer {
     const removed = gone.map((c) => c.id);
     const removing = new Set(removed);
     seq.clips = [...seq.clips.filter((c) => !removing.has(c.id)), ...added];
+    if (seq.clipGroups) seq.clipGroups = seq.clipGroups.map((group) => ({ ...group, clipIds: group.clipIds.filter((id) => !removing.has(id)) })).filter((group) => group.clipIds.length > 1);
     // Whole clips go, so a crossing one takes beats outside the take with it.
     let fromBeat = rec.fromBeat;
     for (const a of added) fromBeat = Math.min(fromBeat, a.startBeat);
@@ -1689,6 +1841,7 @@ export class Sequencer {
     const range = { fromBeat, toBeat };
     this.load(seq);
     this._record = null;
+    this._changed('take');
     const beyondRange = gone.map(({ id, laneId, startBeat, lengthBeats }) => ({
       id, laneId, startBeat, lengthBeats,
       beforeBeats: Math.max(0, range.fromBeat - startBeat), afterBeats: Math.max(0, startBeat + lengthBeats - range.toBeat),
@@ -1761,6 +1914,9 @@ export class Sequencer {
       beat,
       bar,
       beatsPerBar: seq ? barBeats(seq.timeSignature) : 4,
+      beatSize: seq ? 4 / seq.timeSignature.unit : 1,
+      history: this._history.status(),
+      ...(this._workspaceStatus ? { workspace: this._workspaceStatus() } : {}),
       loop: seq?.loop ? { ...seq.loop } : null,
       lanes: seq ? seq.lanes.map((l) => ({ id: l.id, clip: tops.get(l.id) ?? null })) : [],
       activeClips: shows ? this._activeClips(where) : [],
@@ -1775,8 +1931,8 @@ export class Sequencer {
       const clip = this._loaded!.clips[index];
       const lane = this._loaded!.lanes.find((entry) => entry.id === clip.laneId)!;
       const kind = this._table!.clips[index].spec.kind;
-      const name = clip.presetId ? this._presetName(clip.presetId)
-        : presetById(kind)?.name ?? FAMILIES.find((family) => family.kinds.some((entry) => entry.kind === kind))?.name ?? clip.id;
+      const name = clip.name || (clip.presetId ? this._presetName(clip.presetId)
+        : presetById(kind)?.name ?? FAMILIES.find((family) => family.kinds.some((entry) => entry.kind === kind))?.name ?? clip.id);
       return { id: clip.id, laneId: lane.id, lane: lane.name, name };
     });
   }

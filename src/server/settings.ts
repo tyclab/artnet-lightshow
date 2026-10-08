@@ -1,3 +1,4 @@
+import { hdMasterSchema } from '../shared/party-setup.ts';
 import net from 'node:net';
 import { z } from 'zod';
 import { DEFAULT_HARDWARE, hardwareSettingsSchema } from '../shared/hardware.ts';
@@ -146,8 +147,6 @@ const LEGACY_HUE_KEYS = ['enabled', 'host', 'username', 'clientKey', 'applicatio
 
 const AUDIO_MODES = ['off', 'tempo', 'reactive'] as const;
 const fraction = z.number().min(0).max(1);
-const attackMs = z.number().int().min(0).max(2000);
-const releaseMs = z.number().int().min(0).max(5000);
 
 const RESTART_PATHS = ['server.host', 'server.port', 'server.token', 'engine.thread'];
 
@@ -264,10 +263,7 @@ const schema = z.object({
   }).strict(),
   audio: z.object({
     mode: z.enum(AUDIO_MODES),
-    master: z.object({
-      sensitivity: fraction, smoothing: fraction, attackMs, releaseMs,
-      threshold: fraction, reactiveDepth: fraction, brightness: fraction,
-    }).strict(),
+    master: hdMasterSchema,
     ldjTrigger: fraction,
   }).strict(),
   hardware: hardwareSettingsSchema,

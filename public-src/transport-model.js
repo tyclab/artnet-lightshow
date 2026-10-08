@@ -28,12 +28,18 @@ export function chooseDriver(value, s) {
   return requests;
 }
 
+export function playlistRowRequests(clipId, playing) {
+  return playing ? [post('/api/sequence/stop')]
+    : [post(`/api/sequence/jump/${encodeURIComponent(clipId)}`), post('/api/sequence/play')];
+}
+
 export function transportButtons(driver, s) {
   if (driver === 'sequence') {
     const q = s.sequence, loaded = !!q?.loaded, playing = !!(q?.playing && !q.paused), loop = q?.loop;
     return [
       { id: playing ? 'pause' : 'play', label: playing ? 'Pause' : 'Play', enabled: loaded },
       { id: 'stop', label: 'Stop', enabled: loaded },
+      { id: 'prev', label: 'Previous', enabled: loaded },
       { id: 'next', label: 'Next', enabled: loaded },
       { id: 'shuffle', label: 'Shuffle', enabled: loaded },
       { id: 'loop', label: 'Loop', enabled: loaded && !!loop, pressed: !!loop?.on },

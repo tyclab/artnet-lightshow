@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { meanLightRGB, roomViews, STAGE_FOV } from './world.js';
 
 /**
  * The 3D stage: the rig in a dark, hazy room, drawn with three.js.
@@ -104,11 +105,13 @@ function glowTexture() {
  */
 export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
   const { width: STAGE_W, depth: STAGE_D, trussHeight: TRUSS_H } = room;
-  const VIEWS = {
+  const genericViews = {
     audience: { position: [0, 1.7, STAGE_D / 2 + 8], target: [0, 1.9, 0] },
     above: { position: [0, 15, 3], target: [0, 0, 0] },
     side: { position: [STAGE_W / 2 + 9, 3.2, 1.5], target: [0, 1.9, 0] },
   };
+  let views = genericViews;
+  let activeView = 'audience';
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -116,7 +119,7 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
 
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(BG, 0.03);
-  const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 200);
+  const camera = new THREE.PerspectiveCamera(STAGE_FOV, 1, 0.1, 200);
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
@@ -144,6 +147,84 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
   );
   wall.position.set(0, (TRUSS_H + 3) / 2, -STAGE_D / 2 - 0.6);
   scene.add(floor, deck, wall);
+  let roomGroup = null;
+  let roomDisposables = [];
+  let cutaway = true;
+  let roomWalls = [];
+  let roomBounds = null;
+
+  function fitRoom() {
+    views = roomViews(roomBounds, camera.aspect);
+    const distance = Math.max(...Object.values(views).map(({ position, target }) => Math.hypot(...position.map((value, index) => value - target[index]))));
+    controls.maxDistance = Math.max(20, distance * 3);
+    camera.far = Math.max(200, controls.maxDistance * 2);
+    camera.updateProjectionMatrix();
+  }
+
+  function setCutaway(value) {
+    cutaway = value;
+    for (const { mesh, model } of roomWalls) {
+      const height = value ? Math.min(0.9, model.size.y) : model.size.y;
+      mesh.scale.y = height / model.size.y;
+      mesh.position.y = model.position.y - (model.size.y - height) / 2;
+    }
+  }
+
+  function setRoom(model) {
+    if (roomGroup) scene.remove(roomGroup);
+    for (const resource of roomDisposables) resource.dispose();
+    roomDisposables = [];
+    roomWalls = [];
+    roomGroup = null;
+    floor.visible = deck.visible = wall.visible = !model;
+    roomBounds = model?.bounds || null;
+    views = genericViews;
+    if (model) {
+      roomGroup = new THREE.Group();
+      const keepRoom = (resource) => { roomDisposables.push(resource); return resource; };
+      const ground = new THREE.Mesh(
+        keepRoom(new THREE.PlaneGeometry(model.bounds.width, model.bounds.depth)),
+        keepRoom(new THREE.MeshBasicMaterial({ color: 0x191c24, side: THREE.DoubleSide })),
+      );
+      ground.rotation.x = -Math.PI / 2;
+      roomGroup.add(ground);
+      for (const area of model.rooms) {
+        const shape = new THREE.Shape(area.polygon.map(([x, z]) => new THREE.Vector2(x, -z)));
+        const geometry = keepRoom(new THREE.ShapeGeometry(shape).rotateX(-Math.PI / 2));
+        const material = keepRoom(new THREE.MeshBasicMaterial({ color: area.color || 0x292d38, side: THREE.DoubleSide }));
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.y = 0.003;
+        roomGroup.add(mesh);
+      }
+      for (const object of model.objects) {
+        let geometry;
+        if (object.kind === 'prism') {
+          const shape = new THREE.Shape(object.polygon.map(([x, z]) => new THREE.Vector2(x, -z)));
+          geometry = new THREE.ExtrudeGeometry(shape, { depth: object.size.y, bevelEnabled: false })
+            .rotateX(-Math.PI / 2).translate(0, -object.size.y / 2, 0);
+        } else if (object.kind === 'cylinder') {
+          geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 16).scale(object.size.x, object.size.y, object.size.z);
+        } else geometry = new THREE.BoxGeometry(object.size.x, object.size.y, object.size.z);
+        keepRoom(geometry);
+        const mesh = new THREE.Mesh(geometry, keepRoom(new THREE.MeshBasicMaterial({ color: object.color || '#747985' })));
+        mesh.position.set(object.position.x, object.position.y, object.position.z);
+        mesh.rotation.set(object.rotation?.x || 0, object.rotation?.y || 0, object.rotation?.z || 0);
+        const outline = new THREE.LineSegments(keepRoom(new THREE.EdgesGeometry(geometry)),
+          keepRoom(new THREE.LineBasicMaterial({ color: 0x171a21, transparent: true, opacity: 0.45 })));
+        mesh.add(outline);
+        if (object.role === 'wall') roomWalls.push({ mesh, model: object });
+        roomGroup.add(mesh);
+      }
+      scene.add(roomGroup);
+      fitRoom();
+      setCutaway(cutaway);
+    } else {
+      controls.maxDistance = 45;
+      camera.far = 200;
+      camera.updateProjectionMatrix();
+    }
+    view(activeView);
+  }
 
   const trussMaterial = keep(new THREE.MeshBasicMaterial({ color: 0x2a2a30 }));
   const bodyMaterial = keep(new THREE.MeshBasicMaterial({ color: 0x1c1c21 }));
@@ -276,6 +357,7 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
   }
 
   const rgb = new Float32Array(3);
+  const sourceRGB = new Float32Array(3);
   /** Colour every light from a frame: one emitter set per unit of the rig. */
   function setLights(frame) {
     if (!parts || !frame) return;
@@ -298,7 +380,8 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
       glow(lampGlow.geometry.attributes.color, k, 0.9);
     });
     bulbs.forEach((bulb, k) => {
-      lightRGB(frame[bulb.unit], rgb);
+      if (bulb.sources) meanLightRGB(bulb.sources, frame, rgb, sourceRGB);
+      else lightRGB(frame[bulb.unit], rgb);
       put(bulbMesh.instanceColor, k, 1);
       glow(lampGlow.geometry.attributes.color, pars.length + k, 1);
     });
@@ -320,7 +403,8 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
   setHaze(haze);
 
   function view(name) {
-    const v = VIEWS[name] || VIEWS.audience;
+    activeView = name;
+    const v = views[name] || views.audience;
     camera.position.set(...v.position);
     controls.target.set(...v.target);
     controls.update();
@@ -346,6 +430,7 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    if (roomBounds) { fitRoom(); view(activeView); }
   }
 
   function render() {
@@ -360,12 +445,13 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
       rigGroup.traverse((o) => { if (o.isInstancedMesh) o.dispose(); });
     }
     for (const thing of rigDisposables) thing.dispose();
+    for (const thing of roomDisposables) thing.dispose();
     for (const thing of disposables) if (thing && thing.dispose) thing.dispose();
     renderer.dispose();
   }
 
   return {
-    setRig, setLights, setHaze, view, nudge, resize, render, dispose,
+    setRig, setLights, setHaze, setRoom, setCutaway, view, nudge, resize, render, dispose,
     /** What is drawn, for tests and the page's description. */
     info: () => ({ units, pars: parts ? parts.pars.length : 0, bulbs: parts ? parts.bulbs.length : 0, cells: parts ? parts.cells.length : 0 }),
   };

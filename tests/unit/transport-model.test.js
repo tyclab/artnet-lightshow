@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chooseDriver, driverOf, startShow, transportButtons } from '../../public-src/transport-model.js';
+import { chooseDriver, driverOf, playlistRowRequests, startShow, transportButtons } from '../../public-src/transport-model.js';
 import { resolveRoute, VIEWS, viewShortcut } from '../../public-src/views.js';
 
 test('legacy bookmarks retain their instrument', () => {
@@ -61,4 +61,20 @@ test('sequence looping keeps its saved bounds', () => {
   assert.equal(buttons[0].id, 'pause');
   assert.deepEqual(buttons.find((b) => b.id === 'loop').request.body, { on: false, startBeat: 4, endBeat: 12 });
   assert.ok(transportButtons('sequence', {}).every((b) => !b.enabled));
+});
+
+test('previous sequence navigation calls the existing previous endpoint', () => {
+  const previous = transportButtons('sequence', { sequence: { loaded: { id: 'set' } } }).find((b) => b.id === 'prev');
+  assert.equal(previous.enabled, true);
+  assert.deepEqual(previous.request, { path: '/api/sequence/prev', method: 'POST' });
+});
+
+test('an inactive playlist row jumps before starting playback', () => {
+  assert.deepEqual(playlistRowRequests('row/2', false), [
+    { path: '/api/sequence/jump/row%2F2', method: 'POST' }, { path: '/api/sequence/play', method: 'POST' },
+  ]);
+});
+
+test('an actively playing playlist row stops playback', () => {
+  assert.deepEqual(playlistRowRequests('row2', true), [{ path: '/api/sequence/stop', method: 'POST' }]);
 });

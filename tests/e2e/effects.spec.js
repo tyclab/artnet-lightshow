@@ -80,6 +80,79 @@ test('a built-in, changed and saved as a copy, lists as a preset of your own', a
   expect(violations).toEqual([]);
 });
 
+async function editedDomino(page) {
+  await open(page, 'effects');
+  await page.getByLabel('Search effects').fill('Neon Domino');
+  await page.getByRole('button', { name: 'Edit Neon Domino' }).first().click();
+  const sheet = page.getByRole('dialog', { name: 'Edit effect' });
+  await sheet.getByLabel('Stagger', { exact: true }).fill('0.25');
+  return sheet;
+}
+
+test('audition holds the edited draft without saving or replacing the base', async ({ page, request }) => {
+  const library = await (await request.get('/api/effects')).json();
+  const sheet = await editedDomino(page);
+  await expect(sheet.getByRole('button', { name: 'Play', exact: true })).toBeDisabled();
+  const audition = sheet.getByRole('button', { name: 'Hold to audition' });
+  await audition.focus();
+  await page.keyboard.down('Enter');
+  try {
+    const live = await until(request, (s) => s.voices.some((v) => v.spec.params.stagger === 0.25));
+    expect(live.voices.find((v) => v.spec.params.stagger === 0.25).mode).toBe('hold');
+    expect(live.pattern).toBe('chase');
+    expect(await (await request.get('/api/effects')).json()).toEqual(library);
+  } finally {
+    await page.keyboard.up('Enter');
+  }
+  await until(request, (s) => s.voices.length === 0);
+});
+
+test('closing an audition releases its own voice and keeps another voice', async ({ page, request }) => {
+  const sheet = await editedDomino(page);
+  const launch = await request.post('/api/voices', { data: { preset: 'hd.neonDomino', mode: 'latched' } });
+  expect(launch.ok()).toBe(true);
+  const other = (await launch.json()).id;
+  try {
+    await sheet.getByRole('button', { name: 'Hold to audition' }).focus();
+    await page.keyboard.down('Enter');
+    await until(request, (s) => s.voices.length === 2);
+    await page.keyboard.press('Escape');
+    await expect(sheet).toHaveCount(0);
+    const live = await until(request, (s) => s.voices.length === 1);
+    expect(live.voices[0].id).toBe(other);
+  } finally {
+    await page.keyboard.up('Enter');
+    await request.delete(`/api/voices/${other}`);
+  }
+});
+
+test('rapid draft audition requires acknowledgement and a fresh hold', async ({ page, request }) => {
+  const { settings } = await (await request.get('/api/settings')).json();
+  const library = await (await request.get('/api/effects')).json();
+  const preset = library.builtin.find((p) => p.spec?.kind === 'hd.frequencyBurst');
+  const ack = (value) => request.put('/api/settings', { data: { safety: { photosensitivityAcknowledged: value } } });
+  expect((await ack(false)).ok()).toBe(true);
+  try {
+    await open(page, 'effects');
+    await page.getByLabel('Search effects').fill(preset.name);
+    await page.getByRole('button', { name: `Edit ${preset.name}`, exact: true }).first().click();
+    const audition = page.getByRole('button', { name: 'Hold to audition' });
+    await audition.click();
+    await expect(page.getByRole('alertdialog', { name: 'Rapid flashing' })).toBeVisible();
+    expect((await state(request)).voices).toHaveLength(0);
+    await page.getByRole('button', { name: 'I understand — play it' }).click();
+    await expect(audition).not.toHaveAttribute('data-safety', 'ask');
+    expect((await state(request)).voices).toHaveLength(0);
+    await audition.focus();
+    await page.keyboard.down('Enter');
+    await until(request, (s) => s.voices.some((v) => v.kind === 'hd.frequencyBurst'));
+  } finally {
+    await page.keyboard.up('Enter');
+    await until(request, (s) => s.voices.length === 0);
+    expect((await ack(settings.safety.photosensitivityAcknowledged)).ok()).toBe(true);
+  }
+});
+
 test.describe('on a touch screen', () => {
   test.use({ viewport: { width: 1180, height: 820 }, hasTouch: true, isMobile: true });
 

@@ -1,6 +1,8 @@
 # Audit & improvement roadmap
 
-*September 2026. A full review of the codebase and a phased plan to take it further.*
+*Historical audit, September 2026, baseline `4f2191d`. Retained for design
+rationale; its findings and open items do not describe the current release.
+Use the [README](../README.md) for supported behaviour and current operations.*
 
 ## Context
 

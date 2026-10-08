@@ -271,6 +271,18 @@ test('two lamps on one channel are both named', () => {
   assert.strictEqual(nameChannel(channelOf(LAMP_A, LAMP_B), names, counts, new Map()), 'Left + Right');
 });
 
+test('channel metadata retains physical devices and segment lengths', () => {
+  const lamps = new Map([[LAMP_A, { name: 'Strip', device: 'device', segmentLengths: [2, 5, 1] }]]);
+  const channel = { members: [{ service: { rid: LAMP_A }, index: 1 }, { service: { rid: LAMP_A }, index: 2 }] };
+  assert.deepStrictEqual(hue.channelMembers(channel, lamps).map((member) => [member.deviceId, member.segmentIndex, member.segmentLength, member.segmentCount]),
+    [['device', 1, 5, 3], ['device', 2, 1, 3]]);
+});
+
+test('missing segment metadata remains explicitly unknown', () => {
+  assert.deepStrictEqual(hue.channelMembers({ members: [{ service: { rid: 'missing' }, index: 4 }] }, new Map()),
+    [{ serviceId: 'missing', deviceId: null, segmentIndex: 4, segmentLength: null, segmentCount: null }]);
+});
+
 // Two members of one channel are two halves of one fitting; "Strip + Strip"
 // says nothing that "Strip" does not.
 test('one lamp listed twice on a channel is named once', () => {

@@ -14,7 +14,7 @@ test('status resolves the base name from saved presets first', () => {
 
 for (const [flags, mode] of [[{ playing: true }, 'playing'], [{ paused: true }, 'paused'], [{ stopped: 'hold' }, 'hold'], [{ stopped: 'black' }, 'black'], [{ ended: true }, 'ended'], [{}, 'loaded']]) {
   test(`status preserves sequence ${mode}`, () => {
-    assert.deepEqual(playingState({ sequence: { ...sequence, ...flags } }).sequence, { ...sequence.loaded, mode, beat: 5.5, bar: 2, beatsPerBar: 3, activeClips: [] });
+    assert.deepEqual(playingState({ sequence: { ...sequence, ...flags } }).sequence, { ...sequence.loaded, mode, beat: 5.5, bar: 2, beatsPerBar: 3, beatSize: 1, activeClips: [] });
   });
 }
 

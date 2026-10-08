@@ -1,3 +1,6 @@
+import { namedPadLayoutSchema } from '../shared/party-setup.ts';
+import type { NamedPadLayout } from '../shared/party-setup.ts';
+import { validate } from './validation.ts';
 import { z } from 'zod';
 
 import { deepFreeze } from '../shared/effects/index.ts';
@@ -14,8 +17,9 @@ const fileSchema = z.object({
   version: z.literal(VERSION),
   sequences: z.array(sequenceSchema).max(MAX_SEQUENCES),
   patterns: z.array(patternSchema).max(MAX_SEQUENCES).optional(),
+  padLayouts: z.array(namedPadLayoutSchema).max(MAX_SEQUENCES).optional(),
 }).strict().superRefine((file, ctx) => {
-  for (const key of ['sequences', 'patterns'] as const) {
+  for (const key of ['sequences', 'patterns', 'padLayouts'] as const) {
     const seen = new Set<string>();
     (file[key] ?? []).forEach(({ id }, i) => {
       if (seen.has(id)) ctx.addIssue({ code: 'custom', path: [key, i, 'id'], message: `${id} is used twice` });
@@ -27,6 +31,7 @@ const fileSchema = z.object({
 export class SequenceStore extends JsonStore {
   declare _sequences: readonly Sequence[];
   declare _patterns: readonly SequencePattern[];
+  _padLayouts: readonly NamedPadLayout[] = [];
   declare _listeners: (() => void)[];
 
   constructor(file: string) {
@@ -41,11 +46,13 @@ export class SequenceStore extends JsonStore {
     if (saved) {
       this._sequences = deepFreeze(saved.sequences as Sequence[]);
       this._patterns = deepFreeze((saved.patterns ?? []) as SequencePattern[]);
+      this._padLayouts = deepFreeze((saved.padLayouts ?? []) as NamedPadLayout[]);
     }
     return this;
   }
 
   useDefaults(): void {
+    this._padLayouts = [];
     this._sequences = [];
     this._patterns = [];
   }
@@ -110,15 +117,42 @@ export class SequenceStore extends JsonStore {
     return true;
   }
 
-  _commit(next: readonly Sequence[], patterns: readonly SequencePattern[] = this._patterns): void {
+  padLayouts(): NamedPadLayout[] { return this._padLayouts.map((layout) => structuredClone(layout)); }
+
+  padLayout(id: string): NamedPadLayout | null {
+    const found = this._padLayouts.find((layout) => layout.id === id);
+    return found ? structuredClone(found) : null;
+  }
+
+  savePadLayout(raw: unknown): NamedPadLayout {
+    const layout = validate(namedPadLayoutSchema, raw, 'pad layout');
+    const at = this._padLayouts.findIndex((item) => item.id === layout.id);
+    if (at >= 0 && canonical(this._padLayouts[at]) === canonical(layout)) return structuredClone(layout);
+    if (at < 0 && this._padLayouts.length >= MAX_SEQUENCES) throw new HttpError(400, 'The pad layout shelf is full');
+    this._commit(this._sequences, this._patterns, at >= 0
+      ? this._padLayouts.map((item, i) => i === at ? layout : item) : [...this._padLayouts, layout]);
+    return structuredClone(layout);
+  }
+
+  removePadLayout(id: string): boolean {
+    if (!this._padLayouts.some((layout) => layout.id === id)) return false;
+    const sequences = this._sequences.map((seq) => seq.performance?.activePadLayoutId === id
+      ? { ...seq, performance: { ...seq.performance, activePadLayoutId: null } } : seq);
+    this._commit(sequences, this._patterns, this._padLayouts.filter((layout) => layout.id !== id));
+    return true;
+  }
+
+  _commit(next: readonly Sequence[], patterns: readonly SequencePattern[] = this._patterns,
+    padLayouts: readonly NamedPadLayout[] = this._padLayouts): void {
     try {
-      this.writeJson({ version: VERSION, sequences: next, ...(patterns.length ? { patterns } : {}) });
+      this.writeJson({ version: VERSION, sequences: next, ...(patterns.length ? { patterns } : {}), ...(padLayouts.length ? { padLayouts } : {}) });
     } catch (err) {
       console.warn(`[sequences] could not save ${this.file}: ${messageOf(err)}`);
       throw new HttpError(500, `Could not save the sequences: ${messageOf(err)}`);
     }
     this._sequences = deepFreeze([...next]);
     this._patterns = deepFreeze([...patterns]);
+    this._padLayouts = deepFreeze([...padLayouts]);
     for (const fn of this._listeners) {
       try { fn(); } catch (err) { console.warn(`[sequences] listener: ${messageOf(err)}`); }
     }

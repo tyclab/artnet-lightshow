@@ -77,6 +77,7 @@ async function serve(t) {
   settings._values = { ...values, safety: { ...values.safety, photosensitivityAcknowledged: false } };
   settings.save = () => {};
   t.after(async () => {
+    integrations.sequence.workspace.close();
     settings._values = values;
     if (ownSave) settings.save = ownSave;
     else delete settings.save;

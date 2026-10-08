@@ -28,7 +28,7 @@ async function load() {
         export { createVoiceHolds } from './public-src/hold-control.js';
         export { stopAllVoices } from './public-src/components/Perform.jsx';
         export { PaletteStrip, overrideBody, activeOverride } from './public-src/components/PaletteStrip.jsx';
-        export { Transport, positionText, beatsPerBar, loopBody, laneRows } from './public-src/components/Transport.jsx';
+        export { Transport, positionText, beatsPerBar, laneRows } from './public-src/components/Transport.jsx';
         export { presetNameOf } from './public-src/preview-inputs.js';
         export { AudioMeters, meterRows, splClass, latencyText } from './public-src/components/AudioMeters.jsx';
       `,
@@ -403,10 +403,8 @@ test('each lane shows its playing clip by its preset\'s name, a saved preset\'s 
   assert.strictEqual(lanes('gone'), 'gone', 'a clip the page has not fetched yet: its id');
 });
 
-test('loop flips the loaded region on and off, and is unavailable without one', () => {
-  assert.deepStrictEqual(ui.loopBody(STATUS), { on: true, startBeat: 0, endBeat: 16 });
-  assert.deepStrictEqual(ui.loopBody({ ...STATUS, loop: { on: true, startBeat: 4, endBeat: 8 } }), { on: false, startBeat: 4, endBeat: 8 });
-  assert.strictEqual(ui.loopBody({ ...STATUS, loop: null }), null);
+test('transport positions count the configured eighth-note beat unit', () => {
+  assert.strictEqual(ui.positionText({ beat: 4.5, bar: 2 }, 3, 0.5), '2.4');
 });
 
 test("transport lists available sequences and marks the loaded one", () => {

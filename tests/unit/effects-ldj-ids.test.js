@@ -76,7 +76,7 @@ test('the catalogue builds whichever effect module a host loads first', () => {
   for (const first of ['macro.ts', 'render.ts', 'catalogue.ts', 'ldj-ids.ts', 'ldj-channel.ts', 'registry.ts', 'hd.ts', 'disco.ts', 'energy.ts', 'layer.ts', 'sequence.ts']) {
     const dir = new URL('../../src/shared/effects/', import.meta.url).href;
     const script = `await import('${dir}${first}'); const m = await import('${dir}index.ts'); console.log(m.CATALOGUE.length);`;
-    assert.strictEqual(execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' }).trim(), '214', first);
+    assert.strictEqual(execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' }).trim(), '216', first);
   }
 });
 

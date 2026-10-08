@@ -6,6 +6,7 @@ import { useDraft } from '../draft.js';
 import { useVoicePads, holdsWhilePressed, padKey, rapidPad } from '../voice-pad.js';
 import { useSafetyGate } from './Photosensitivity.jsx';
 import { Transport } from './Transport.jsx';
+import { TempoScale } from './TempoScale.jsx';
 
 // Steps per beat. 1/16 was in the README and on MIDI, and missing here (A7.26).
 const DIVISIONS = [1, 2, 4, 8, 16];
@@ -85,8 +86,10 @@ export function CommandBar({ transport = true } = {}) {
           {/* Wrapped: as bare children of the column flex these stretched to
               full width and stacked, which is not what they are for. */}
           <div class="cb-bpm-nudge">
+            <TempoScale bpm={bpm} direction="half" />
             <button class="btn icon sm" onClick={() => nudge(-1)} title="BPM −1">−</button>
             <button class="btn icon sm" onClick={() => nudge(1)} title="BPM +1">+</button>
+            <TempoScale bpm={bpm} direction="double" />
           </div>
           <div class="cb-divs">
             {DIVISIONS.map((d) => (

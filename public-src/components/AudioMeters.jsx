@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { api, audioFeedSig, pick, wantAudio } from '../state.js';
+import { AudioMaster } from './AudioMaster.jsx';
 
 /**
  * What the room hears: the audio mode (off, tempo, reactive), Hue Dynamics'
@@ -92,6 +93,7 @@ export function AudioMeters({ latencyMs } = {}) {
         </div>
       )}
       {audio.listening === false && !feed && <p class="audio-quiet">Nothing heard: the live input is off or silent.</p>}
+      <AudioMaster audio={audio} />
     </section>
   );
 }

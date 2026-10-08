@@ -33,7 +33,7 @@ audio file
 └───────────────────────────────────────────┘
     │  patches
     ▼
-src/server/engine.js → Art-Net / sACN
+src/server/engine.ts → Art-Net / sACN
 ```
 
 The two indirections are the point of the design.
@@ -45,7 +45,7 @@ reason about music: it can decide to ignore the next four bars because a drop is
 coming, because that is a statement about events, not about samples.
 
 **Lighting intents** exist so the director's judgement can be read, tested and
-argued with without decoding channel values. `src/show/render.js` is the only
+argued with without decoding channel values. `src/show/render.ts` is the only
 file in the show layer that knows what a patch field is called.
 
 ---
@@ -64,7 +64,7 @@ from AMD's index (see requirements.txt).
 
 **The weights** are fetched before the show and never by the analysis itself.
 Gigabytes on venue wifi while a track waits is the worst time to find the
-connection slow. Settings → Analysis models lists each model: what it is for,
+connection slow. Sources → Analysis models lists each model: what it is for,
 whether it is here, its size and licence. It downloads the missing ones with
 progress and restarts the analyser to use them. The same list from a terminal:
 
@@ -108,7 +108,7 @@ The worker protocol is one JSON object per line each way:
 
 One request in flight at a time — the analysis already saturates the CPU across
 BLAS and its own thread pools, so serving two would make both slower.
-`src/analyzer-worker.js` owns the queue, the priority ordering and the timeout.
+`src/analyzer-worker.ts` owns the queue, the priority ordering and the timeout.
 
 Requests are served by priority band — `current`, then `high`, then `normal` —
 and within a band by playback-queue position: the order the listener will hear
@@ -433,7 +433,7 @@ tracks longer than 420 s in windows anyway; how much a shorter window costs
 in labelling quality has not been measured.
 
 On a four-core laptop CPU a three-minute track takes 134 s; on a GPU it is
-seconds. So Settings → Structure (`ARTNET_STRUCTURE_MODEL`) is:
+seconds. So Sources → Analysis → Structure (`ARTNET_STRUCTURE_MODEL`) is:
 
 | | |
 |---|---|
@@ -708,7 +708,7 @@ contents.
 Those rules did not change when the analysis did. What changed is what their
 thresholds read. Every decision used to be a comparison against a percentile
 level string (`low` / `mid` / `high`) or against `mood.arousal`, because that was
-all a document carried. `src/show/score.js` is the reader for everything else it
+all a document carried. `src/show/score.ts` is the reader for everything else it
 now carries, and each question is asked of the thing that answers it:
 
 | Decision | Read from |
@@ -831,16 +831,16 @@ Two more live in `perception.py` rather than the config, because they are about
 trusting the tagger rather than about the signal: `GENRE_MIN_SCORE` (0.15) and
 `GENRE_MIN_MARGIN` (1.5).
 
-Show-side pacing is in `src/show/director.js`: `ACCENT_BUDGET`, `RECOVERY_SEC`,
+Show-side pacing is in `src/show/director.ts`: `ACCENT_BUDGET`, `RECOVERY_SEC`,
 `ANTICIPATION_SEC`, `MIN_BURST_MS`, `EXPRESSION_STEP_SEC`, and the `ROLE_PROFILE`
 table that decides what each section role is allowed to do.
 
 Palette banks, the per-subgenre drive / palette / pattern tables and the burst
-choice are in `src/show/look.js`. `SUBGENRE_DRIVE` is the one to reach for first:
+choice are in `src/show/look.ts`. `SUBGENRE_DRIVE` is the one to reach for first:
 it is the table that decides how hard each kind of music makes the rig work, and
 every other show-side threshold is downstream of it.
 
-`src/show/score.js` reads the continuous half of the document — stem envelopes,
+`src/show/score.ts` reads the continuous half of the document — stem envelopes,
 band character, loudness, timbre embeddings, the subgenre distribution — and
 `SEMANTIC_FULL_SPREAD` is its one calibration: how wide a spread across the mood
 vocabulary counts as the track having said something definite.
@@ -853,10 +853,10 @@ everywhere immediately.
 
 **A new event type.** Add the constant and a generator to `events.py`, list it
 in `TYPES` and in the priority order in `generate()`, then mirror the constant
-in `src/show/musical-events.js`. The director ignores types it does not handle,
+in `src/show/musical-events.ts`. The director ignores types it does not handle,
 so an unhandled new type is inert rather than fatal.
 
-**A new lighting gesture.** Add an intent kind in `src/show/intents.js`, emit it
+**A new lighting gesture.** Add an intent kind in `src/show/intents.ts`, emit it
 from a director pass, and handle it in `render.js`. Unknown kinds are skipped by
 the renderer.
 
@@ -866,8 +866,8 @@ are the two tables that define how a show paces itself, and `SUBGENRE_DRIVE` in
 `ROLE_PROFILE.breakdown.accents` to `true` is a one-line way to see how much of
 the show's character comes from where it rests.
 
-**A new burst.** Add it to `BURST` in `src/show/intents.js`, give it a case in
-`resolveEnergyOverride` in `src/shared/look-math.js` (the engine and the
+**A new burst.** Add it to `BURST` in `src/show/intents.ts`, give it a case in
+`resolveEnergyOverride` in `src/shared/look-math.ts` (the engine and the
 rehearsal preview both resolve bursts there), list it in `ENERGY_EFFECTS`
 in `presets.js` and place it in `BURST_PRIORITY` in `render.js` — that order is
 which gesture wins when two collide. Then return it from `look.burstFor()` under
@@ -969,7 +969,7 @@ the rest. Structure and perception run side by side.
 checkpoint by short name sends the resolver to the network even when the file is
 already on disk. A hung request there is a show that does not start, and it hung
 repeatedly while this was being built. Fetch everything before leaving for the
-venue (Settings → Analysis models, or `scripts/download-models.py`).
+venue (Sources → Analysis models, or `scripts/download-models.py`).
 
 The worker loads the beat model, then the separator, then the optional models
 from disk when it starts. It keeps them, with librosa's imports and numba's JIT
@@ -1028,7 +1028,7 @@ texture changes.
 
 ### Show score and expressive rendering
 
-Rich analysis documents use `src/show/score.js`; older cached documents keep the
+Rich analysis documents use `src/show/score.ts`; older cached documents keep the
 legacy director. The score uses these musical signals:
 
 | Analysis | Lighting decision |

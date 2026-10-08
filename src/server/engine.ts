@@ -19,7 +19,7 @@ import type { FrameSummary, Ticker } from './frame-clock.ts';
 import type { CommandResult, FadeRequest, RenderInput, SyncTestRequest, VoiceFrame } from './renderer.ts';
 import type { Profile, PulseReading } from '../types/rig.ts';
 import type { AudioFrame } from '../shared/effects/audio-frame.ts';
-import type { EffectSpec } from '../shared/effects/types.ts';
+import type { EffectSpec, HdMaster } from '../shared/effects/types.ts';
 import type { MusicalTime } from './conductor.ts';
 import type { SequenceFrame } from './sequencer.ts';
 import { validateSpec } from '../shared/effects/registry.ts';
@@ -194,7 +194,7 @@ function renderInput(): RenderInput {
     pulse: runPulseSource(),
     audio: runAudioSource(),
     audioMode: settings.get('audio.mode'),
-    master: { ...settings.get('audio.master') },
+    master: { ...(masterSource?.() ?? settings.get('audio.master')) },
     // Always include safety settings so live output cannot use legacy absent-safety admission.
     safety: {
       hdFlashIntervalMs: settings.get('safety.hdFlashIntervalMs'),
@@ -255,6 +255,8 @@ function setPulseSource(fn: (() => PulseReading | null) | null | undefined): voi
 }
 
 let audioSource: (() => AudioFrame | null) | null = null;
+let masterSource: (() => HdMaster) | null = null;
+function setMasterSource(fn: (() => HdMaster) | null): void { masterSource = fn; }
 let audioFailed = false;
 function runAudioSource(): AudioFrame | null {
   if (!audioSource) return null;
@@ -590,6 +592,7 @@ export {
   setFrameHook,
   setPulseSource,
   setAudioSource,
+  setMasterSource,
   setEffectSource,
   resolveEffect,
   effectChanged,

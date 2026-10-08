@@ -5,6 +5,7 @@ import { ACKNOWLEDGEMENT_REQUIRED } from './safety.ts';
 import { HOLD_TIMEOUT_MS } from './voices.ts';
 import { validate } from './validation.ts';
 import { HttpError } from '../errors.ts';
+import { hexColourSchema, parseHex, toHex } from '../shared/palette-model.ts';
 import type { StartVoice, Voice } from './voices.ts';
 import type { EffectSpec } from '../shared/effects/types.ts';
 
@@ -28,7 +29,7 @@ export const SOLID_GUARD_MS = 20;
 export const MATRIX_MODES = ['fireworks', 'flashes', 'pulses', 'cycle', 'solid'] as const;
 export type MatrixMode = typeof MATRIX_MODES[number];
 
-const colourSchema = z.string().regex(/^#[0-9a-f]{6}$/i, 'is not a #rrggbb colour');
+const colourSchema = hexColourSchema.transform((value) => toHex(parseHex(value)));
 const tokenSchema = z.string().min(1).max(64);
 export const matrixPressSchema = z.object({ colour: colourSchema, token: tokenSchema.optional() }).strict();
 export const matrixReleaseSchema = z.object({ colour: colourSchema.optional(), token: tokenSchema.optional() }).strict()
