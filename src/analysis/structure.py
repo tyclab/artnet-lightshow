@@ -388,7 +388,8 @@ def assign_roles(sections: List[Section], duration, drops=(), config=None):
         by_label.setdefault(s.label, []).append(s)
     for label, group in by_label.items():
         roles = [s.role for s in group]
-        best = max(group, key=lambda s: s.energy).role  # ties: loudest section's role, not set order
+        # Ties go to the loudest section's role, not to set order.
+        best = max(group, key=lambda s: s.energy).role
         winner = max(sorted(set(roles)), key=lambda r: (roles.count(r), r == best))
         for s in group:
             s.role = winner

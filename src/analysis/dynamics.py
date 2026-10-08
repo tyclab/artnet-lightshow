@@ -16,7 +16,8 @@ class Drop:
     breakdown: float
     sustain: float
     snap: str = 'raw'
-    kind: str = 'hype'  # 'proper': breakdown then sustained slam; 'hype': impact without one
+    # 'proper' is a breakdown then a sustained slam; 'hype' is an impact without one.
+    kind: str = 'hype'
 
     def to_dict(self):
         return {

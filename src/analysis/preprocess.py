@@ -15,7 +15,8 @@ class PreparedAudio:
     """Everything the later stages are allowed to read about the audio."""
 
     mono: np.ndarray
-    levelled: np.ndarray  # slow gain levelling, rhythm stages only: features need the level differences
+    # Slow gain levelling for the rhythm stages only; features need the level differences.
+    levelled: np.ndarray
     harmonic: np.ndarray
     percussive: np.ndarray
     sample_rate: int

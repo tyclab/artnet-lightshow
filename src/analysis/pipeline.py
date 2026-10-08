@@ -92,9 +92,7 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
     if not os.path.isfile(path):
         raise FileNotFoundError(path)
 
-    # Declared before the try so the `finally` can shut them down whichever
-    # stage failed. The separation pool used to be declared inside it, and an
-    # exception between its start and its collection left it behind.
+    # Declared before the try so `finally` shuts them down whichever stage failed.
     tag_pool, tag_future = None, None
     mulan_pool, mulan_future = None, None
     stem_pool, stem_future = None, None
@@ -123,13 +121,7 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
         beat_pool = ThreadPoolExecutor(max_workers=1)
         beat_future = beat_pool.submit(timings.timed('beats', _beat_pass), audio, config.rhythm, beat_turn)
 
-        # The tagger used to read the file itself, which let it start before
-        # preprocessing — at the price of decoding and resampling the whole
-        # track a second time. Preprocessing already produces exactly what it
-        # wants: mono at 32 kHz, and loudness-normalised, so the same track
-        # masters at two levels no longer tags differently. Waiting for that
-        # costs less than the decode it saves, and it still overlaps every
-        # stage after this one.
+        # Tag the preprocessed 32 kHz normalised mono: no second decode, and two masters of a track tag alike.
         if tagging:
             tag_pool = ThreadPoolExecutor(max_workers=1)
             tag_future = tag_pool.submit(timings.timed('tagger', _safe_tag), path, audio)
@@ -222,7 +214,8 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
             'rhythm': 'beat_this',
             'separation': getattr(stems, 'backend', 'none') if stems is not None else 'none',
             'key': 'internal_perception',
-            'tagger': 'panns' if tag_future is not None else 'none',  # the future: silence legitimately yields no tags
+            # Test the submitted future, not the result: silence legitimately yields no tags.
+            'tagger': 'panns' if tag_future is not None else 'none',
             'genre': perception.genre_source,
             'skey': False,
             'structure': 'songformer' if named_by_model else 'laplacian',
@@ -416,7 +409,8 @@ def build_document(audio, frames, rhythm, band_map, roles, sections, dynamics,
             'mode': perception.scale,
         },
 
-        'duration': round(duration, 3),  # flat compatibility fields: the web client, timeline and cache read them
+        # Flat compatibility fields from here on: the web client, timeline view and cache read them.
+        'duration': round(duration, 3),
         'bpm': round(rhythm.bpm, 1),
         'tempoCurve': dsp.resample_curve(rhythm.tempo_values, rhythm.tempo_times,
                                          2.0, duration),

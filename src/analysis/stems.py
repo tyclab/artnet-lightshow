@@ -29,8 +29,7 @@ class Stems:
         return ('drums', 'bass', 'vocals', 'other')
 
     def energies(self):
-        """RMS per stem, as a share of the total. A cheap description of the
-        arrangement: what a track is *made of*."""
+        """RMS per stem as a share of the total: what a track is *made of*."""
         levels = {}
         for name in self.names:
             signal = self.named(name)
@@ -68,7 +67,8 @@ def separate(mono, sample_rate, overlap=0.10, segment_seconds=None, stereo_loade
         except Exception as exc:
             models.gpu_fault(exc)
             print(f'[stems] BS-RoFormer unavailable; using Demucs: {exc}', file=sys.stderr)
-            models.unload('bs-roformer-4stem')  # never hold both; the next track retries BS-RoFormer on a clean card
+            # Never hold both separators; the next track retries BS-RoFormer on a clean card.
+            models.unload('bs-roformer-4stem')
 
     model = models.separator()
 
@@ -96,7 +96,8 @@ def separate(mono, sample_rate, overlap=0.10, segment_seconds=None, stereo_loade
         signal = source.mean(dim=0).numpy()
         back = librosa.resample(signal, orig_sr=model.samplerate,
                                 target_sr=sample_rate)
-        if back.size < mono.size:  # two resamples can drift a sample; stems must match the feature grid
+        # Two resamples can drift by a sample; stems must line up with the feature grid.
+        if back.size < mono.size:
             back = np.pad(back, (0, mono.size - back.size))
         out[name] = back[:mono.size].astype(np.float32)
 
@@ -135,7 +136,8 @@ def separate_bs_roformer(mono, sample_rate, stereo_loader=None):
         else:
             sf.write(source, np.asarray(mono, dtype=np.float32), sample_rate)
         with _BS_ROFORMER_LOCK:
-            targets = [separator, separator.model_instance]  # audio-separator copies output_dir into the model
+            # audio-separator copies output_dir into the loaded model, so redirect both.
+            targets = [separator, separator.model_instance]
             previous_dirs = [target.output_dir for target in targets]
             try:
                 for target in targets:
@@ -161,12 +163,7 @@ def separate_bs_roformer(mono, sample_rate, stereo_loader=None):
 
 
 def envelope(signal, features, smooth_sec=0.0):
-    """
-    A stem's level on the feature grid, normalised 0..1.
-
-    Framed with the same hop as everything else so a stem envelope can be
-    indexed by frame alongside the bands and the onset curve.
-    """
+    """A stem's 0..1 level on the feature grid (same hop), indexable alongside the bands and onsets."""
     from . import dsp
     if signal.size == 0 or features.n_frames == 0:
         return np.zeros(features.n_frames)

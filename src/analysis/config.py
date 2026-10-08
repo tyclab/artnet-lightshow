@@ -1,14 +1,5 @@
-"""
-Every tuning constant in the analysis pipeline, in one place.
-
-Stages import from here rather than hard-coding numbers so a value can be
-traced from the show back to the thing it controls, and so the whole pipeline
-can be re-tuned for an unusual rig or an unusual genre by passing a modified
-`AnalysisConfig` into `pipeline.analyze()`.
-
-Units are stated on every field. Seconds are seconds, Hz are Hz, and anything
-named `*_ratio` or `*_score` is a 0..1 fraction.
-"""
+"""Every tuning constant in the analysis pipeline; re-tune by passing a modified AnalysisConfig to pipeline.analyze().
+Fields named *_ratio or *_score are 0..1 fractions."""
 
 from dataclasses import dataclass, field, replace
 from typing import Dict, Tuple
@@ -30,13 +21,16 @@ BAND_ORDER = list(BANDS.keys())
 @dataclass(frozen=True)
 class PreprocessConfig:
     sample_rate: int = 22050
-    wideband_rate: int = 32000  # what PANNs expects
+    # 32 kHz is what PANNs expects.
+    wideband_rate: int = 32000
     highpass_hz: float = 18.0
     target_lufs: float = -18.0
-    max_gain_db: float = 24.0  # more turns near-silence into noise the onset detectors read as beats
+    # More gain turns near-silence into noise that onset detectors read as beats.
+    max_gain_db: float = 24.0
     noise_floor_percentile: float = 5.0
     noise_reduction: float = 0.5
-    hpss_margin: float = 3.0  # from 3.0 hats stop leaking into `harmonic`
+    # At 3.0 the hats stop leaking into `harmonic`.
+    hpss_margin: float = 3.0
     n_fft: int = 2048
     hop_length: int = 512
 
@@ -71,16 +65,17 @@ class StructureConfig:
 class DynamicsConfig:
     drop_min_rise: float = 0.22
     drop_min_breakdown: float = 0.18
-    drop_sustain_sec: float = 4.0  # a cymbal crash rises as fast as a drop; only the drop sustains
+    # A cymbal crash rises as fast as a drop; only the drop sustains.
+    drop_sustain_sec: float = 4.0
     #: Minimum gap between two accepted drops, seconds.
     drop_min_gap_sec: float = 12.0
-    #: Roughly one drop per this many seconds of track is kept, most confident
-    #: first. Pop songs do not have eight drops.
+    #: Keep about one drop per this many seconds, most confident first; pop songs do not have eight drops.
     drop_density_sec: float = 50.0
     #: Build-up search window before a drop, seconds.
     buildup_max_sec: float = 16.0
     buildup_min_sec: float = 1.5
-    buildup_trend: float = 0.80  # correlation with time; a rising-frames share swallowed the section before the drop
+    # Correlation with time: a share-of-rising-frames test swallowed the whole section before the drop.
+    buildup_trend: float = 0.80
     silence_threshold: float = 0.06
     silence_min_sec: float = 0.4
     spike_min_sigma: float = 2.2
@@ -90,8 +85,7 @@ class DynamicsConfig:
 
 @dataclass(frozen=True)
 class EventConfig:
-    #: Beat events below this confidence are not emitted at all — the show
-    #: engine should never be handed a beat the analyser does not believe in.
+    #: Beat events below this confidence are not emitted: the show engine never gets a beat the analyser doubts.
     beat_min_confidence: float = 0.10
     bass_hit_threshold: float = 0.55
     #: Minimum gap between successive bass-hit events, seconds.
@@ -106,7 +100,8 @@ class EventConfig:
 class RealtimeConfig:
     sample_rate: int = 22050
     hop_length: int = 512
-    n_fft: int = 1024  # 46 ms at 22.05 kHz, under the ~80 ms where a lighting cue reads as late
+    # 46 ms at 22.05 kHz, under the ~80 ms where a lighting cue reads as late.
+    n_fft: int = 1024
     #: Length of the rolling history used for adaptive thresholds, seconds.
     history_sec: float = 10.0
     onset_k: float = 1.6
@@ -114,11 +109,11 @@ class RealtimeConfig:
     tempo_refresh_sec: float = 2.0
     #: How often the beat phase is re-fitted to the recent onsets, seconds.
     phase_refresh_sec: float = 0.5
-    #: How much onset history each re-fit reads, seconds: enough beats that a
-    #: syncopated bar is outvoted, few enough to follow a drifting tempo.
+    #: Onset history each re-fit reads, seconds: outvotes a syncopated bar, still follows a drifting tempo.
     phase_window_sec: float = 4.0
     phase_lock_strength: float = 0.5
-    frequency_lock_strength: float = 0.012  # larger lets a syncopated passage drag the tempo
+    # A larger value lets a syncopated passage drag the tempo.
+    frequency_lock_strength: float = 0.012
 
 
 @dataclass(frozen=True)
@@ -133,7 +128,8 @@ class AnalysisConfig:
     enable_tagger: bool = True
     separate_sources: bool = True
     parallel: bool = True
-    structure_model: str = None  # None reads ARTNET_STRUCTURE_MODEL, which the server sets from settings
+    # None reads ARTNET_STRUCTURE_MODEL, which the server sets from settings.
+    structure_model: str = None
 
     def tuned(self, **overrides) -> 'AnalysisConfig':
         """Return a copy with top-level fields replaced. Useful from tests."""

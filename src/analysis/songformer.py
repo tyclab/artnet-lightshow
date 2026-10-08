@@ -20,7 +20,8 @@ REQUIRED_FILES = ('model.safetensors', 'modeling_songformer.py', 'config.json',
                   'muq_config2.json', 'msd_stats.json')
 REQUIRED_PACKAGES = ('muq', 'x_transformers', 'omegaconf', 'ema_pytorch', 'loguru',
                      'safetensors', 'transformers')
-MODES = ('auto', 'songformer', 'off')  # auto runs it only on a GPU: on a laptop CPU it is ~0.75x real time
+# 'auto' runs SongFormer only on a GPU: on a laptop CPU it takes ~0.75x real time.
+MODES = ('auto', 'songformer', 'off')
 
 
 def _log(message):

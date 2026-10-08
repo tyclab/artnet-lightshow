@@ -47,9 +47,8 @@ first state over them, with the list as it was sent:
 
 A list it cannot take is an error that is not fatal, and the bands stay.
 
-Capture uses the `soundcard` package, which does loopback on Windows and Linux
-alike; `sounddevice` is the fallback for a line-in when `soundcard` is not
-installed. Neither is needed for a file, which is what the tests use.
+Capture uses `soundcard` (loopback on Windows and Linux); `sounddevice` is the line-in fallback.
+Neither is needed for a file, which is what the tests use.
 """
 
 import argparse
@@ -319,7 +318,8 @@ def capture_soundcard(sc, source, device, service, emitter, stop):
     else:
         mic = sc.get_microphone(device) if device else sc.default_microphone()
         name = mic.name
-    with mic.recorder(samplerate=SAMPLE_RATE, blocksize=HOP) as recorder:  # WASAPI shared mode and PulseAudio resample
+    # WASAPI shared mode and PulseAudio resample to the requested rate.
+    with mic.recorder(samplerate=SAMPLE_RATE, blocksize=HOP) as recorder:
         emitter.send({'type': 'ready', 'backend': 'soundcard', 'source': source, 'device': name,
                       'sampleRate': SAMPLE_RATE, 'hop': HOP})
         while not stop():

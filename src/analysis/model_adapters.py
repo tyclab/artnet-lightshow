@@ -98,7 +98,8 @@ def preload():
 # Four windows avoid the 4 GB cuDNN workspace selected at six or more on an 8 GB GPU.
 _MUQ_BATCH = max(1, int(os.environ.get("ARTNET_MUQ_BATCH", "4")))
 
-EMBEDDING_DIGITS = 4  # full precision made the document megabytes; 4 places is below the spread between windows
+# Full precision made the document megabytes; 4 places is finer than the spread between windows.
+EMBEDDING_DIGITS = 4
 
 
 def _rounded(vector):
@@ -196,19 +197,12 @@ def mulan_scores(waveform, sample_rate: int, vocabularies):
     return models.run_pass("muq-mulan", run, modules=[model])
 
 
-_TEXT_LATENTS = {}  # keyed by model, labels and device; the model is held so a dead object's id is never reused
+# Keyed by model, labels and device; the model is held so a dead object's id cannot be reused.
+_TEXT_LATENTS = {}
 
 
 def _text_latents(model, labels, device=None):
-    """
-    Encode a vocabulary once per process rather than once per track.
-
-    The genre prompts and the mood words are fixed constants — the same
-    fifty-six strings for every track of every show — but the text tower is a
-    full XLM-RoBERTa and it was being run over them again for each one. Its
-    answer cannot change between tracks, so it is computed on the first track
-    and read from memory after.
-    """
+    """Encode a fixed vocabulary once per process; the XLM-RoBERTa text tower's answer never changes per track."""
     key = (id(model), labels, str(device))
     hit = _TEXT_LATENTS.get(key)
     if hit is not None:
@@ -321,7 +315,8 @@ def skey_key(audio_path: str, samples=None, sample_rate=None):
     else:
         module.load_audio = _skey_load_audio
     try:
-        module.print = lambda *args, **kwargs: None  # its emoji raises on a Windows console; redirect_stdout races other threads
+        # S-KEY's emoji print raises on a Windows console; redirect_stdout would race other model threads.
+        module.print = lambda *args, **kwargs: None
         result = module.detect_key(audio_path, device=os.environ.get('ARTNET_ANALYSIS_DEVICE', 'cpu'))
         value = result[0] if isinstance(result, list) else result
         return {"value": str(value), "confidence": 1.0, "source": "s-key"}

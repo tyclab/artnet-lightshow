@@ -37,6 +37,8 @@ controls, protocols and deployment; keep it consistent with the implementation.
   `src/types/analysis.ts` with `npm run gen:analysis-types`; do not hand-edit it.
   In `src/analysis/version.py`, incompatible changes need a major schema bump,
   additive changes a minor bump; `MIN_COMPATIBLE` controls cache reanalysis.
+  `src/analysis-cache.ts` reads it with a regex: keep the line as
+  `MIN_COMPATIBLE = 'X.Y'` (version.py is two lines, too short for a comment).
 - Python worker stdout is NDJSON. Keep library logs on stderr and preserve CLI
   descriptions consumed through `__doc__`. Never fetch model weights during a show.
 

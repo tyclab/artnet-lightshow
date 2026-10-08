@@ -15,7 +15,8 @@ from support import AudioTestCase, analyse_track, needs_audio
 from analysis import schema
 
 
-COMPATIBILITY_FIELDS = [  # the web client, timeline and cache read these; no analyser test catches a removal
+# The web client, timeline view and cache read these; no analyser test would catch a removal.
+COMPATIBILITY_FIELDS = [
     'duration', 'bpm', 'tempoCurve', 'tempoStability', 'beatSource', 'beats',
     'beatStrengths', 'downbeats', 'meter', 'downbeatConfidence', 'key', 'scale',
     'keyStrength', 'mood', 'genre', 'segments', 'onsets', 'kickOnsets', 'drops',
@@ -144,8 +145,7 @@ class Reporting(AudioTestCase):
         html = report.analysis_to_html(doc, title='test', waveform=[0.1, 0.9, 0.4])
         self.assertIn('<!doctype html>', html)
         self.assertIn('application/json', html)
-        # No external requests: an operator debugging a rig is not necessarily
-        # on a network.
+        # No external requests: an operator debugging a rig may be offline.
         self.assertNotIn('src="http', html)
         self.assertNotIn('href="http', html)
 

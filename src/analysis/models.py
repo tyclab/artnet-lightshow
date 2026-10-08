@@ -7,7 +7,8 @@ import threading
 import warnings
 import weakref
 
-_LOCK = threading.RLock()  # re-entrant: build() calls device(), which locks too; a plain Lock deadlocks the first load
+# Re-entrant: build() calls device(), which locks too; a plain Lock deadlocks the first load.
+_LOCK = threading.RLock()
 _CACHE = {}
 _DEVICE = None
 _OFFLOAD = None

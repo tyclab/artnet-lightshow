@@ -94,7 +94,8 @@ class Perception:
     style: str = 'unknown'
     subgenre_scores: dict = field(default_factory=dict)
     top_tags: list = field(default_factory=list)
-    tags: dict = field(default_factory=dict)  # raw AudioSet probabilities for the band stage; not serialised
+    # Raw AudioSet probabilities for the band stage; not serialised.
+    tags: dict = field(default_factory=dict)
 
     def to_dict(self):
         return {
@@ -111,7 +112,8 @@ class Perception:
             'genre': {
                 'label': self.genre,
                 'confidence': round(self.genre_confidence, 3),
-                'labelConf': round(self.genre_confidence, 3),  # the web client and cached documents read this name
+                # Kept beside `confidence`: the web client and cached documents read `labelConf`.
+                'labelConf': round(self.genre_confidence, 3),
                 'style': self.style,
                 'source': self.genre_source,
                 'subScores': {k: round(v, 3) for k, v in self.subgenre_scores.items()},

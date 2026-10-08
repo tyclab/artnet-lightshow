@@ -12,7 +12,8 @@ from .config import RhythmConfig
 class Rhythm:
     bpm: float = 120.0
     stability: float = 1.0
-    source: str = 'model'  # always 'model'; kept because cached documents and the web client read it
+    # Always 'model' now; kept because cached documents and the web client read it.
+    source: str = 'model'
     beats: np.ndarray = field(default_factory=lambda: np.zeros(0))
     strengths: np.ndarray = field(default_factory=lambda: np.zeros(0))
     confidences: np.ndarray = field(default_factory=lambda: np.zeros(0))
