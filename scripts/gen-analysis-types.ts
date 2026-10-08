@@ -38,10 +38,11 @@ const PRIMITIVES: Record<string, string> = {
   string: 'string', number: 'number', integer: 'number', boolean: 'boolean', null: 'null',
 };
 
-/** A doc comment for `text` at `indent`, wrapped to the line length. */
+/** A doc comment with the description's first sentence; the schema keeps the full text. */
 function doc(text: string | undefined, indent: string): string {
   if (!text) return '';
-  const words = text.split(/\s+/);
+  const first = text.match(/^.+?[.!?](?=\s+[A-Z(`]|$)/s)?.[0] ?? text;
+  const words = first.split(/\s+/);
   const lines: string[] = [];
   let line = '';
   for (const word of words) {
