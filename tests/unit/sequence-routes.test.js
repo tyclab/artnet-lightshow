@@ -12,6 +12,11 @@ import path from 'node:path';
 import http from 'node:http';
 import express from 'express';
 import { Server } from 'socket.io';
+import { LightshowConnection } from '../../companion-module/src/connection.js';
+import { UpdateActions } from '../../companion-module/src/actions.js';
+import { UpdateFeedbacks } from '../../companion-module/src/feedbacks.js';
+import { UpdatePresets } from '../../companion-module/src/presets.js';
+import { attachSockets } from '../../src/server/sockets.ts';
 
 import { attachRoutes } from '../../src/server/routes.ts';
 import { setupIntegrations } from '../../src/server/integrations.ts';
@@ -85,13 +90,86 @@ async function serve(t) {
   }).then(async (res) => ({ status: res.status, body: await res.json() }));
   /** One engine frame of the sequencer, at the clock's beat now. */
   const frame = () => integrations.sequence.sequencer.frame(conductor.now());
-  return { call, integrations, sequenceStore, frame, dir };
+  return { call, integrations, sequenceStore, frame, dir, io, midi, port: server.address().port };
 }
 
 const GLOW = { kind: 'energy.glow', params: {} };
 const lane = (id) => ({ id, kind: 'shared', name: id, mute: false, solo: false });
 const clip = (id, startBeat, lengthBeats, effect = GLOW) => ({ id, laneId: 'a', startBeat, lengthBeats, effect, targets: 'lane', mute: false });
 const SET = { id: 'set-1', name: 'Set one', lanes: [lane('a')], clips: [clip('A', 0, 4), clip('B', 4, 4)] };
+
+test('Companion sequence presets drive transport and follow tempo commands and feedback over protocol 2', async (t) => {
+  const s = await serve(t);
+  attachSockets(s.io, { midi: s.midi, integrations: s.integrations });
+  const errors = [];
+  const connection = new LightshowConnection({ host: '127.0.0.1', port: s.port, log: (_level, message) => errors.push(message) });
+  t.after(() => connection.disconnect());
+  let actions, feedbacks, presets;
+  const self = {
+    connection, get liveState() { return connection.state; },
+    sendSet: (patch) => connection.set(patch),
+    setActionDefinitions: (defs) => { actions = defs; },
+    setFeedbackDefinitions: (defs) => { feedbacks = defs; },
+    setPresetDefinitions: (_structure, defs) => { presets = defs; },
+  };
+  UpdateActions(self);
+  UpdateFeedbacks(self);
+  UpdatePresets(self);
+  const waitFor = async (check) => {
+    const deadline = Date.now() + 3000;
+    while (!check() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.ok(check(), 'Companion received the new state');
+  };
+  const press = (mode) => {
+    const { actionId, options } = presets[`sequence_${mode}`].steps[0].down[0];
+    return actions[actionId].callback({ options });
+  };
+  const lit = (state) => feedbacks.sequence_state.callback({ options: { state } });
+  const frame = async (beatPos) => {
+    s.integrations.sequence.sequencer.frame({ beatPos, bpm: state.bpm, epoch: 0 });
+    const expected = JSON.stringify(s.integrations.sequence.sequencer.status());
+    s.integrations.broadcast();
+    await waitFor(() => JSON.stringify(connection.state.sequence) === expected);
+  };
+  connection.connect();
+  await waitFor(() => connection.state.sequence !== undefined);
+  assert.equal(lit('playing'), false);
+  assert.equal((await press('play')).ok, false, 'the server refuses an unloaded transport');
+  assert.ok(errors.some((message) => message.includes('/api/sequence/play')));
+  assert.equal((await connection.sequenceTransport('arm')).ok, false, 'unknown controls cannot become arbitrary API paths');
+  await s.call('PUT', '/api/sequence', {
+    ...SET, bpm: 124, lanes: [lane('a'), lane('b')],
+    clips: [clip('A', 0, 16), { ...clip('B', 0, 16), laneId: 'b' }],
+    commands: [{ id: 'tempo', atBeat: 2, type: 'tempo', value: 148 }],
+  });
+  assert.equal((await press('play')).ok, true);
+  await frame(100);
+  await waitFor(() => lit('playing') && connection.state.bpm === 124 && connection.state.sequence.lanes.every((entry) => entry.clip));
+  assert.deepEqual(connection.state.sequence.lanes.map((entry) => entry.clip), ['A', 'B']);
+  await frame(102);
+  await waitFor(() => connection.state.bpm === 148);
+  assert.equal((await press('pause')).ok, true);
+  await frame(103);
+  await waitFor(() => lit('paused'));
+  const pausedBeat = connection.state.sequence.beat;
+  assert.equal(lit('playing'), false);
+  assert.equal((await press('play')).ok, true);
+  await frame(200);
+  await waitFor(() => lit('playing'));
+  assert.equal(connection.state.sequence.beat, pausedBeat, 'resume preserves the held sequence position');
+  assert.equal(connection.state.bpm, 148, 'resume does not reapply the initial BPM');
+  actions.set_bpm.callback({ options: { bpm: 132 } });
+  await waitFor(() => state.bpm === 132);
+  s.integrations.broadcast();
+  await waitFor(() => connection.state.bpm === 132);
+  assert.equal((await press('stop')).ok, true);
+  await frame(201);
+  await waitFor(() => lit('stopped'));
+  assert.equal(connection.state.sequence.stopped, 'hold');
+  assert.equal((await actions.sequence_transport.callback({ options: { mode: 'blackout' } })).ok, true);
+  await waitFor(() => connection.state.sequence.stopped === 'black');
+  assert.equal(connection.state.armed, false, 'sequence controls never arm outputs');
+});
 
 test('routes: CRUD + transport + status', async (t) => {
   const s = await serve(t);

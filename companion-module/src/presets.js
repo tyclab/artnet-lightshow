@@ -290,6 +290,16 @@ export function UpdatePresets(self) {
 		{ actionId: 'strobe_burst', options: { ms: 1000 } },
 	])
 
+	for (const [mode, name, state] of [
+		['play', 'Play / Resume', 'playing'], ['pause', 'Pause', 'paused'], ['stop', 'Stop', 'stopped'],
+	]) {
+		presets[`sequence_${mode}`] = button(
+			`Sequence: ${name}`, { text: `SEQ\n${name}`, size: '14' },
+			[{ actionId: 'sequence_transport', options: { mode } }],
+			{ feedbacks: [{ feedbackId: 'sequence_state', options: { state }, style: { bgcolor: combineRgb(0, 140, 100), color: WHITE } }] },
+		)
+	}
+
 	const group = (id, name, ids) => ({ id, type: 'simple', name, presets: ids })
 	const structure = [
 		{
@@ -310,6 +320,12 @@ export function UpdatePresets(self) {
 			name: 'Deck',
 			description: 'The 16 pads (a hold pad plays while pressed, a loop toggles, a once fires; labelled from the server) and the strobe burst',
 			definitions: [group('deck_pads', 'Pads', padIds), group('deck_strobe', 'Strobe', ['strobe_burst'])],
+		},
+		{
+			id: 'sequence',
+			name: 'Sequence',
+			description: 'Play or resume the loaded sequence, pause its transport, stop holding its picture, and adjust the shared tempo',
+			definitions: ['sequence_play', 'sequence_pause', 'sequence_stop', 'transport_bpm_display', 'transport_bpm_up', 'transport_bpm_down'],
 		},
 		{
 			id: 'patterns',
