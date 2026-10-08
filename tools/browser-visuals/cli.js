@@ -63,7 +63,8 @@ export async function run(settings, dependencies = {}) {
   }
   const stop = () => { stopped = true; ready = false; void curtain?.pump.stop(); };
   const onInput = chunk => {
-    input = (input + chunk.toString()).slice(-100);
+    // Windows PowerShell's redirected stdin starts with a UTF-8 BOM.
+    input = (input + chunk.toString()).replaceAll('﻿', '').slice(-100);
     if (/(^|\n)stop\r?\n/.test(input)) stop();
   };
   process.on('SIGINT', stop); process.on('SIGTERM', stop); stdin.on('data', onInput);
