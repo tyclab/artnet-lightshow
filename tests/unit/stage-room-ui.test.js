@@ -6,7 +6,7 @@ import path from 'node:path';
 import esbuild from 'esbuild';
 import { PerspectiveCamera, Vector3 } from 'three';
 import { buildRig } from '../../src/shared/rig.ts';
-import { placeRig, roomRig, roomViews, TRUSS_H, STAGE_FOV } from '../../public-src/stage3d/world.js';
+import { placeRig, roomRig, roomViews, meanLightRGB, TRUSS_H, STAGE_FOV } from '../../public-src/stage3d/world.js';
 
 const profiles = { lamp: { channelMap: { red: 0 } }, bar: { cells: [{ channelMap: { red: 0 } }, { channelMap: { red: 1 } }] } };
 const fixtures = [{ id: 10, label: 'Lamp', profileId: 'lamp' }, { id: 20, label: 'Bar', profileId: 'bar' }];
@@ -28,6 +28,45 @@ test('room bindings resolve local unit indices after other fixtures', () => {
 test('shared channels can illuminate several physical positions', () => {
   const placed = roomRig(fixtures, rig, { ...model, bindings: [binding('a', 10), binding('b', 10)] });
   assert.deepEqual(placed.lamps.map((lamp) => lamp.unit), [0, 0]);
+});
+
+const average = (sources) => ({ id: 'physical', aggregation: 'weightedMean', sources,
+  position: { x: 0, y: 1, z: 0 }, confidence: 'estimated' });
+
+test('several source units render one physical marker', () => {
+  const placed = roomRig(fixtures, rig, { ...model, bindings: [average([
+    { fixtureId: 10, unit: 0, weight: 1 }, { fixtureId: 20, unit: 1, weight: 3 },
+  ])] });
+  assert.deepEqual([placed.lamps.length, placed.cells.length, placed.lamps[0].sources.map((source) => source.unit)], [1, 0, [0, 2]]);
+});
+
+test('physical averages use normalized linear RGB source weights', () => {
+  const out = new Float32Array(3);
+  meanLightRGB([{ unit: 0, weight: 1e300 }, { unit: 1, weight: 3e300 }], [{ r: 255 }, { b: 255 }], out);
+  assert.deepEqual([...out], [0.25, 0, 0.75]);
+});
+
+test('missing source weights remain black in an incomplete physical average', () => {
+  const placed = roomRig(fixtures, rig, { ...model, bindings: [average([
+    { fixtureId: 10, unit: 0, weight: 1 }, { fixtureId: 999, unit: 0, weight: 3 },
+  ])] });
+  const out = new Float32Array(3);
+  meanLightRGB(placed.lamps[0].sources, [{ w: 255 }], out);
+  assert.deepEqual([...out], [0.25, 0.25, 0.25]);
+  assert.equal(placed.incomplete[0].missingSources, 1);
+});
+
+test('an output frame missing a known source retains its black weight', () => {
+  const out = new Float32Array(3);
+  meanLightRGB([{ unit: 0, weight: 1 }, { unit: 2, weight: 3 }], [{ r: 255 }], out);
+  assert.deepEqual([...out], [0.25, 0, 0]);
+});
+
+test('shared channel coverage identifies all affected physical markers', () => {
+  const first = average([{ fixtureId: 10, unit: 0, weight: 1 }]);
+  const second = { ...first, id: 'other' };
+  const placed = roomRig(fixtures, rig, { ...model, bindings: [first, second] });
+  assert.deepEqual(placed.shared, [{ fixtureId: 10, unit: 0, bindings: ['physical', 'other'] }]);
 });
 
 test('room placements never fabricate trusses', () => {

@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import { PAD_BANKS, PAD_SLOTS, PAD_COUNT, STROBE_ID, padFieldsSchema as fieldsSchema, padLayoutSchema as layoutSchema } from '../shared/party-setup.ts';
+import type { PadContent, PadContentKind, PadEntry, PadLaunchMode, ShowPerformance } from '../shared/party-setup.ts';
+export { PAD_BANKS, PAD_SLOTS, PAD_COUNT, STROBE_ID };
+export type { PadContent, PadContentKind, PadEntry, PadLaunchMode };
 
 import { deepFreeze, presetById } from '../shared/effects/index.ts';
 import { canonical } from '../shared/effects/layer.ts';
@@ -25,31 +29,10 @@ import type { PresetLookup, Voice, VoiceManager, VoiceMode, VoiceTargets } from 
  *   loop   latched until the pad is pressed or toggled again
  */
 
-export const PAD_BANKS = 2;
-export const PAD_SLOTS = 8;
-export const PAD_COUNT = PAD_BANKS * PAD_SLOTS;
 // Hue Dynamics' default: 240 of its 960 ticks to the beat.
 export const DEFAULT_QUANTISE = 0.25;
-/** The strobe pad's content id; `strobe` is no preset (it stays the upstream pattern's id). */
-export const STROBE_ID = 'strobe';
 /** The token a REST press uses when it names none, so its bare release finds it. */
 export const REST_TOKEN = 'rest';
-
-export type PadContentKind = 'preset' | 'pattern' | 'strobe' | 'sequencePattern';
-export interface PadContent { kind: PadContentKind; id: string }
-export type PadLaunchMode = 'once' | 'hold' | 'loop';
-export interface PadEntry {
-  bank: 0 | 1;
-  slot: number;
-  label: string;
-  /** #RRGGBB, the pad's colour on the deck. */
-  accent: string;
-  content: PadContent | null;
-  launch: PadLaunchMode;
-  /** Beats of the grid a launch snaps up to while something plays; 0 is now. */
-  quantise: number;
-  targets: 'shared' | number[];
-}
 
 /** What a pattern pad hands the pattern player: the pad's launch, under the pad's key. No length: the pattern's own plays, unless `lengthMs`. */
 export interface PadVoiceLaunch {
@@ -127,36 +110,7 @@ const padKey = (index: number) => `pad:${Math.floor(index / PAD_SLOTS)}:${index 
 
 // ── The layout file ─────────────────────────────────────────────────────────
 
-const fixtureId = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
-const fields = {
-  label: z.string().max(80),
-  accent: z.string().regex(/^#[0-9a-f]{6}$/i, 'expected a hex colour #RRGGBB').transform((hex) => hex.toUpperCase()),
-  content: z.object({ kind: z.enum(['preset', 'pattern', 'strobe', 'sequencePattern']), id: z.string().min(1).max(64) }).strict().nullable(),
-  launch: z.enum(['once', 'hold', 'loop']),
-  quantise: z.number().finite().min(0),
-  // R7: 'shared', never 'all'. Ids once each; an empty list stays empty (it covers nothing).
-  targets: z.union([z.literal('shared'), z.array(fixtureId).max(1024).transform((ids) => [...new Set(ids)])]),
-};
-const place = { bank: z.union([z.literal(0), z.literal(1)]), slot: z.number().int().min(0).max(PAD_SLOTS - 1) };
-
-// The strobe's hook only holds and releases.
-function strobeHeld(pad: { content: { kind: string; id: string } | null; launch: string }, ctx: z.RefinementCtx): void {
-  if (pad.content?.kind !== 'strobe') return;
-  if (pad.content.id !== STROBE_ID) ctx.addIssue({ code: 'custom', path: ['content', 'id'], message: `the strobe's id is "${STROBE_ID}"` });
-  if (pad.launch !== 'hold') ctx.addIssue({ code: 'custom', path: ['launch'], message: 'the strobe pad plays while held: "hold"' });
-}
-
-const fieldsSchema = z.object(fields).strict().superRefine(strobeHeld);
-const entrySchema = z.object({ ...place, ...fields }).strict().superRefine(strobeHeld);
-const layoutSchema = z.array(entrySchema).length(PAD_COUNT).superRefine((pads, ctx) => {
-  const seen = new Set<number>();
-  pads.forEach(({ bank, slot }, i) => {
-    const at = bank * PAD_SLOTS + slot;
-    if (seen.has(at)) ctx.addIssue({ code: 'custom', path: [i], message: `bank ${bank} slot ${slot} is there twice` });
-    seen.add(at);
-  });
-});
-const fileSchema = z.object({ pads: layoutSchema }).strict();
+const fileSchema = z.object({ pads: layoutSchema, activeLayoutId: z.string().min(1).max(64).nullable().optional() }).strict();
 
 const ordered = (pads: readonly PadEntry[]): PadEntry[] =>
   [...pads].sort((a, b) => (a.bank * PAD_SLOTS + a.slot) - (b.bank * PAD_SLOTS + b.slot));
@@ -209,6 +163,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> => !!value &
 
 export class PadStore extends JsonStore {
   declare _layout: readonly PadEntry[];
+  _activeLayoutId: string | null = null;
+  revision = 0;
+  _scope: (() => Readonly<ShowPerformance> | null) | null = null;
+  _writeScope: ((pads: PadEntry[], activeLayoutId: string | null) => void) | null = null;
+  layoutExists: ((id: string) => boolean) | null = null;
   declare _listeners: (() => void)[];
   declare _admit: PadAdmission | null;
 
@@ -224,27 +183,42 @@ export class PadStore extends JsonStore {
   // the pad assigned (refused at launch), rather than costing the whole layout.
   load(): this {
     const saved = this.readValid(fileSchema);
-    if (saved) this._layout = deepFreeze(ordered(saved.pads).map(mended));
+    if (saved) {
+      this._layout = deepFreeze(ordered(saved.pads).map(mended));
+      this._activeLayoutId = saved.activeLayoutId ?? null;
+    }
     return this;
   }
 
   useDefaults(): void {
     this._layout = DEFAULT_PADS;
+    this._activeLayoutId = null;
   }
 
   /** Every pad, bank 0 then bank 1, as copies. */
   layout(): PadEntry[] {
-    return this._layout.map(snapshot);
+    return this.view().map(snapshot);
   }
 
   /** The layout itself, frozen, for the live state (it rides every broadcast). */
   view(): readonly PadEntry[] {
-    return this._layout;
+    return this._scope?.()?.pads ?? this._layout;
   }
 
   /** One pad, as a copy. */
   get(bank: number, slot: number): PadEntry {
-    return snapshot(this._layout[padIndex(bank, slot)]);
+    return snapshot(this.view()[padIndex(bank, slot)]);
+  }
+
+  activeLayoutId(): string | null {
+    const scope = this._scope?.();
+    const id = scope ? scope.activePadLayoutId : this._activeLayoutId;
+    return id && this.layoutExists && !this.layoutExists(id) ? null : id;
+  }
+
+  setScope(read: () => Readonly<ShowPerformance> | null, write: (pads: PadEntry[], activeLayoutId: string | null) => void): void {
+    this._scope = read;
+    this._writeScope = write;
   }
 
   /** What decides whether an entry names what is there; asked only of what changed. */
@@ -268,39 +242,52 @@ export class PadStore extends JsonStore {
       body = rest;
     }
     const entry: PadEntry = { bank: bank as 0 | 1, slot, ...validate(fieldsSchema, body, 'pad') };
-    const issues = this._admit?.(entry, this._layout[index]) ?? [];
+    const issues = this._admit?.(entry, this.view()[index]) ?? [];
     if (issues.length) throw refusal('pad', issues);
-    this._commit(this._layout.map((p, i) => (i === index ? entry : p)));
+    this._commit(this.view().map((p, i) => (i === index ? entry : p)));
     return snapshot(entry);
   }
 
   /** Replace the whole layout: sixteen pads, each place once. All or nothing. */
-  replace(input: unknown): PadEntry[] {
+  validate(input: unknown, before: readonly PadEntry[] = this.view()): PadEntry[] {
     const entries = validate(layoutSchema, input, 'pads') as PadEntry[];
-    const issues = entries.flatMap((entry, i) => (this._admit?.(entry, this._layout[entry.bank * PAD_SLOTS + entry.slot]) ?? [])
+    const issues = entries.flatMap((entry, i) => (this._admit?.(entry, before[entry.bank * PAD_SLOTS + entry.slot]) ?? [])
       .map((issue) => ({ ...issue, path: [i, ...issue.path] })));
     if (issues.length) throw refusal('pads', issues);
-    this._commit(ordered(entries));
+    return ordered(entries);
+  }
+
+  replace(input: unknown, activeLayoutId: string | null = this.activeLayoutId()): PadEntry[] {
+    this._commit(this.validate(input), activeLayoutId);
     return this.layout();
   }
 
   /** Back to the default layout. */
   reset(): PadEntry[] {
-    this._commit(DEFAULT_PADS);
+    this._commit(DEFAULT_PADS, null);
     return this.layout();
   }
 
   // Written first, then published, as the effect library does; a change that
   // changes nothing is neither written nor told.
-  _commit(next: readonly PadEntry[]): void {
-    if (canonical(next) === canonical(this._layout)) return;
+  _commit(next: readonly PadEntry[], activeLayoutId: string | null = this.activeLayoutId()): void {
+    if (canonical(next) === canonical(this.view()) && activeLayoutId === this.activeLayoutId()) return;
+    if (this._scope?.() && this._writeScope) {
+      this._writeScope(next.map(snapshot), activeLayoutId);
+      for (const fn of this._listeners) {
+        try { fn(); } catch (err) { console.warn(`[pads] listener: ${messageOf(err)}`); }
+      }
+      return;
+    }
     try {
-      this.writeJson({ pads: next });
+      this.writeJson({ pads: next, ...(activeLayoutId ? { activeLayoutId } : {}) });
     } catch (err) {
       console.warn(`[pads] could not save ${this.file}: ${messageOf(err)}`);
       throw new HttpError(500, `Could not save the pads: ${messageOf(err)}`);
     }
     this._layout = deepFreeze([...next]);
+    this._activeLayoutId = activeLayoutId;
+    this.revision++;
     for (const fn of this._listeners) {
       try { fn(); } catch (err) { console.warn(`[pads] listener: ${messageOf(err)}`); }
     }
@@ -483,8 +470,8 @@ export class Pads {
   }
 
   /** The live state's `pads`: the layout, and which pads are lit. */
-  view(): { layout: readonly PadEntry[]; lit: (string | null)[] } {
-    return { layout: this.store.view(), lit: this.lit() };
+  view(): { layout: readonly PadEntry[]; lit: (string | null)[]; activeLayoutId: string | null } {
+    return { layout: this.store.view(), lit: this.lit(), activeLayoutId: this.store.activeLayoutId() };
   }
 
   _toggle(index: number, entry: PadEntry): Voice | null {

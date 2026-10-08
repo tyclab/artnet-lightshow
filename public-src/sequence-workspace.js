@@ -26,9 +26,13 @@ export async function trackSequenceEdit(operation) {
   try { return await operation(); } finally { pending.delete(done); settled(); }
 }
 
+export async function settleSequenceEdits() {
+  while (pending.size) await Promise.allSettled([...pending]);
+}
+
 export async function confirmSequenceReplacement(request, confirm = (message) => window.confirm(message)) {
   // A blurred field may still be saving when the operator chooses another transport.
-  while (pending.size) await Promise.allSettled([...pending]);
+  await settleSequenceEdits();
   const [loaded, shelf] = await Promise.all([request('/api/sequence'), request('/api/sequences')]);
   if (!loaded?.ok || !shelf?.ok) return false;
   const current = loaded.sequence;

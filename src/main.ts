@@ -143,6 +143,8 @@ const smtc = createOsNowPlaying();
 smtc.onUpdate((payload) => nowPlaying.updatePlayback(payload));
 
 const patchRestored = showStore.restore();
+// Recovery checks the saved patch, so it opens after the patch is restored.
+integrations.sequence.workspace?.open();
 
 const applier = createApplier({
   midi, spotify, smtc, live: liveInput, midiClock, deezer, autoShow, applyPatch,
@@ -297,6 +299,7 @@ function shutdown(signal: string, exitCode = 0): void {
     ['midi clock', () => midiClock.stop()],
     ['midi', () => midi.close()],
     ['show', () => showStore.save()],
+    ['sequence workspace', () => integrations.sequence.workspace?.close()],
     ['settings', () => flushPendingPersist()],
   ] as [string, () => unknown][]) {
     try { fn(); } catch (err) { console.warn(`[shutdown] ${what}: ${messageOf(err)}`); }

@@ -170,3 +170,56 @@ test('a refused clip Apply keeps the edited draft for a successful retry', async
   await expect(editor).toHaveCount(0);
   expect((await current(request)).clips[0].effect.params.stagger).toBe(0.75);
 });
+
+test('named grouped clips move together through undo, redo and Save', async ({ page, request }) => {
+  const next = sequence();
+  next.lanes.push({ id: 'upper', kind: 'shared', name: 'Upper', mute: false, solo: false });
+  expect((await request.put('/api/sequence', { data: next })).ok()).toBe(true);
+  await open(page, 'sequence');
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.locator('.seq-clip-row input[type=checkbox]').nth(0).check();
+  await page.locator('.seq-clip-row input[type=checkbox]').nth(1).check();
+  await page.getByRole('button', { name: 'Group clips', exact: true }).click();
+  await expect.poll(async () => (await current(request)).clipGroups?.[0].clipIds).toEqual(['first', 'second']);
+  await page.getByLabel('Clip name', { exact: true }).fill('Opening response');
+  await page.getByLabel('Clip name', { exact: true }).press('Enter');
+  await page.getByLabel('Move selection by beats').fill('4');
+  await page.getByLabel('Move selection by lanes').fill('1');
+  await page.getByRole('button', { name: 'Move selection', exact: true }).click();
+  const positions = async () => (await current(request)).clips.map((clip) => [clip.laneId, clip.startBeat]);
+  await expect.poll(positions).toEqual([['upper', 4], ['upper', 20], ['base', 32]]);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect.poll(positions).toEqual([['base', 0], ['base', 16], ['base', 32]]);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await expect.poll(positions).toEqual([['upper', 4], ['upper', 20], ['base', 32]]);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('.seq-unsaved')).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('.seq-clip-label').filter({ hasText: 'Opening response' })).toHaveCount(1);
+  expect((await current(request)).clips[1].presetId).toBe('hd.neonDomino');
+  expect((await current(request)).clipGroups[0].clipIds).toEqual(['first', 'second']);
+});
+
+test('a reviewed take remains pending across browser reload', async ({ page, request }) => {
+  await open(page, 'sequence');
+  await page.getByRole('button', { name: 'Record', exact: true }).click();
+  await page.getByRole('button', { name: 'Review take', exact: true }).click();
+  await expect.poll(async () => (await state(request)).sequence.recording?.phase).toBe('review');
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Keep take', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Record', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Discard', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Record', exact: true })).toBeVisible();
+});
+
+test('Run now waits for the command value being edited', async ({ page, request }) => {
+  const next = sequence();
+  next.commands = [{ id: 'bpm-command', atBeat: 12, type: 'tempo', value: 100 }];
+  expect((await request.put('/api/sequence', { data: next })).ok()).toBe(true);
+  await open(page, 'sequence');
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByLabel('Value', { exact: true }).fill('147');
+  await page.getByRole('button', { name: 'Run now', exact: true }).click();
+  await expect.poll(async () => (await state(request)).bpm).toBe(147);
+  expect((await state(request)).sequence.playing).toBe(false);
+});

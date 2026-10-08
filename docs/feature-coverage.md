@@ -19,28 +19,26 @@ that every original runtime branch has been replayed. Engine regressions cover
 the implemented contracts; browser tests separately cover reachable controls.
 Physical optical timing and device limits need hardware acceptance.
 
-## Remaining application workflows
+## Show workflows
 
-The broader source workflows below have not been implemented. They were not
-part of the earlier effect-engine release, but are required before claiming
-complete Party/show application parity:
+The source show workflows map onto these controls:
 
-| Workflow | Current limit |
-|----------|---------------|
-| Per-show master settings and pad layouts | Audio master settings and pads are global; loading a sequence does not recall a show-owned bundle |
-| Named pad-layout library | No save/open/rename/delete library or portable lane/content remapping |
-| Clip groups and custom clip names | No grouped move/edit or custom per-row names |
-| Undo/redo | No sequence edit history |
-| Recoverable workspace | Explicit shelf saves persist; a discard warning does not recover unsaved work after a crash |
-| Guided BPM capture | Live tempo detection exists; no source-style capture/progress/confidence workflow saved into a show |
-| Starter/generated playlists | No source-compatible library-to-playlist generator or source starter-playlist templates |
-| Immediate command rows | Sequence commands execute during playback; there is no standalone command-row performance surface |
-| Random initial palette | No new random initial palette on every sequence start |
-| Standalone tempo/brightness automation | Automation belongs to a sequence |
+| Workflow | Where |
+|----------|-------|
+| Per-show audio response and pads | Sequence → Edit → Show audio and pads; the show's `performance` |
+| Named pad-layout library | Perform → Pads → Pad layouts: save, rename, recapture, delete, remap fixture slots |
+| Clip groups and clip names | Sequence → Edit: clip name field; group, ungroup and move selected clips |
+| Undo/redo | Sequence → Edit: shared history of whole sequence edits |
+| Recoverable workspace | `config/sequence-workspace.json`; restart reopens the document stopped, a pending take in Review |
+| Guided BPM capture | Perform and Sequence → Edit: 12-second capture from live input with lock and consistency checks |
+| Starter/generated playlists | Sequence: Starter playlists and generator, previewed before it replaces the editor document |
+| Immediate command rows | Sequence → Edit: Run now on each command row |
+| Random initial palette | Sequence options: a random palette on each start |
+| Standalone tempo/brightness automation | Perform: live automation on the running look, ended by a fader, stop, blackout, disarm or a sequence |
+| Live Visualizer colours | Perform: colour controls shown while a Visualizer is the base |
 
-Complete direct live Visualizer colour controls also need completion before the
-included workflow scope can be called finished. API support alone does not
-establish an accessible browser workflow.
+Fire and Ice are the fork's gentle Party looks: slow, strobe-free Spatial Wash
+and Breathing Fade presets with full-channel palettes.
 
 ## Deliberate scope and behaviour differences
 
@@ -61,8 +59,11 @@ not exact source behaviour.
 
 A Hue Entertainment channel can represent more than one physical lamp, and a
 gradient lamp can span channels. A channel-shaped fixture is therefore not proof
-of unique physical-lamp identity. That topology needs a separate migration and
-device acceptance; it must preserve the deployed patch and output mapping.
+of unique physical-lamp identity. Stage can draw one marker per physical lamp
+that averages its contributing channels by segment length; the engine still
+renders per channel. Physical-lamp topology in the engine needs a separate
+migration and device acceptance; it must preserve the deployed patch and output
+mapping.
 
 The [private room model](stage-room.md) supplies walls, furniture and explicit
 preview bindings. It does not repair engine topology or relocate spatial

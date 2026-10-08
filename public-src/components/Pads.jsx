@@ -5,6 +5,7 @@ import { useFocusTrap } from '../focus-trap.js';
 import { useVoicePads, holdsWhilePressed, padKey, rapidPad } from '../voice-pad.js';
 import { quickDeck, readFavourites } from './Effects.jsx';
 import { useSafetyGate } from './Photosensitivity.jsx';
+import { PadLayouts } from './PadLayouts.jsx';
 
 /**
  * The deck's pads: two banks of eight, as the server's layout has them. A
@@ -59,7 +60,9 @@ export function padChoices(rows, shelf = [], favourites = []) {
 export function padBody(draft) {
   const at = draft.content ? draft.content.indexOf(':') : -1;
   const content = at > 0 ? { kind: draft.content.slice(0, at), id: draft.content.slice(at + 1) } : null;
-  const targets = Array.isArray(draft.targets) && draft.targets.length ? draft.targets.map(Number) : 'shared';
+  const selected = Array.isArray(draft.targets) ? draft.targets.map(Number) : [];
+  const targets = draft.targetMode === 'shared' ? 'shared'
+    : draft.targetMode === 'selected' ? selected : selected.length ? selected : 'shared';
   return {
     label: String(draft.label ?? '').slice(0, 80),
     accent: String(draft.accent).toUpperCase(),
@@ -75,6 +78,7 @@ export function Pads({ initialBank }) {
   const [bank, setBank] = useState(() => initialBank ?? readBank());
   const [editing, setEditing] = useState(false);
   const [open, setOpen] = useState(null);
+  const [layoutsOpen, setLayoutsOpen] = useState(false);
   const { held, gatedPadProps } = useVoicePads({ onLongPress: setOpen });
   const gate = useSafetyGate();
   const layout = s.pads?.layout || [];
@@ -97,6 +101,7 @@ export function Pads({ initialBank }) {
           ))}
         </div>
         <button type="button" class="pad-edit-toggle" aria-pressed={editing} onClick={() => setEditing(!editing)}>Edit pads</button>
+        <button type="button" class="pad-edit-toggle" onClick={() => setLayoutsOpen(true)}>Pad layouts</button>
       </div>
       <div class="pad-grid" role="tabpanel" aria-label={`Bank ${BANKS[bank]}`}>
         {cells.map((entry) => {
@@ -123,6 +128,7 @@ export function Pads({ initialBank }) {
         })}
       </div>
       {open && <PadEditor entry={open} onClose={() => setOpen(null)} />}
+      {layoutsOpen && <PadLayouts onClose={() => setLayoutsOpen(false)} />}
       {gate.dialog}
     </section>
   );
@@ -139,6 +145,7 @@ export function PadEditor({ entry, onClose, initial = {} }) {
   const [draft, setDraft] = useState({
     label: entry.label, accent: entry.accent, content: current, launch: entry.launch,
     quantise: entry.quantise ?? 0.25, targets: Array.isArray(entry.targets) ? entry.targets : [],
+    targetMode: entry.targets === 'shared' ? 'shared' : 'selected',
   });
   const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
   const userRows = (s.effects || []).map((e) => ({ ...e, user: true }));
@@ -186,7 +193,9 @@ export function PadEditor({ entry, onClose, initial = {} }) {
             {QUANTISE.map(([beats, text]) => <option key={beats} value={String(beats)} selected={Number(draft.quantise) === beats}>{text}</option>)}
           </select>
         </label>
-        <fieldset class="pad-field pad-targets"><legend>Fixtures (none ticked: the whole rig)</legend>
+        <label class="pad-choice"><input type="checkbox" checked={draft.targetMode === 'shared'}
+          onChange={(e) => set({ targetMode: e.currentTarget.checked ? 'shared' : 'selected' })} />Whole rig (shared targets)</label>
+        <fieldset class="pad-field pad-targets" disabled={draft.targetMode === 'shared'}><legend>Selected fixtures</legend>
           {(s.fixtures || []).map((f) => (
             <label key={f.id} class="pad-choice">
               <input type="checkbox" value={String(f.id)} checked={draft.targets.includes(f.id)} onChange={(e) => toggleFixture(f.id, e.target.checked)} />
@@ -194,6 +203,7 @@ export function PadEditor({ entry, onClose, initial = {} }) {
             </label>
           ))}
         </fieldset>
+        {draft.targetMode === 'selected' && !draft.targets.length && <p class="muted">No fixtures selected: this pad lights nothing.</p>}
         <div class="pad-editor-actions">
           <button type="button" onClick={onClose}>Cancel</button>
           <button type="button" class="primary" onClick={save}>Save</button>

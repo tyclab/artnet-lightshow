@@ -35,6 +35,13 @@ export interface HueStatus {
 }
 
 export type LampKind = 'color' | 'ambiance' | 'white';
+export interface HueChannelMember {
+  deviceId: string | null;
+  serviceId: string;
+  segmentIndex: number | null;
+  segmentLength: number | null;
+  segmentCount: number | null;
+}
 
 export interface AreaChannel {
   id: number;
@@ -43,6 +50,7 @@ export interface AreaChannel {
   devices: string[];
   product: string;
   kind: LampKind | null;
+  members?: HueChannelMember[];
 }
 
 export interface EntertainmentArea {
@@ -78,6 +86,7 @@ interface ClipService {
   id: string;
   owner?: { rid?: string };
   renderer_reference?: { rid?: string; rtype?: string };
+  segments?: { segments?: { length: number }[] };
 }
 
 interface ClipLight {
@@ -90,7 +99,7 @@ interface ClipLight {
 interface ClipChannel {
   channel_id: number;
   position?: unknown;
-  members?: { service?: { rid?: string } }[];
+  members?: { service?: { rid?: string }; index?: number }[];
 }
 
 interface ClipEntertainmentConfig {
@@ -110,6 +119,7 @@ interface Lamp {
   product: string;
   device: string;
   kind: LampKind | null;
+  segmentLengths?: number[];
 }
 
 // Open and close Entertainment sessions around DTLS streaming so the bridge releases the area afterwards.
@@ -292,7 +302,8 @@ async function fetchLampNames(host: string, key: string): Promise<Map<string, La
       if (!device || !device.name) continue;
       const ref = service.renderer_reference && service.renderer_reference.rid;
       const light = (ref && lightById.get(ref)) || (owner && lightByDevice.get(owner)) || null;
-      names.set(service.id, { ...device, kind: light ? kindOf(light) : null });
+      names.set(service.id, { ...device, kind: light ? kindOf(light) : null,
+        segmentLengths: service.segments?.segments?.map((segment) => segment.length) });
     }
   } catch (_) {
     return new Map();
@@ -315,6 +326,18 @@ function kindOfChannel(channel: ClipChannel, lamps: Map<string, Lamp>): LampKind
     if (kind && (best === null || KIND_RANK[kind] > KIND_RANK[best])) best = kind;
   }
   return best;
+}
+
+function channelMembers(channel: ClipChannel, lamps: Map<string, Lamp>): HueChannelMember[] {
+  return (channel.members || []).map((member) => {
+    const serviceId = member.service?.rid || '';
+    const lamp = lamps.get(serviceId);
+    const index = Number.isInteger(member.index) && member.index! >= 0 ? member.index! : null;
+    const length = index === null ? undefined : lamp?.segmentLengths?.[index];
+    return { serviceId, deviceId: lamp?.device || null, segmentIndex: index,
+      segmentLength: typeof length === 'number' && Number.isFinite(length) && length > 0 ? length : null,
+      segmentCount: lamp?.segmentLengths?.length || null };
+  });
 }
 
 // Number channels from repeated devices so gradient-strip bindings remain distinguishable.
@@ -368,6 +391,7 @@ async function listEntertainmentConfigs(host: string, key: string): Promise<Ente
           devices: [...new Set(lamps.map((l) => l.device))],
           product: [...new Set(lamps.map((l) => l.product).filter(Boolean))].join(' + '),
           kind: kindOfChannel(ch, names),
+          members: channelMembers(ch, names),
         };
       }),
     };
@@ -740,6 +764,7 @@ export {
   nameChannel,
   kindOf,
   kindOfChannel,
+  channelMembers,
   setStreaming,
   buildStreamMessage,
   to16,

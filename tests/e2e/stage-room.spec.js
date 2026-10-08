@@ -62,6 +62,40 @@ test('existing room positions can be edited without changing patch positions', a
   expect((await state(request)).fixtures.find((entry) => entry.id === fixture.id).position).toEqual(fixture.position);
 });
 
+test('a physical light can average several output sources through the editor', async ({ page, request }) => {
+  const first = await seeded(request);
+  const second = (await state(request)).fixtures.find((fixture) => fixture.id !== first.id);
+  await showPanel(page);
+  await page.locator('.stage-room-bindings > summary').click();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Colour preview', exact: true }).selectOption('average');
+  await page.getByRole('button', { name: 'Add source', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Source 2 fixture', exact: true }).selectOption(String(second.id));
+  await page.getByLabel('Source 2 weight', { exact: true }).fill('3');
+  await page.getByRole('button', { name: 'Save position', exact: true }).click();
+  await expect.poll(async () => (await current(request)).room.bindings[0]?.sources).toEqual([
+    { fixtureId: first.id, unit: 0, weight: 1 }, { fixtureId: second.id, unit: 0, weight: 3 },
+  ]);
+  expect((await current(request)).room.bindings).toHaveLength(1);
+});
+
+test('switching an average to one output preserves it when declined', async ({ page, request }) => {
+  const fixtures = (await state(request)).fixtures;
+  const sources = fixtures.slice(0, 2).map((fixture) => ({ fixtureId: fixture.id, unit: 0, weight: 1 }));
+  await replace(request, { ...room, bindings: [{ id: 'average', aggregation: 'weightedMean', sources,
+    position: { x: 0, y: 1.2, z: 0 }, confidence: 'estimated' }] });
+  await showPanel(page);
+  await page.locator('.stage-room-bindings > summary').click();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await page.getByRole('combobox', { name: 'Colour preview', exact: true }).selectOption('single');
+  await expect(page.getByRole('combobox', { name: 'Colour preview', exact: true })).toHaveValue('average');
+  await expect(page.locator('.stage-room-source')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Save position', exact: true }).click();
+  await expect(page.locator('.stage-room-editor')).toHaveCount(0);
+  expect((await current(request)).room.bindings[0].sources).toEqual(sources);
+});
+
 test('removing a room position returns the fixture to the placement list', async ({ page, request }) => {
   await seeded(request);
   await showPanel(page);

@@ -34,11 +34,11 @@ test('audio response applies changed fields, preserves concurrent settings, and 
   }
 });
 
-test('half and double change global tempo without changing beat division and respect tempo bounds', async ({ page, request }) => {
+for (const view of ['perform', 'effects']) test(`${view}: half and double change global tempo without changing beat division and respect tempo bounds`, async ({ page, request }) => {
   const before = await state(request);
   try {
     await set(request, { bpm: 123.5, beatDivision: 4 });
-    await open(page, 'perform');
+    await open(page, view);
     await page.getByRole('button', { name: 'Half tempo', exact: true }).click();
     await until(request, (s) => s.bpm === 61.75 && s.beatDivision === 4);
     await page.getByRole('button', { name: 'Double tempo', exact: true }).click();

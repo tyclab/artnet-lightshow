@@ -20,6 +20,7 @@ import { attachSockets } from '../../src/server/sockets.ts';
 import { createApplier } from '../../src/server/apply.ts';
 import { EffectLibrary } from '../../src/server/effect-library.ts';
 import { PaletteStore } from '../../src/server/palette-store.ts';
+import { SequenceStore } from '../../src/server/sequence-store.ts';
 import { PadStore } from '../../src/server/pads.ts';
 import { startEngine, stopEngine, renderInput, renderFrame, engineStatus } from '../../src/server/engine.ts';
 import { applyPatch } from '../../src/server/patch.ts';
@@ -89,7 +90,7 @@ async function serve(t) {
     spotify: { ...idle, startPolling() {}, async getQueue() { return []; } },
     nowPlaying: idle,
     deezerSource: { ...idle, getQueue: () => [], updatePlayback() {}, updateQueue() {}, disconnect() {} },
-    prolink, autoShow, effectLibrary, paletteStore, padStore,
+    prolink, autoShow, effectLibrary, paletteStore, padStore, sequenceStore: new SequenceStore(path.join(dir, 'sequences.json')).load(),
   });
   const applier = createApplier({
     midi, spotify: { localCallbackUrl: '', setLoopbackPort() {}, configure() {} }, smtc: { start() {}, stop() {} },
@@ -101,6 +102,7 @@ async function serve(t) {
   const url = `http://127.0.0.1:${server.address().port}`;
   const look = { pattern: state.pattern, running: state.running };
   t.after(async () => {
+    integrations.sequence.workspace.close();
     voices.stopAll();
     applyPatch({ ...look, energyOverride: null, masterBlackout: false });
     output.setArmed(false);

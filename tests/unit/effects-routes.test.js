@@ -86,6 +86,7 @@ async function serve(t, { cues } = {}) {
   settings._values = { ...values, safety: { ...values.safety, photosensitivityAcknowledged: false } };
   settings.save = () => {};
   t.after(async () => {
+    integrations.sequence.workspace.close();
     settings._values = values;
     if (ownSave) settings.save = ownSave;
     else delete settings.save;
@@ -165,7 +166,7 @@ test('GET /api/effects lists families, built-ins, user presets and both palette 
   assert.equal(res.body.ok, true);
   assert.deepEqual(res.body.families, json(FAMILIES));
   assert.deepEqual(res.body.builtin, json(CATALOGUE));
-  assert.equal(res.body.builtin.length, 214);
+  assert.equal(res.body.builtin.length, 216);
   assert.deepEqual(res.body.user, [preset]);
   assert.deepEqual(res.body.palettes, { builtin: json(ALL_PALETTES), user: [palette] });
   assert.equal(res.body.palettes.builtin.length, 54);

@@ -96,30 +96,51 @@ export function placeRig(fixtures, profiles, rig) {
   return { lamps, cells, trusses: trussesFor(hung) };
 }
 
+export const bindingSources = (binding) => binding.sources || [{ fixtureId: binding.fixtureId, unit: binding.unit ?? 0, weight: 1 }];
+
 export function roomRig(fixtures, rig, model) {
   const indices = new Map(fixtures.map((fixture, index) => [fixture.id, index]));
   const lamps = [];
   const cells = [];
   const unresolved = [];
+  const incomplete = [];
+  const outputs = new Map();
   const mapped = new Map();
   let estimated = 0;
   for (const binding of model.bindings) {
-    const index = indices.get(binding.fixtureId);
-    const local = binding.unit ?? 0;
-    if (index === undefined || !Number.isInteger(local) || local < 0 || local >= rig.ranges[index].count) {
-      unresolved.push(binding);
-      continue;
-    }
-    if (!mapped.has(binding.fixtureId)) mapped.set(binding.fixtureId, new Set());
-    mapped.get(binding.fixtureId).add(local);
+    const sources = bindingSources(binding).map((source) => {
+      const index = indices.get(source.fixtureId), local = source.unit ?? 0;
+      if (index === undefined || !Number.isInteger(local) || local < 0 || local >= rig.ranges[index].count) return { ...source, unit: null };
+      if (!mapped.has(source.fixtureId)) mapped.set(source.fixtureId, new Set());
+      mapped.get(source.fixtureId).add(local);
+      const key = `${source.fixtureId}:${local}`;
+      if (!outputs.has(key)) outputs.set(key, { fixtureId: source.fixtureId, unit: local, bindings: [] });
+      outputs.get(key).bindings.push(binding.label || binding.id);
+      return { unit: rig.ranges[index].start + local, weight: source.weight };
+    });
+    const missingSources = sources.filter((source) => source.unit === null).length;
+    if (missingSources === sources.length) { unresolved.push(binding); continue; }
+    if (missingSources) incomplete.push({ binding, missingSources });
     if (binding.confidence !== 'measured') estimated++;
-    const light = { unit: rig.ranges[index].start + local, fixture: binding.fixtureId, position: binding.position };
-    if (rig.cellMaps[index]) cells.push({ ...light, size: 0.08 });
+    const light = { unit: sources[0].unit, fixture: binding.fixtureId, position: binding.position,
+      ...(binding.sources ? { sources } : {}) };
+    if (!binding.sources && rig.cellMaps[indices.get(binding.fixtureId)]) cells.push({ ...light, size: 0.08 });
     else lamps.push({ ...light, kind: 'bulb', aim: null, length: 0 });
   }
   const missing = fixtures.filter((fixture) => !mapped.has(fixture.id));
   const partial = fixtures.filter((fixture, index) => mapped.has(fixture.id) && mapped.get(fixture.id).size < rig.ranges[index].count);
-  return { lamps, cells, trusses: [], missing, partial, unresolved, estimated };
+  const shared = [...outputs.values()].filter((output) => output.bindings.length > 1);
+  return { lamps, cells, trusses: [], missing, partial, unresolved, incomplete, shared, estimated };
+}
+
+export function meanLightRGB(sources, frame, out, scratch = new Float32Array(3)) {
+  const total = sources.reduce((sum, source) => sum + source.weight, 0);
+  out[0] = out[1] = out[2] = 0;
+  for (const source of sources) {
+    lightRGB(source.unit === null ? null : frame[source.unit], scratch);
+    const weight = source.weight / total;
+    for (let channel = 0; channel < 3; channel++) out[channel] += scratch[channel] * weight;
+  }
 }
 
 export const STAGE_FOV = 48;

@@ -118,7 +118,7 @@ test('recording stages quantised clips until the take is kept', () => {
   assert.equal(s.status().recording, undefined, 'the status says nothing of a recording until one runs');
   assert.throws(() => s.onPadHit({ bank: 0, slot: 1, startBeat: 1 }), (e) => e.status === 409);
   s.startRecording({ mode: 'overdub', countInBeats: 4, quantise: 1 });
-  assert.deepEqual(s.status().recording, { mode: 'overdub', fromBeat: 4, quantise: 1, hits: 0 });
+  assert.deepEqual(s.status().recording, { phase: 'active', mode: 'overdub', fromBeat: 4, quantise: 1, hits: 0 });
   assert.throws(() => s.startRecording({ mode: 'overdub', countInBeats: 0, quantise: 1 }), (e) => e.status === 409);
   const revision = s.revision();
   assert.equal(s.onPadHit({ bank: 0, slot: 1, startBeat: 2 }), null, 'inside the count-in');
@@ -235,6 +235,7 @@ async function serve(t) {
   settings._values = { ...values, safety: { ...values.safety, photosensitivityAcknowledged: false } };
   settings.save = () => {};
   t.after(async () => {
+    integrations.sequence.workspace.close();
     settings._values = values;
     if (ownSave) settings.save = ownSave;
     else delete settings.save;

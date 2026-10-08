@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { HD_MASTER_DEFAULTS } from '../../src/shared/effects/types.ts';
 import { api } from '../state.js';
 
@@ -16,12 +16,18 @@ export function AudioMaster({ audio }) {
   const [draft, setDraft] = useState({});
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const change = (key, value) => { setDraft((previous) => ({ ...previous, [key]: value })); setMessage(''); };
+  const scope = audio.scope?.id ?? null;
+  const draftScope = useRef(scope);
+  const stale = Object.keys(draft).length > 0 && draftScope.current !== scope;
+  const change = (key, value) => {
+    if (!Object.keys(draft).length) draftScope.current = scope;
+    setDraft((previous) => ({ ...previous, [key]: value })); setMessage('');
+  };
   const apply = async (event) => {
     event.preventDefault();
-    if (busy) return;
+    if (busy || stale) return;
     const { ldjTrigger, ...master } = draft;
-    const patch = {};
+    const patch = { scopeId: draftScope.current };
     if (Object.keys(master).length) patch.master = Object.fromEntries(Object.entries(master).map(([key, value]) => [key, Number(value)]));
     if (ldjTrigger !== undefined) patch.ldjTrigger = Number(ldjTrigger);
     setBusy(true);
@@ -34,8 +40,8 @@ export function AudioMaster({ audio }) {
     <details class="audio-master">
       <summary>Audio response</summary>
       <form onSubmit={apply}>
-        <p>Global settings for Party effects. Choose Reactive mode to follow live audio.</p>
-        <fieldset disabled={busy}>
+        <p>{audio.scope ? `Settings for show “${audio.scope.name}”. Save the sequence to keep them.` : 'Global settings for Party effects.'} Choose Reactive mode to follow live audio.</p>
+        <fieldset disabled={busy || stale}>
           {CONTROLS.map(([key, label, max, scale, hint]) => {
             const value = draft[key] ?? audio.master?.[key] ?? HD_MASTER_DEFAULTS[key];
             return (
@@ -57,11 +63,12 @@ export function AudioMaster({ audio }) {
           </label>
         </fieldset>
         <div class="audio-master-actions">
-          <button type="submit" disabled={busy || !Object.keys(draft).length}>Apply audio response</button>
+          <button type="submit" disabled={busy || stale || !Object.keys(draft).length}>Apply audio response</button>
           <button type="button" disabled={busy || !Object.keys(draft).length} onClick={() => { setDraft({}); setMessage(''); }}>Discard edits</button>
-          <button type="button" disabled={busy} onClick={() => { setDraft({ ...HD_MASTER_DEFAULTS, ldjTrigger: 0.3 }); setMessage('Defaults ready to apply.'); }}>Use defaults</button>
+          <button type="button" disabled={busy} onClick={() => { draftScope.current = scope; setDraft({ ...HD_MASTER_DEFAULTS, ldjTrigger: 0.3 }); setMessage('Defaults ready to apply.'); }}>Use defaults</button>
         </div>
         {message && <p role="status">{message}</p>}
+        {stale && <p role="alert">The loaded audio setup changed. Discard these edits before editing the new setup.</p>}
       </form>
     </details>
   );

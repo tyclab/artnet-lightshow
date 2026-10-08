@@ -33,6 +33,38 @@ test('room import preserves fixture IDs and shared output bindings with explicit
   assert.equal(parsed.bindings[0].position.y, 2.2);
 });
 
+const averagedRoom = () => ({ ...room(), bindings: [{ id: 'average', position: { x: 0, y: 1, z: 0 }, confidence: 'estimated',
+  aggregation: 'weightedMean', sources: [{ fixtureId: 17, unit: 0, weight: 1 }, { fixtureId: 18, unit: 0, weight: 3 }] }] });
+
+test('room stores round-trip aggregate sources alongside legacy bindings', (t) => {
+  const store = storeFor(t);
+  const model = averagedRoom();
+  model.bindings.push(room().bindings[0]);
+  store.replace(model);
+  assert.deepEqual(new RoomSceneStore(store.file).load().snapshot().room.bindings,
+    roomSceneSchema.parse(model).bindings);
+});
+
+test('room averages reject duplicate source units', () => {
+  const model = averagedRoom();
+  model.bindings[0].sources[1].fixtureId = 17;
+  assert.equal(roomSceneSchema.safeParse(model).success, false);
+});
+
+test('room averages reject nonpositive and overflowing weights', () => {
+  for (const weight of [0, -1, Infinity, Number.MAX_VALUE]) {
+    const model = averagedRoom();
+    model.bindings[0].sources.forEach((source) => { source.weight = weight; });
+    assert.equal(roomSceneSchema.safeParse(model).success, false);
+  }
+});
+
+test('room averages accept at most 64 contributors', () => {
+  const model = averagedRoom();
+  model.bindings[0].sources = Array.from({ length: 65 }, (_, fixtureId) => ({ fixtureId, weight: 1 }));
+  assert.equal(roomSceneSchema.safeParse(model).success, false);
+});
+
 test('room schema rejects unsafe geometry, remote assets and ambiguous IDs', () => {
   const mutations = [
     (r) => { r.bounds.width = Infinity; },

@@ -692,6 +692,7 @@ async function serve(t) {
   const url = `http://127.0.0.1:${server.address().port}`;
   const look = { pattern: state.pattern, running: state.running };
   t.after(async () => {
+    integrations.sequence.workspace?.close();
     voices.stopAll();
     applyPatch({ ...look, energyOverride: null, masterBlackout: false });
     output.setArmed(false);
@@ -1064,4 +1065,140 @@ test("REST renew does not relaunch loop or once pads", async (t) => {
 test("REST renew rejects an invalid pad slot", async (t) => {
   const s = await serve(t);
   assert.equal((await s.call('POST', '/api/pads/0/9/renew')).status, 400);
+});
+
+test('Show setup recalls audio and pads without changing global defaults', async (t) => {
+  const { call, integrations, padFile } = await serve(t);
+  const globalAudio = settings.get('audio.master');
+  const globalPads = integrations.pads.store.layout();
+  const setup = (await call('GET', '/api/show-setup')).body.performance;
+  const show = { id: 'scoped-a', name: 'Scoped A', mode: 'arrangement', performance: {
+    ...setup, master: { ...setup.master, brightness: 0.17 },
+    pads: setup.pads.map((pad, i) => i === 0 ? { ...pad, label: 'Show A' } : pad),
+  } };
+  assert.equal((await call('PUT', '/api/sequence', show)).status, 200);
+  assert.equal(renderInput().master.brightness, 0.17);
+  assert.equal((await call('GET', '/api/audio')).body.master.brightness, 0.17);
+  assert.equal(integrations.pads.entry(0, 0).label, 'Show A');
+  assert.equal((await call('PUT', '/api/audio', { master: { attackMs: 188 }, ldjTrigger: 0.51 })).status, 200);
+  assert.equal(integrations.sequence.sequencer.current().performance.master.attackMs, 188);
+  assert.deepEqual(settings.get('audio.master'), globalAudio);
+  assert.equal(fs.existsSync(padFile), false);
+  await call('DELETE', '/api/sequence');
+  assert.deepEqual(integrations.pads.store.layout(), globalPads);
+  assert.deepEqual(renderInput().master, globalAudio);
+});
+
+test('Sequence setup captures and removes the show setup only at the revision the editor saw', async (t) => {
+  const { call, integrations } = await serve(t);
+  assert.equal((await call('PUT', '/api/sequence', { id: 'setup-route', name: 'Setup', mode: 'arrangement' })).status, 200);
+  const stale = (await call('GET', '/api/show-setup')).body.expected;
+  await call('PUT', '/api/pads/0/0', { ...integrations.pads.entry(0, 0), label: 'Edited meanwhile' });
+  assert.equal((await call('POST', '/api/sequence/setup', { expected: stale, action: 'capture' })).status, 409);
+  assert.equal(integrations.sequence.sequencer.current().performance, undefined);
+  const expected = (await call('GET', '/api/show-setup')).body.expected;
+  const captured = await call('POST', '/api/sequence/setup', { expected, action: 'capture' });
+  assert.equal(captured.status, 200);
+  assert.equal(captured.body.sequence.performance.pads[0].label, 'Edited meanwhile');
+  assert.equal(captured.body.status.revision, integrations.sequence.sequencer.status().revision);
+  const removed = await call('POST', '/api/sequence/setup', { expected: captured.body.expected, action: 'global' });
+  assert.equal(removed.status, 200);
+  assert.equal(removed.body.sequence.performance, undefined);
+});
+
+test('A show whose pad names a since-deleted preset still loads, replays and refuses only that pad', async (t) => {
+  const { call, integrations } = await serve(t);
+  const mine = (await call('POST', '/api/effects', { name: 'Mine', spec: { kind: 'ldj.FadeCycle' } })).body.preset;
+  const setup = (await call('GET', '/api/show-setup')).body.performance;
+  const pads = setup.pads.map((pad, i) => i === 0 ? { ...pad, content: { kind: 'preset', id: mine.id }, label: 'Mine' } : pad);
+  const show = { id: 'stale-pad', name: 'Stale', mode: 'arrangement', performance: { ...setup, pads } };
+  assert.equal((await call('PUT', '/api/sequence', show)).status, 200);
+  assert.equal((await call('PUT', '/api/sequence', { ...show, name: 'Renamed' })).status, 200);
+  await call('DELETE', `/api/effects/${mine.id}`);
+  const revision = integrations.sequence.sequencer.status().revision;
+  assert.equal((await call('POST', '/api/sequence/undo', { revision })).status, 200, 'undo keeps the pad assigned');
+  await call('DELETE', '/api/sequence');
+  assert.equal((await call('PUT', '/api/sequence', show)).status, 200, 'the show loads again');
+  assert.equal(integrations.pads.entry(0, 0).content.id, mine.id);
+  assert.notEqual((await call('POST', '/api/pads/0/0/press', {})).status, 200, 'the pad itself is refused at launch');
+});
+
+test('Editing one pad of a show deck leaves the other pad voices playing; another deck stops them', async (t) => {
+  const { call, integrations } = await serve(t);
+  const setup = (await call('GET', '/api/show-setup')).body.performance;
+  const pads = setup.pads.map((pad, i) => i === 3 ? { ...pad, launch: 'loop' } : pad);
+  assert.equal((await call('PUT', '/api/sequence', { id: 'deck', name: 'Deck', mode: 'arrangement', performance: { ...setup, pads } })).status, 200);
+  const loop = (await call('POST', '/api/pads/0/3/toggle')).body;
+  const playing = () => voices.list().some((voice) => voice.source === 'pad');
+  assert.ok(playing(), JSON.stringify(loop));
+  assert.equal((await call('PUT', '/api/pads/0/0', { ...integrations.pads.entry(0, 0), label: 'Relabelled' })).status, 200);
+  assert.ok(playing(), 'a relabelled pad elsewhere stops nothing');
+  await call('DELETE', '/api/sequence');
+  assert.ok(!playing(), 'the global deck took over');
+});
+
+test('A refused scoped audio update preserves global trigger and show', async (t) => {
+  const { call, integrations } = await serve(t);
+  const setup = (await call('GET', '/api/show-setup')).body.performance;
+  assert.equal((await call('PUT', '/api/sequence', { id: 'audio-refusal', name: 'Refused', mode: 'arrangement', performance: setup })).status, 200);
+  const before = integrations.sequence.sequencer.current();
+  const trigger = settings.get('audio.ldjTrigger');
+  const response = await call('PUT', '/api/audio', { master: { brightness: 2 }, ldjTrigger: 0.77 });
+  assert.equal(response.status, 400);
+  assert.equal(settings.get('audio.ldjTrigger'), trigger);
+  assert.deepEqual(integrations.sequence.sequencer.current(), before);
+});
+
+test('Layout apply rejects a changed global deck before replacing pads', async (t) => {
+  const { call, integrations } = await serve(t);
+  const setup = (await call('GET', '/api/show-setup')).body;
+  const created = await call('POST', '/api/pad-layouts', { expected: setup.expected, name: 'Deck' });
+  const id = created.body.layout.id;
+  const entry = integrations.pads.entry(0, 0);
+  await call('PUT', '/api/pads/0/0', { ...entry, label: 'A newer edit' });
+  const result = await call('POST', `/api/pad-layouts/${id}/apply`, { expected: setup.expected });
+  assert.equal(result.status, 409);
+  assert.equal(integrations.pads.entry(0, 0).label, 'A newer edit');
+});
+
+test('A failed global audio write leaves prepared show edits unapplied', async (t) => {
+  const { call, integrations } = await serve(t);
+  const setup = (await call('GET', '/api/show-setup')).body.performance;
+  assert.equal((await call('PUT', '/api/sequence', { id: 'audio-write-failure', name: 'Write failure', mode: 'arrangement', performance: setup })).status, 200);
+  const before = integrations.sequence.sequencer.current();
+  const global = settings.group('audio');
+  const save = settings.save;
+  settings.save = () => { throw new Error('disk full'); };
+  try {
+    const result = await call('PUT', '/api/audio', { master: { brightness: 0.41 }, ldjTrigger: 0.76 });
+    assert.equal(result.status, 500);
+    assert.deepEqual(settings.group('audio'), global);
+    assert.deepEqual(integrations.sequence.sequencer.current(), before);
+  } finally { settings.save = save; }
+});
+
+test('Changing show pad setup stops old pad voices but keeps API voices', async (t) => {
+  const { call, integrations } = await serve(t);
+  const setup = (await call('GET', '/api/show-setup')).body.performance;
+  assert.equal((await call('PUT', '/api/sequence', { id: 'deck-a', name: 'Deck A', mode: 'arrangement', performance: setup })).status, 200);
+  const pad = await call('POST', '/api/pads/0/5/press', { token: 'old-deck' });
+  const api = await call('POST', '/api/voices', { preset: 'energy.glow', mode: 'latched' });
+  assert.equal(pad.status, 200);
+  assert.equal(api.status, 200);
+  assert.equal((await call('PUT', '/api/sequence', { id: 'deck-b', name: 'Deck B', mode: 'arrangement', performance: setup })).status, 200);
+  assert.equal(voices.get(pad.body.id), null);
+  assert.ok(voices.get(api.body.id));
+  assert.equal(integrations.pads.lit().every((value) => value === null), true);
+});
+
+test('Audio edits for another show are rejected before any mutation', async (t) => {
+  const { call, integrations } = await serve(t);
+  const setup = (await call('GET', '/api/show-setup')).body.performance;
+  assert.equal((await call('PUT', '/api/sequence', { id: 'scope-b', name: 'Scope B', performance: setup })).status, 200);
+  const before = integrations.sequence.sequencer.current();
+  const global = settings.group('audio');
+  const response = await call('PUT', '/api/audio', { scopeId: 'scope-a', master: { brightness: 0.19 }, ldjTrigger: 0.11 });
+  assert.equal(response.status, 409);
+  assert.deepEqual(integrations.sequence.sequencer.current(), before);
+  assert.deepEqual(settings.group('audio'), global);
 });

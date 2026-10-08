@@ -189,6 +189,25 @@ test('the view unloads the sequence: back to the look without leaving it', async
   assert.strictEqual(calls.length, 1, 'its own revision is not fetched again');
 });
 
+test('undo waits for a pending field save and replays at the revision that save produced', async () => {
+  const calls = [];
+  let saved;
+  const request = (url, init) => {
+    calls.push([url, init && init.method, init && init.body && JSON.parse(init.body).revision]);
+    if (url === '/api/sequence' && init?.method === 'PUT') return new Promise((resolve) => { saved = resolve; });
+    return Promise.resolve({ ok: true, sequence: SEQ, status: { ...STATUS, revision: 8 } });
+  };
+  const sync = ui.createSequenceSync(request, () => {});
+  const save = sync.commit({ ...SEQ, name: 'Renamed' });
+  const undo = sync.replay('undo', 6);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepStrictEqual(calls.map(([url, method]) => [url, method]), [['/api/sequence', 'PUT']], 'undo waits for the save');
+  saved({ ok: true, sequence: SEQ, status: { ...STATUS, revision: 7 } });
+  await save;
+  await undo;
+  assert.deepStrictEqual(calls[1], ['/api/sequence/undo', 'POST', 7]);
+});
+
 test('ended arrangements display their endpoint', () => {
   given({ sequence: { ...STATUS, playing: false, ended: true, beat: 0, bar: 1, lanes: [{ id: 'a', clip: null }, { id: 'b', clip: null }] } });
   const html = ui.html(ui.h(ui.Sequence, { initial: { sequence: SEQ } }));

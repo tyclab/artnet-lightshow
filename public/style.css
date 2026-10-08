@@ -3621,6 +3621,8 @@ input[type=range]::-moz-range-thumb {
 .stage-room-file:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 .stage-room-editor { margin: 12px 0; }
 .stage-room-editor-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.stage-room-sources { grid-column: 1 / -1; min-width: 0; }
+.stage-room-source { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); align-items: end; gap: 8px; margin: 8px 0; }
 .stage-room-editor label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .stage-room-editor input, .stage-room-editor select {
   width: 100%; min-width: 0; min-height: 36px; padding: 6px 8px;
@@ -4008,6 +4010,16 @@ input[type=range]::-moz-range-thumb {
 .transport-lanes .lane-name { color: var(--muted); }
 .transport-error { margin: 0; color: #f87171; font-size: 13px; }
 .perform-side { display: flex; flex-direction: column; gap: 12px; }
+.bpm-capture summary, .live-automation summary, .playlist-generator summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+.bpm-capture fieldset, .live-automation fieldset, .playlist-generator fieldset, .visualizer-colours fieldset { border: 0; padding: 0; margin: 8px 0; min-width: 0; }
+.playlist-generator label, .bpm-capture label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+.bpm-capture button, .bpm-capture select, .playlist-generator button, .playlist-generator input:not([type="checkbox"]), .playlist-generator select,
+.live-automation button, .visualizer-colours button, .visualizer-colours input, .perform-sync .btn { min-height: 44px; }
+@media (pointer: coarse) { .bpm-capture .setting-help a { display: inline-flex; align-items: center; min-height: 44px; } }
+.visualizer-colours .palette-tools label { display: flex; flex-direction: column; gap: 4px; }
+.live-automation .seq-automation { display: flex; flex-wrap: wrap; gap: 8px; }
+.live-automation .seq-field { flex: 1 1 80px; min-width: 0; }
+.live-automation .seq-field input, .live-automation .seq-field select { width: 100%; }
 .perform-override { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .override-pad { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 88px; min-height: 56px; padding: 6px 8px; border-radius: 10px; border: 2px solid var(--border-hi); background: transparent; color: inherit; }
 .override-pad.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
@@ -4171,3 +4183,9 @@ input[type=range]::-moz-range-thumb {
 .hardware-fit summary, .hardware-limits summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
 .hardware-fit ul { padding-left: 20px; font-size: .85rem; }
 @media (max-width: 900px) { .perform-controls > .hardware-fit { order: 5; } }
+
+.seq-clip-row { display: flex; flex-wrap: wrap; }
+.seq-clip-row > input[type="checkbox"] { flex: 0 0 44px; width: 44px; min-height: 44px; }
+.seq-clip-row > span { flex: 1 1 80px; }
+.seq-clip-row > select { flex: 2 1 140px; min-width: 0; min-height: 44px; }
+.seq-clip-row > input[type="number"] { flex: 0 1 90px; width: 90px; min-width: 0; min-height: 44px; }

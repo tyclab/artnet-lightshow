@@ -1,3 +1,11 @@
+import { BpmCapture } from './BpmCapture.jsx';
+import { AutomationEditor } from './AutomationEditor.jsx';
+import { Field, NumberField, parseNumber } from './SequenceFields.jsx';
+export { automationStart } from './AutomationEditor.jsx';
+export { createTextDraft, parseNumber } from './SequenceFields.jsx';
+import { PlaylistGenerator } from './PlaylistGenerator.jsx';
+import { ShowSetup, withCurrentShowSetup } from './ShowSetup.jsx';
+import { groupClips, moveClips, moveShortfall, removeClips, selectedClipIds, ungroupClips } from '../sequence-groups.js';
 import { Transport, runTransport } from './Transport.jsx';
 import { SequencePatterns } from './SequencePatterns.jsx';
 import { Inspector as EffectInspector, findPreset } from './Inspector.jsx';
@@ -11,13 +19,12 @@ import { pacesOwnFlashes } from '../../src/shared/effects/registry.ts';
 import { sequenceEnd } from '../../src/shared/effects/sequence.ts';
 import { contentRows } from './Pads.jsx';
 import { readFavourites } from './Effects.jsx';
-import { clipAuditionTargets, confirmSequenceReplacement, sequenceChanged, trackSequenceEdit } from '../sequence-workspace.js';
+import { clipAuditionTargets, confirmSequenceReplacement, sequenceChanged, settleSequenceEdits, trackSequenceEdit } from '../sequence-workspace.js';
 
 // The sequencer as an instrument first: what plays and the transport stay
 // on top, saved sequences and patterns are one tap; lanes, clips, commands
 // and automation open behind Edit.
 
-const AUTOMATION_MODES = ['none', 'target', 'triangle', 'sawtooth', 'sine'];
 const COMMAND_TYPES = ['palette', 'tempo', 'brightness', 'goto'];
 const QUANTISE = [[0, 'Off'], [0.25, '1/16'], [0.5, '1/8'], [1, '1 beat'], [4, '1 bar']];
 const json = (method, body) => ({ method, body: JSON.stringify(body) });
@@ -51,12 +58,14 @@ export function createSequenceSync(request, setSeq) {
   let want = null;
   let fetched = null;
   const own = new Set();
+  let latest = null;
   const get = () => {
     const n = ++loads;
     return request('/api/sequence').then((r) => { if (n === loads && r && r.ok) setSeq(r.sequence || null); });
   };
   const mine = (r) => {
     if (!r || !r.ok || !r.status) return;
+    latest = Math.max(latest ?? -Infinity, r.status.revision);
     own.add(r.status.revision);
     if (own.size > 32) own.delete(own.values().next().value);
   };
@@ -81,7 +90,21 @@ export function createSequenceSync(request, setSeq) {
       fetched = revision;
       get();
     },
+    // A field blurred by this click is still saving: replay after it, at its revision.
+    replay: async (direction, revision) => {
+      await settleSequenceEdits();
+      return edit(async (show) => {
+        const r = await request(`/api/sequence/${direction}`, json('POST', { revision: Math.max(revision ?? -Infinity, latest ?? -Infinity) }));
+        if (r.ok) show(r.sequence);
+        return r;
+      }, setSeq);
+    },
     commit: (next) => edit((show) => putSequence(request, next, show), setSeq),
+    setup: (action, expected) => edit(async (show) => {
+      const r = await request('/api/sequence/setup', json('POST', { action, expected }));
+      if (r.ok) show(r.sequence);
+      return r;
+    }, setSeq),
     load: (id) => edit(async (show) => {
       const r = await request('/api/sequence', json('PUT', { id }));
       if (r.ok) show(r.sequence);
@@ -118,16 +141,6 @@ export function clipPresetRows(library, favourites = []) {
   const user = (library.user || []).filter(clipHolds).map((p) => ({ id: p.id, name: p.name || p.id, user: true }));
   const builtin = (library.builtin || []).filter(clipHolds).map((p) => ({ id: p.id, name: p.name || p.id, party: !!p.party }));
   return contentRows([...user, ...builtin], favourites);
-}
-
-// The server's units: tempo in BPM 20 to 300, the master 0 to 255, whole periods 1 to 512.
-const AUTOMATION_RANGE = { tempo: { lo: 20, hi: 300, min: 120, max: 130 }, brightness: { lo: 0, hi: 255, min: 0, max: 255 } };
-
-export function automationStart(name, mode) {
-  const r = AUTOMATION_RANGE[name];
-  const a = { mode, period: 8, min: r.min, max: r.max, growing: true };
-  if (mode === 'target') a.target = r.max;
-  return a;
 }
 
 /**
@@ -184,53 +197,6 @@ function stateText(status) {
   return status.stopped ? 'Stopped' : 'Ready';
 }
 
-/** A number typed in, or undefined for text that is none (an empty field included). */
-export function parseNumber(text) {
-  const v = Number(text);
-  return String(text).trim() !== '' && Number.isFinite(v) ? v : undefined;
-}
-
-/** A typed field's text: its own while focused, the stored value otherwise. */
-export function createTextDraft() {
-  let text = null;
-  return {
-    shown: (stored) => (text === null ? String(stored ?? '') : text),
-    focus(stored) { text = String(stored ?? ''); },
-    input(t) { text = t; },
-    commit(parse, onCommit) {
-      const t = text;
-      text = null;
-      if (t === null) return;
-      const v = parse(t);
-      if (v !== undefined) onCommit(v);
-    },
-  };
-}
-
-// The live status redraws this view many times a second; the text being typed
-// stays until blur or Enter commits it.
-function Field({ value, parse = (t) => t, onCommit, ...rest }) {
-  const draft = useMemo(createTextDraft, []);
-  const [, redraw] = useState(0);
-  const done = () => { draft.commit(parse, onCommit); redraw((n) => n + 1); };
-  return (
-    <input {...rest} value={draft.shown(value)}
-      onFocus={() => draft.focus(value)}
-      onInput={(e) => { draft.input(e.currentTarget.value); redraw((n) => n + 1); }}
-      onBlur={done}
-      onKeyDown={(e) => { if (e.key === 'Enter') done(); }} />
-  );
-}
-
-function NumberField({ label, value, step = 1, min, max, onChange }) {
-  return (
-    <label class="seq-field">
-      <span>{label}</span>
-      <Field type="number" value={value} step={step} min={min} max={max} parse={parseNumber} onCommit={onChange} />
-    </label>
-  );
-}
-
 function Ruler({ seq, total, beatsPerBar }) {
   const ruler = useRef(null);
   const overview = useRef(null);
@@ -257,7 +223,7 @@ function Ruler({ seq, total, beatsPerBar }) {
   );
 }
 
-function ClipBlock({ clip, label, total, snap, editing, playing, selected, onSelect, onChange, onLaunch, launching }) {
+function ClipBlock({ clip, label, total, snap, editing, playing, selected, onSelect, onChange, onLaunch, launching, onMove }) {
   const drag = useRef(null);
   const [delta, setDelta] = useState(null);
   const start = (e, kind) => {
@@ -275,7 +241,10 @@ function ClipBlock({ clip, label, total, snap, editing, playing, selected, onSel
   };
   const end = () => {
     if (!drag.current) return;
-    if (delta) onChange(delta.kind === 'move' ? moveClip(clip, delta.beats, snap) : resizeClip(clip, delta.beats, snap));
+    if (delta) {
+      if (delta.kind === 'move' && onMove) onMove(clip.id, delta.beats);
+      else onChange(delta.kind === 'move' ? moveClip(clip, delta.beats, snap) : resizeClip(clip, delta.beats, snap));
+    }
     drag.current = null;
     setDelta(null);
   };
@@ -385,6 +354,9 @@ function Inspector({ clip, lanes, rows, onChange, onDelete, onEditEffect }) {
   const set = (patch) => onChange({ ...clip, ...patch });
   return (
     <div class="seq-inspector">
+      <label class="seq-field"><span>Clip name</span>
+        <Field type="text" aria-label="Clip name" maxLength={80} value={clip.name || ''}
+          onCommit={(name) => set({ name: name.trim() })} /></label>
       <label class="seq-field"><span>Preset</span>
         <PresetSelect clip={clip} rows={rows} onChange={onChange} /></label>
       <label class="seq-field"><span>Lane</span>
@@ -421,28 +393,6 @@ function ClipEffectEditor({ target, clip, lanes, fixtures, onApply, onClose }) {
   </div>;
 }
 
-function AutomationEditor({ name, kind, unit, value, onChange }) {
-  const a = value || automationStart(kind, 'none');
-  const set = (patch) => {
-    const next = { ...a, ...patch };
-    if (next.mode === 'target' && !Number.isFinite(next.target)) next.target = next.max;
-    if (next.mode !== 'target') delete next.target;
-    onChange(next.mode === 'none' ? null : next);
-  };
-  return (
-    <div class="seq-automation">
-      <label class="seq-field"><span>{name}</span>
-        <select aria-label={`${name} automation mode`} value={a.mode} onChange={(e) => set({ mode: e.currentTarget.value })}>
-          {AUTOMATION_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select></label>
-      <NumberField label={`period in ${unit}`} value={a.period} step={1} min={1} onChange={(v) => set({ period: Math.min(512, Math.max(1, Math.round(v))) })} />
-      <NumberField label="min" value={a.min} step={1} onChange={(v) => set({ min: v })} />
-      <NumberField label="max" value={a.max} step={1} onChange={(v) => set({ max: v })} />
-      {a.mode === 'target' && <NumberField label="target" value={a.target} step={1} onChange={(v) => set({ target: v })} />}
-    </div>
-  );
-}
-
 function SequenceSettings({ seq, palettes, onChange }) {
   const set = (patch) => onChange({ ...seq, ...patch });
   const option = (patch) => set({ options: { ...seq.options, ...patch } });
@@ -474,8 +424,9 @@ function SequenceSettings({ seq, palettes, onChange }) {
           {snaps.map((snap) => <option key={snap} value={snap}>{snap} {snap === 1 ? 'beat' : 'beats'}</option>)}
         </select>
       </label>
+      <label class="seq-check"><input type="checkbox" checked={!!seq.options.randomizeInitialPalette} onChange={(e) => option({ randomizeInitialPalette: e.currentTarget.checked })} />Choose a random palette on each start</label>
       <label class="seq-field">Initial palette
-        <select value={seq.options.initialPalette ?? ''} onChange={(e) => option({ initialPalette: e.currentTarget.value || null })}>
+        <select disabled={!!seq.options.randomizeInitialPalette} value={seq.options.initialPalette ?? ''} onChange={(e) => option({ initialPalette: e.currentTarget.value || null })}>
           <option value="">Keep current</option>
           {palettes.map((palette) => <option key={palette.id} value={palette.id}>{palette.name || palette.id}</option>)}
         </select>
@@ -504,7 +455,7 @@ function SequenceNavigation({ seq, nameOf }) {
         <select value="" onChange={(e) => { if (e.currentTarget.value) move(`jump/${encodeURIComponent(e.currentTarget.value)}`); e.currentTarget.value = ''; }}>
           <option value="">Choose a clip…</option>
           {seq.clips.map((clip) => <option key={clip.id} value={clip.id}>
-            {seq.lanes.find((lane) => lane.id === clip.laneId)?.name} · {clip.presetId ? nameOf(clip.presetId) : 'Custom effect'} · beat {clip.startBeat}
+            {seq.lanes.find((lane) => lane.id === clip.laneId)?.name} · {clip.name || (clip.presetId ? nameOf(clip.presetId) : 'Custom effect')} · beat {clip.startBeat}
           </option>)}
         </select>
       </label>
@@ -512,6 +463,17 @@ function SequenceNavigation({ seq, nameOf }) {
       <button type="button" onClick={() => move('resync/bar')}>Resync to bar</button>
     </div>
   </details>;
+}
+
+function WorkspaceNotice({ status }) {
+  if (!status?.recovered && !status?.error) return null;
+  return <div class="seq-note" role={status.error ? 'alert' : 'status'}>
+    {status.recovered && <span>Recovered workspace. Playback is stopped; review any pending take before recording again. </span>}
+    {status.error && <span>Workspace recovery: {status.error}. Your last saved file is preserved. </span>}
+    {status.blocked && <button type="button" onClick={() => {
+      if (window.confirm('Archive the preserved workspace file and start recovery autosave from the current show?')) api('/api/sequence/workspace/start-fresh', { method: 'POST' });
+    }}>Archive recovery file and use current show</button>}
+  </div>;
 }
 
 export function Sequence({ initial = {} }) {
@@ -528,12 +490,15 @@ export function Sequence({ initial = {} }) {
   const unsaved = useMemo(() => sequenceChanged(seq, savedSequence), [seq, savedSequence]);
   const [editing, setEditing] = useState(!!initial.editing);
   const [selected, setSelected] = useState(initial.selected || null);
+  const [selection, setSelection] = useState(initial.selected ? [initial.selected] : []);
+  const [groupMove, setGroupMove] = useState({ beats: 0, lanes: 0 });
   const [effectEdit, setEffectEdit] = useState(null);
   // The lane a new clip goes on, picked by hand; the selected clip's lane comes first.
   const [lanePicked, setLanePicked] = useState(initial.lane || null);
   // The id of the saved sequence the view asks about deleting.
   const [asking, setAsking] = useState(initial.deleting && initial.sequence ? initial.sequence.id : null);
   const [beyond, setBeyond] = useState(null);
+  const [shortMove, setShortMove] = useState(null);
   // The live status carries `recording` only while a take runs.
   const recording = !!(status && status.recording);
   const [rec, setRec] = useState({ countInBeats: 4, mode: 'overdub', quantise: 1 });
@@ -543,6 +508,7 @@ export function Sequence({ initial = {} }) {
   // The live state carries the status only; the sequence itself is fetched when its revision moves.
   const sync = useMemo(() => createSequenceSync(api, setSeq), []);
   useEffect(() => { sync.reload(revision); }, [revision]);
+  useEffect(() => { setSelected(null); setSelection([]); }, [seq?.id]);
   useEffect(() => {
     let live = true;
     if (!seq || !shelf.some((s) => s.id === seq.id)) { setSavedSequence(null); return; }
@@ -558,11 +524,14 @@ export function Sequence({ initial = {} }) {
     return false;
   };
   const load = (id) => replace(() => sync.load(id));
-  const create = () => replace(() => {
+  const create = () => replace(async () => {
+    const next = await withCurrentShowSetup(blankSequence(shelf));
+    if (!next) return false;
     setSelected(null);
     setLanePicked(null);
     setEditing(true);
-    return sync.commit(blankSequence(shelf));
+    setSelection([]);
+    return sync.commit(next);
   });
   const beat = status && Number.isFinite(status.beat) ? status.beat : 0;
 
@@ -580,6 +549,8 @@ export function Sequence({ initial = {} }) {
       <section class="sequence-view" aria-label="Sequence">
         <div class="seq-now" aria-live="polite">No sequence loaded — pick one to load it, or start a new one</div>
         {shelfList}
+        <PlaylistGenerator onCreate={(next) => replace(() => sync.commit(next))} />
+        <WorkspaceNotice status={status?.workspace} />
       </section>
     );
   }
@@ -592,8 +563,21 @@ export function Sequence({ initial = {} }) {
   const total = Math.ceil(end / beatsPerBar) * beatsPerBar + beatsPerBar;
   const onTop = new Set(((status && status.lanes) || []).map((l) => l.clip).filter(Boolean));
   const clip = seq.clips.find((c) => c.id === selected);
-  const label = (c) => (c.presetId ? nameOf(c.presetId) : 'Effect');
-  const setClip = (next) => commit({ ...seq, clips: seq.clips.map((c) => (c.id === next.id ? next : c)) });
+  const label = (c) => c.name || (c.presetId ? nameOf(c.presetId) : 'Effect');
+  const selectedIds = selectedClipIds(seq, selection);
+  const pickClip = (id) => { setSelected(id); setSelection(selectedIds.includes(id) ? selectedIds : selectedClipIds(seq, [id])); };
+  const editIds = (id) => selectedIds.includes(id) ? selectedIds : [id];
+  const setClip = (next) => {
+    const before = seq.clips.find((c) => c.id === next.id);
+    if (before && (before.startBeat !== next.startBeat || before.laneId !== next.laneId)) {
+      const beats = next.startBeat - before.startBeat;
+      const across = lanes.findIndex((lane) => lane.id === next.laneId) - lanes.findIndex((lane) => lane.id === before.laneId);
+      const moved = moveClips(seq, editIds(next.id), beats, across, 0);
+      setShortMove(moveShortfall(seq, moved, next.id, beats, across, 0));
+      return commit(moved);
+    }
+    return commit({ ...seq, clips: seq.clips.map((c) => c.id === next.id ? next : c) });
+  };
   const setCommand = (next) => commit({ ...seq, commands: seq.commands.map((c) => (c.id === next.id ? next : c)) });
   const setLane = (id, patch) => commit({ ...seq, lanes: seq.lanes.map((x) => (x.id === id ? { ...x, ...patch } : x)) });
   const library = librarySig.value;
@@ -640,10 +624,15 @@ export function Sequence({ initial = {} }) {
           onClick={() => setEditing(!editing)}>Edit</button>
       </div>
       {shelfList}
+      <PlaylistGenerator onCreate={(next) => replace(() => sync.commit(next))} />
+      <WorkspaceNotice status={status?.workspace} />
       <SequenceNavigation key={seq.id} seq={seq} nameOf={nameOf} />
 
       {beyond && <p class="seq-beyond" role="status">{beyond} <button type="button" class="btn sm" onClick={() => setBeyond(null)}>Dismiss</button></p>}
+      {shortMove && <p class="seq-beyond" role="status">{shortMove} <button type="button" class="btn sm" onClick={() => setShortMove(null)}>Dismiss</button></p>}
       <div class="seq-record" role="group" aria-label="Record">
+        {recording && <span role="status">{status.recording.phase === 'review' ? 'Review take' : 'Recording'} · {status.recording.hits} hits</span>}
+        {recording && status.recording.phase !== 'review' && <button type="button" onClick={() => api('/api/sequence/record/review', { method: 'POST' })}>Review take</button>}
         <select aria-label="Count-in beats" value={rec.countInBeats} onChange={(e) => setRec({ ...rec, countInBeats: Number(e.currentTarget.value) })}>
           {[0, 1, 2, 4, 8].map((n) => <option key={n} value={n}>{n ? `${n} beat count-in` : 'No count-in'}</option>)}
         </select>
@@ -669,7 +658,7 @@ export function Sequence({ initial = {} }) {
             <div key={l.id} class={`seq-lane ${l.kind}`}>
               {editing
                 ? <button type="button" class="seq-lane-pick" aria-pressed={l.id === target.id} title="New clips go on this lane"
-                  onClick={() => { setSelected(null); setLanePicked(l.id); }}>{l.name}</button>
+                  onClick={() => { setSelected(null); setSelection([]); setLanePicked(l.id); }}>{l.name}</button>
                 : <span class="seq-lane-name">{l.name}</span>}
               {editing && (
                 <button type="button" class={`seq-mini${l.mute ? ' active' : ''}`} aria-pressed={l.mute} aria-label={`Mute ${l.name}`}
@@ -688,7 +677,8 @@ export function Sequence({ initial = {} }) {
             <div key={l.id} class="seq-lane-row">
               {seq.clips.filter((c) => c.laneId === l.id).map((c) => (
                 <ClipBlock key={c.id} clip={c} label={label(c)} total={total} snap={seq.snap} editing={editing} playing={onTop.has(c.id)}
-                  selected={c.id === selected} onSelect={setSelected} onChange={setClip} launching={status?.playing && onTop.has(c.id)}
+                  selected={selectedIds.includes(c.id)} onSelect={pickClip} onChange={setClip}
+                  onMove={(id, delta) => commit(moveClips(seq, editIds(id), delta))} launching={status?.playing && onTop.has(c.id)}
                   onLaunch={!editing && seq.mode === 'playlist' ? () => runTransport(playlistRowRequests(c.id, status?.playing && onTop.has(c.id))) : undefined} />
               ))}
               <div class="seq-end" style={{ left: `${(stop / total) * 100}%` }} aria-hidden="true" />
@@ -700,7 +690,14 @@ export function Sequence({ initial = {} }) {
 
       {editing && (
         <div class="seq-editor">
+          <div class="seq-toolbar" role="group" aria-label="Shared edit history">
+            <button type="button" disabled={!status?.history?.canUndo || recording} onClick={() => sync.replay('undo', revision)}>Undo</button>
+            <button type="button" disabled={!status?.history?.canRedo || recording} onClick={() => sync.replay('redo', revision)}>Redo</button>
+            <span class="muted">History is shared with other connected editors.</span>
+          </div>
+          <ShowSetup seq={seq} onSetup={sync.setup} />
           <SequenceSettings seq={seq} palettes={palettes} onChange={commit} />
+          <BpmCapture key={seq.id} onApply={(bpm) => commit({ ...seq, bpm })} destination="show tempo" />
           <LoopControl key={`${seq.id}:${JSON.stringify([seq.loop, seq.timeSignature])}`} seq={seq} onCommit={commit} />
           <div class="seq-toolbar">
             <label class="seq-field"><span>Name</span>
@@ -720,7 +717,7 @@ export function Sequence({ initial = {} }) {
               const c = addable && newClip(seq, { ...clipFrom, laneId: target.id, startBeat: toGrid(beat, seq.snap), beatsPerBar });
               if (!c) return;
               commit({ ...seq, clips: [...seq.clips, c] });
-              setSelected(c.id);
+              pickClip(c.id);
             }}>Add clip{target ? ` to ${target.name || target.id}` : ''}</button>
             <button type="button" onClick={save}>Save</button>
             <button type="button" onClick={duplicate}>Duplicate</button>
@@ -731,9 +728,31 @@ export function Sequence({ initial = {} }) {
               : <button type="button" class="seq-danger" onClick={() => setAsking(seq.id)}>Delete</button>)}
           </div>
 
+          <div class="seq-toolbar" role="group" aria-label="Selected clips">
+            <span>{selectedIds.length} clips selected</span>
+            <button type="button" disabled={selectedIds.length < 2} onClick={() => commit(groupClips(seq, selectedIds, newId('g')))}>Group clips</button>
+            <button type="button" disabled={!(seq.clipGroups || []).some((group) => group.clipIds.some((id) => selectedIds.includes(id)))}
+              onClick={() => commit(ungroupClips(seq, selectedIds))}>Ungroup clips</button>
+            <NumberField label="Move selection by beats" value={groupMove.beats} step={seq.snap} onChange={(beats) => setGroupMove({ ...groupMove, beats })} />
+            <NumberField label="Move selection by lanes" value={groupMove.lanes} step={1} onChange={(lanes) => setGroupMove({ ...groupMove, lanes: Math.trunc(lanes) })} />
+            <button type="button" disabled={!selectedIds.length} onClick={() => {
+              const moved = moveClips(seq, selectedIds, groupMove.beats, groupMove.lanes);
+              setShortMove(moveShortfall(seq, moved, selectedIds[0], groupMove.beats, groupMove.lanes));
+              return commit(moved);
+            }}>Move selection</button>
+            <button type="button" disabled={!selectedIds.length} onClick={() => commit({ ...seq, clips: seq.clips.map((c) => selectedIds.includes(c.id) ? { ...c, mute: !seq.clips.filter((item) => selectedIds.includes(item.id)).every((item) => item.mute) } : c) })}>
+              {selectedIds.length && seq.clips.filter((c) => selectedIds.includes(c.id)).every((c) => c.mute) ? 'Unmute selection' : 'Mute selection'}</button>
+            <button type="button" disabled={!selectedIds.length} onClick={() => { commit(removeClips(seq, selectedIds)); setSelection([]); setSelected(null); }}>Remove selection</button>
+          </div>
           <div class="seq-cliplist">
             {seq.clips.map((c) => (
               <div key={c.id} class={`seq-clip-row${c.id === selected ? ' selected' : ''}`} onClick={() => setSelected(c.id)}>
+                <input type="checkbox" aria-label={`Select ${label(c)} at beat ${c.startBeat}`} checked={selectedIds.includes(c.id)}
+                  onClick={(e) => e.stopPropagation()} onChange={(e) => {
+                    const group = selectedClipIds(seq, [c.id]);
+                    setSelection(e.currentTarget.checked ? [...new Set([...selectedIds, ...group])] : selectedIds.filter((id) => !group.includes(id)));
+                    setSelected(c.id);
+                  }} />
                 <span>{(seq.lanes.find((l) => l.id === c.laneId) || {}).name}</span>
                 <PresetSelect aria-label="Preset" clip={c} rows={rows} onChange={setClip} />
                 <Field type="number" aria-label="Start beat" value={c.startBeat} step={0.25} parse={parseNumber} onCommit={(v) => setClip({ ...c, startBeat: Math.max(0, v) })} />
@@ -744,7 +763,7 @@ export function Sequence({ initial = {} }) {
           {clip && <Inspector clip={clip} lanes={lanes} rows={rows} onChange={setClip}
             onEditEffect={clipSpec ? () => setEffectEdit({ key: `${seq.id}:${clip.id}`, sequenceId: seq.id, clipId: clip.id,
               name: label(clip), spec: JSON.parse(JSON.stringify(clipSpec)) }) : null}
-            onDelete={() => { commit({ ...seq, clips: seq.clips.filter((c) => c.id !== clip.id) }); setSelected(null); }} />}
+            onDelete={() => { commit(removeClips(seq, [clip.id])); setSelected(null); setSelection([]); }} />}
 
           <div class="seq-commands">
             {seq.commands.map((k) => (
@@ -759,6 +778,7 @@ export function Sequence({ initial = {} }) {
                   </select>
                   : <Field type="number" aria-label="Value" value={k.value} parse={parseNumber}
                     onCommit={(v) => setCommand({ ...k, value: k.type === 'brightness' ? Math.round(v) : v })} />}
+                <button type="button" onClick={async () => { await settleSequenceEdits(); await api(`/api/sequence/command/${encodeURIComponent(k.id)}/run`, { method: 'POST' }); }}>Run now</button>
                 <button type="button" class="seq-mini" aria-label="Remove command" onClick={() => commit({ ...seq, commands: seq.commands.filter((x) => x.id !== k.id) })}>×</button>
               </div>
             ))}

@@ -58,9 +58,19 @@ local axis is Y; X/Z sizes are diameters. A prism also needs a local X/Z polygon
 within its width/depth. Room polygons use world X/Z coordinates. Colours are
 optional `#RRGGBB` values. IDs must be unique within each collection.
 
+A physical light driven by several output units can use `aggregation: "weightedMean"`
+and `sources: [{ "fixtureId": 17, "unit": 0, "weight": 1 }, ...]` instead of
+`fixtureId`/`unit`. It draws one marker whose linear RGB is the weighted mean of
+the sources. Weights must be positive and their sum finite; a binding accepts up
+to 64 unique source units. Missing sources count as black and appear as incomplete
+coverage. This estimates the whole lamp's colour, without inventing segment
+positions. The placement editor can add, change or remove source units and weights.
+Shared source units are listed explicitly: changing one output can affect several
+physical lights, regardless of their separate preview markers.
+
 Models accept up to 128 room polygons, 1,500 objects and 4,096 bindings, with up
-to 128 vertices per polygon and a 1 MB JSON request limit. External asset URLs,
-scripts and unrecognised fields are rejected. Keep the original floor-plan
+to 128 vertices per polygon, 8,192 total source references and a 1 MB JSON
+request limit. External asset URLs, scripts and unrecognised fields are rejected. Keep the original floor-plan
 source and measurements separately; this is a rendering format, not an archive
 of the source application.
 

@@ -274,7 +274,22 @@ const CONTROL_ROWS: CataloguePreset[] = [
     spec: validateSpec({ kind: 'strobe', palette: null, params: { clock: 'beat', flashesPerSecond: 5, continueBetween: true } }) },
 ];
 
-export const CATALOGUE: readonly CataloguePreset[] = deepFreeze([...LDJ_PRESETS, ...HD_PRESETS, ...DISCO_ROWS, ...OWN_ROWS, ...CONTROL_ROWS]);
+const GENTLE_ROWS: CataloguePreset[] = [
+  { id: 'party.fire', name: 'Fire', desc: 'A gentle amber and ember wash, drifting over a long swell without strobing',
+    app: 'own', family: 'own.party', party: true, spec: validateSpec({ kind: 'hd.spatialWash', brightness: 0.4,
+      palette: ['#B51D00004000', '#E16A00102000', '#FFAF30300000'],
+      gradients: [{ name: 'Embers', space: 'rgb', wrap: true, stops: [{ at: 0, slot: 0 }, { at: 1 / 3, slot: 1 }, { at: 2 / 3, slot: 2 }] }], gradient: 'Embers',
+      params: { curve: 'easeInOut', attack: 8, hold: 16, release: 8, loopLength: 32, direction: 'forward', spatial: { angle: 20, radius: 1 }, trigger: { mode: 'timeline' } },
+    }) },
+  { id: 'party.ice', name: 'Ice', desc: 'A gentle blue, cyan and cool-white breath with soft colour transitions and no strobe',
+    app: 'own', family: 'own.party', party: true, spec: validateSpec({ kind: 'hd.breathingFade', brightness: 0.35,
+      palette: ['#164A9B100000', '#3FAEC7300000', '#9EDDEA500000'],
+      gradients: [{ name: 'Glacier', space: 'rgb', wrap: true, stops: [{ at: 0, slot: 0 }, { at: 1 / 3, slot: 1 }, { at: 2 / 3, slot: 2 }] }], gradient: 'Glacier',
+      params: { curve: 'easeInOut', attack: 16, hold: 16, release: 16, loopLength: 48, trigger: { mode: 'timeline' } },
+    }) },
+];
+
+export const CATALOGUE: readonly CataloguePreset[] = deepFreeze([...LDJ_PRESETS, ...HD_PRESETS, ...DISCO_ROWS, ...OWN_ROWS, ...CONTROL_ROWS, ...GENTLE_ROWS]);
 const INDEX = presetIndex(CATALOGUE);
 
 export function presetById(id: string): CataloguePreset | null {
@@ -308,7 +323,8 @@ export const FAMILIES: readonly CatalogueFamily[] = deepFreeze([
   ldjFamily('studio'), ldjFamily('visualizer'), ldjFamily('bitmap'), ldjFamily('macro'),
   ...(Object.keys(HD_DEFAULTS) as HdKind[]).map((kind) => family(kind, 'hd', HD_FAMILY_NAMES[kind])),
   family('hd.disco', 'hd', 'Disco'),
-  family('own.party', 'own', 'Party Looks'), family('own.energy', 'own', 'Energy'),
+  // Party Looks groups presets whose kinds belong to other families; each kind is listed once.
+  { ...family('own.party', 'own', 'Party Looks'), kinds: [] }, family('own.energy', 'own', 'Energy'),
 ]);
 
 const HD_PALETTES: BuiltinPalette[] = [

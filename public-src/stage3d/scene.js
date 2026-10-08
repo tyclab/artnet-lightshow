@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { roomViews, STAGE_FOV } from './world.js';
+import { meanLightRGB, roomViews, STAGE_FOV } from './world.js';
 
 /**
  * The 3D stage: the rig in a dark, hazy room, drawn with three.js.
@@ -357,6 +357,7 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
   }
 
   const rgb = new Float32Array(3);
+  const sourceRGB = new Float32Array(3);
   /** Colour every light from a frame: one emitter set per unit of the rig. */
   function setLights(frame) {
     if (!parts || !frame) return;
@@ -379,7 +380,8 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
       glow(lampGlow.geometry.attributes.color, k, 0.9);
     });
     bulbs.forEach((bulb, k) => {
-      lightRGB(frame[bulb.unit], rgb);
+      if (bulb.sources) meanLightRGB(bulb.sources, frame, rgb, sourceRGB);
+      else lightRGB(frame[bulb.unit], rgb);
       put(bulbMesh.instanceColor, k, 1);
       glow(lampGlow.geometry.attributes.color, pars.length + k, 1);
     });

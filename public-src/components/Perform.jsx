@@ -15,6 +15,10 @@ import { Matrix } from './Matrix.jsx';
 import { SubTabs, SubPanel, useSubTab } from './setup/SubTabs.jsx';
 import { AudioMeters } from './AudioMeters.jsx';
 import { StrobesOff } from './Photosensitivity.jsx';
+import { TempoScale } from './TempoScale.jsx';
+import { VisualizerColours } from './VisualizerColours.jsx';
+import { BpmCapture } from './BpmCapture.jsx';
+import { LiveAutomation } from './LiveAutomation.jsx';
 
 /**
  * The view for running a show from a tablet: what a hand needs mid-set, as
@@ -164,6 +168,10 @@ function SyncHealth() {
             <button type="button" class="perform-follow" onClick={followMusic}
               title="The tempo is held by hand: follow the deck, the song or the live beat again">Follow the music</button>
           )}
+          {c.id === 'clock' && <>
+            <TempoScale bpm={s.bpm} direction="half" />
+            <TempoScale bpm={s.bpm} direction="double" />
+          </>}
         </Fragment>
       ))}
     </section>
@@ -237,11 +245,14 @@ export function Perform() {
             <Utility />
           </div>
           <PaletteStrip />
+          <VisualizerColours />
           <HardwareFit />
         </div>
         <div class="perform-side">
           <Faders />
           <AudioMeters />
+          <BpmCapture destination="global tempo" onApply={(bpm) => api('/api/set', { method: 'POST', body: JSON.stringify({ bpm }) })} />
+          <LiveAutomation />
         </div>
       </div>
       <section class="perform-music" aria-label="Music and sync">

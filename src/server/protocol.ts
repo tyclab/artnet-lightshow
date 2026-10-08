@@ -19,6 +19,7 @@ const DOMAIN_OF: Readonly<Record<string, Domain>> = {
   energyOverride: 'look', paletteOverride: 'look', paletteOverrideId: 'look', safety: 'look',
   basePalette: 'look', overridePalette: 'look',
   strobe: 'look',
+  liveAutomation: 'look',
   matrix: 'look',
 
   artnet: 'rig', universes: 'rig', fixtures: 'rig', profiles: 'rig', identify: 'rig', hueBridges: 'rig', hueStrobe: 'rig', hardware: 'rig', armed: 'rig',
@@ -42,7 +43,7 @@ const DOMAIN_OF: Readonly<Record<string, Domain>> = {
 
   voices: 'voices',
 
-  pads: 'pads',
+  pads: 'pads', padLayouts: 'pads',
 };
 
 export function hasDomain(key: string): boolean {
