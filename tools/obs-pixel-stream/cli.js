@@ -75,7 +75,7 @@ export async function live(settings) {
       const started = performance.now();
       if (!obs?.connected && started >= obsRetryAt) {
         try {
-          let connection;
+          let connection = null;
           connection = await connectObs(obsConfig(settings.obsConfig), () => {
             if (connection && obs === connection) { capture = null; void pump.invalidate(); }
           });
