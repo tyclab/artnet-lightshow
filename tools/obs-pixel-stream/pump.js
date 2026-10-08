@@ -1,9 +1,10 @@
 const acceptedCodes = new Set(['DISARMED', 'BUSY', 'INVALID', 'RATE_LIMIT', 'NO_LEASE', 'ACKNOWLEDGEMENT_REQUIRED']);
 
 export class LeasePump {
-  constructor({ transport, capture, target, fixtureId, width, height, now = () => performance.now(), report = () => {} }) {
-    Object.assign(this, { transport, capture, target, fixtureId, width, height, now, report });
+  constructor({ transport, capture, target, fixtureId, width, height, fps = 10, now = () => performance.now(), report = () => {} }) {
+    Object.assign(this, { transport, capture, target, fixtureId, width, height, fps, now, report });
     this.generation = 0; this.lease = null; this.busy = false; this.retryAt = 0; this.failures = 0; this.frames = 0; this.stopped = false;
+    this.nextCaptureAt = 0;
   }
   async release(lease, connectionId) {
     if (!lease || !this.transport.connected || this.transport.id !== connectionId) return;
@@ -33,7 +34,7 @@ export class LeasePump {
       return;
     }
     if (this.lease && this.lease.key !== target.key) await this.invalidate();
-    if (this.now() < this.retryAt) return;
+    if (this.now() < this.retryAt || this.now() < this.nextCaptureAt) return;
     this.busy = true;
     const generation = this.generation, connectionId = this.transport.id, key = target.key;
     try {
@@ -61,6 +62,7 @@ export class LeasePump {
         this.backoff(acceptedCodes.has(response?.code) ? response.code : 'Pixel frame rejected');
         return;
       }
+      this.nextCaptureAt = this.now() + 1000 / this.fps;
       this.failures = 0; this.frames++; this.report('Streaming');
     } catch {
       await this.invalidate();

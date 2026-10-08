@@ -19,6 +19,7 @@ test('one outstanding capture and frame acknowledgement; no caller backlog', asy
   captured.resolve(image()); await first;
   assert.equal(h.calls.filter(x => x.event.endsWith('frame')).length, 1);
   assert.ok(h.calls[1].payload.data instanceof Uint8Array);
+  h.setTime(100);
   const ack = deferred(); h.transport.request = async () => ack.promise;
   const next = h.pump.step(); await Promise.resolve(); await h.pump.step();
   assert.equal(h.pump.frames, 1); ack.resolve({ ok: true }); await next; assert.equal(h.pump.frames, 2);
@@ -56,6 +57,7 @@ test('target conflicts back off and never capture; success resets retries', asyn
 });
 test('OBS failure and server lease loss release once without replaying a cached image', async () => {
   const h = setup(); await h.pump.step();
+  h.setTime(100);
   h.pump.capture = async () => { throw new Error('OBS gone'); }; await h.pump.step();
   assert.equal(h.pump.lease, null); assert.equal(h.calls.filter(x => x.event.endsWith('frame')).length, 1);
   const lost = setup(); lost.transport.request = async event => event.endsWith('claim') ? claim() : { ok: false, code: 'NO_LEASE' };
@@ -69,4 +71,19 @@ test('an incompatible successful claim is explicitly released without sending pi
   await h.pump.step();
   assert.deepEqual(h.calls.map(x => x.event), ['pixel-input:claim', 'pixel-input:release']);
   assert.equal(h.pump.lease, null);
+});
+test('slow captures cannot cause catch-up bursts after a frame acknowledgement', async () => {
+  let now = 0;
+  const sentAt = [];
+  const transport = { connected: true, id: 'connection', request: async event => {
+    if (event.endsWith('claim')) return claim();
+    if (event.endsWith('frame')) { sentAt.push(now); now += 10; }
+    return { ok: true };
+  } };
+  const pump = new LeasePump({ transport, target: () => ({ ok: true, key: 'target' }), fixtureId: 53, width: 2, height: 1, now: () => now,
+    capture: async () => { now += sentAt.length ? 1 : 150; return image(); },
+  });
+  await pump.step(); assert.deepEqual(sentAt, [150]); assert.equal(pump.nextCaptureAt, 260);
+  now = 200; await pump.step(); assert.equal(sentAt.length, 1);
+  now = 260; await pump.step(); assert.deepEqual(sentAt, [150, 261]);
 });

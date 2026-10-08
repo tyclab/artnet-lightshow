@@ -85,7 +85,8 @@ export async function live(settings) {
       }
       if (!stopped && obs?.connected && capture) await pump.step();
       else await pump.invalidate();
-      await sleep(Math.max(1, 1000 / settings.fps - (performance.now() - started)));
+      const frameWait = pump.nextCaptureAt - performance.now();
+      await sleep(Math.max(1, frameWait > 0 ? frameWait : 1000 / settings.fps));
     }
   } finally {
     clearInterval(syncTimer); await pump.stop(); socket.disconnect(); obs?.close();
