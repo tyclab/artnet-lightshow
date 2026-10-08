@@ -1,5 +1,6 @@
 # Choose one torch extra: cpu, cu128 or rocm; all torch packages must use the same index.
-# Windows AMD iGPUs use the separate requirements.txt installation.
+# A torchvision from another torch build installs, then fails every model with "operator torchvision::nms does not exist".
+# The server picks up the .venv uv creates (src/python-env.ts). Windows AMD iGPUs use requirements.txt instead.
 
 [project]
 name = "artnet-lightshow-analysis"

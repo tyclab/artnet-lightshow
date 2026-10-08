@@ -14,6 +14,7 @@ MINOR_PROFILE = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53,
 KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
 
+# Several phrasings per subgenre, best match wins: one phrasing can miss ('disco' is also a room).
 GENRE_PROMPTS = {
     'edm':       ('electronic dance music', 'house music',
                   'a four to the floor club track'),
@@ -36,6 +37,7 @@ GENRE_PROMPTS = {
     'ambient':   ('ambient music', 'a slow atmospheric drone with no beat'),
 }
 
+# 0.1 puts GENRE_MIN_SCORE at a 0.10 cosine lead; test_genre.py pins the pairing.
 GENRE_SOFTMAX_TEMPERATURE = 0.1
 
 SUBGENRES = {
@@ -58,12 +60,15 @@ SUBGENRES = {
     'classical': ['classical music', 'opera', 'choir', 'orchestra'],
     'folk':      ['folk music', 'acoustic guitar', 'traditional music',
                   'middle eastern music'],
+    # No piano/gospel/christian music: they carried a Backstreet Boys track to ambient, i.e. the calm tier.
     'ambient':   ['ambient music', 'new-age music'],
 }
 
+# A 0.108 vs 0.105 near-tie once lit a whole track as calm; below these the signal-derived style decides.
 GENRE_MIN_SCORE = 0.15
 GENRE_MIN_MARGIN = 1.5
 
+# Show-engine contract: dance strobes and chases, moderate strobes only on drops, rock sparing effects, calm never strobes.
 GENRE_STYLE = {
     'edm': 'dance', 'dubstep': 'dance', 'trance': 'dance', 'disco': 'dance',
     'hiphop': 'moderate', 'pop': 'moderate', 'funk': 'moderate',
@@ -89,7 +94,7 @@ class Perception:
     style: str = 'unknown'
     subgenre_scores: dict = field(default_factory=dict)
     top_tags: list = field(default_factory=list)
-    tags: dict = field(default_factory=dict)
+    tags: dict = field(default_factory=dict)  # raw AudioSet probabilities for the band stage; not serialised
 
     def to_dict(self):
         return {
@@ -106,7 +111,7 @@ class Perception:
             'genre': {
                 'label': self.genre,
                 'confidence': round(self.genre_confidence, 3),
-                'labelConf': round(self.genre_confidence, 3),
+                'labelConf': round(self.genre_confidence, 3),  # the web client and cached documents read this name
                 'style': self.style,
                 'source': self.genre_source,
                 'subScores': {k: round(v, 3) for k, v in self.subgenre_scores.items()},
@@ -194,6 +199,7 @@ def estimate_mood(features, bands, rhythm, scale, key_strength, roles=None):
         0.40 * beat_confidence + 0.25 * tempo_fit
         + 0.20 * rhythm.stability + 0.15 * density)
 
+    # Kickiness reads the kick role too: the bass band alone reports a sustained bass line, not the drum.
     kick_band = bands.get('bass')
     kickiness = 0.5
     if kick_band is not None:
@@ -301,6 +307,7 @@ def decide_genre(scores, mood, rhythm):
 
     style = GENRE_STYLE.get(label, 'moderate')
 
+    # Veto: a loud, danceable track is never lit as calm, whatever the tag says.
     if style == 'calm' and mood['arousal'] >= 0.70 and mood['danceability'] >= 0.60:
         style = _style_from_signal(mood, rhythm)['style']
 

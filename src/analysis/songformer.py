@@ -13,13 +13,14 @@ from . import models
 RATE = 24000
 WINDOW_SEC = 420
 MIN_WINDOW_SEC = 60
+# Working memory per second² of window, on CPU: a 420 s window needs ~22 GB and got the worker OOM-killed on 16 GB.
 GB_PER_SECOND_SQUARED = 1.25e-4
 MEMORY_SHARE = 0.6
 REQUIRED_FILES = ('model.safetensors', 'modeling_songformer.py', 'config.json',
                   'muq_config2.json', 'msd_stats.json')
 REQUIRED_PACKAGES = ('muq', 'x_transformers', 'omegaconf', 'ema_pytorch', 'loguru',
                      'safetensors', 'transformers')
-MODES = ('auto', 'songformer', 'off')
+MODES = ('auto', 'songformer', 'off')  # auto runs it only on a GPU: on a laptop CPU it is ~0.75x real time
 
 
 def _log(message):
@@ -67,7 +68,7 @@ def wanted(value=None):
 
 
 def _stub_msaf():
-    """The model imports msaf for its evaluation metrics, which inference never calls."""
+    """Stub msaf, imported only for evaluation metrics: msaf pins enum34, which breaks the stdlib on Python 3."""
     if 'msaf' in sys.modules or importlib.util.find_spec('msaf') is not None:
         return
     def compute_results(*_args, **_kwargs):
@@ -99,6 +100,7 @@ def load():
         import torch
         from safetensors.torch import load_file
         _log(f'loading from {directory}…')
+        # Its code and transformers print on stdout, the worker's protocol stream.
         with contextlib.redirect_stdout(sys.stderr):
             modeling = importlib.import_module('modeling_songformer')
             configuration = importlib.import_module('configuration_songformer')

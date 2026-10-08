@@ -1,7 +1,8 @@
 # Lightshow Deezer Bridge (Firefox)
 
-Feeds the **Deezer** auto-source by reading the web player's page state and
-posting it to the lightshow server:
+Feeds the **Deezer** auto-source. Deezer's JS SDK is dead (no obtainable
+`DEEZER_APP_ID`), so this extension reads the web player's page state and
+posts it to the lightshow server:
 
 - current track **with ISRC** → exact-audio download via Deezer ARL
 - **position + play/pause** → drives the auto-show timeline
@@ -17,7 +18,7 @@ flowchart LR
   Player[Deezer window.dzPlayer] --> Inject[inject.js in page context]
   Inject -->|postMessage| Content[content.js in isolated context]
   Content -->|runtime.sendMessage| Background[background.js event page]
-  Background -->|POST state or disconnect| Server[Configured lightshow server]
+  Background -->|POST /api/deezer/state, /api/deezer/disconnect on tab close| Server[Configured lightshow server]
 ```
 
 ## Install (temporary, recommended for dev)
@@ -96,7 +97,8 @@ Then update the accessor lists in `inject.js` (`readTrackList`, `queueIndex`,
 
 ### Notes
 
-- The accessors currently used include `getTrackList()`, `getIndexSong()` and
-  `getNextSong()`. Recheck them against the live player when detection fails.
+- Confirmed against Deezer (Firefox 152, 2026): queue = `getTrackList()`,
+  current index = `getIndexSong()`, next = `getNextSong()` (carries ISRC).
+  Recheck them against the live player when detection fails.
 - Position is read once a second and interpolated server-side, same as the
   other sources.

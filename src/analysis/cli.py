@@ -1,4 +1,7 @@
-"""Command line and worker entry points."""
+"""Command line and worker entry points.
+
+stdout carries only machine-readable output in every mode; a stray print corrupts the protocol.
+"""
 
 import json
 import os
@@ -23,6 +26,7 @@ def download(url):
     try:
         urllib.request.urlretrieve(url, path)
     except BaseException:
+        # The caller never learns a failed download's path, so only this can remove it.
         try:
             os.remove(path)
         except OSError:
@@ -146,6 +150,7 @@ def worker_loop(out=None):
             traceback.print_exc(file=sys.stderr)
             response = {'id': request_id, 'error': str(exc)}
         if models.gpu_fault():
+            # A faulted GPU FFT stays broken for the process; ask for a fresh worker.
             response['recycle'] = True
         out.write(_encode_reply(response) + '\n')
         out.flush()
@@ -217,6 +222,7 @@ def live_loop(rate, block=None):
         raw = stream.read1(block * 4) if hasattr(stream, 'read1') else stream.read(block * 4)
         if not raw:
             break
+        # A pipe read need not end on a sample boundary.
         raw = pending + raw
         whole = len(raw) - len(raw) % 4
         raw, pending = raw[:whole], raw[whole:]

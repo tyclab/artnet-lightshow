@@ -72,7 +72,7 @@ while ($true) {
             if ($durMs -lt 0 -or $durMs -gt $MAX_MS) { $durMs = 0 }
             if ($posMs -lt 0 -or $posMs -gt $MAX_MS) { $posMs = 0 }
 
-            # Interpolate between SMTC updates only while LastUpdatedTime is fresh.
+            # SMTC refreshes Position only on play/pause/seek; interpolate while LastUpdatedTime is fresh.
             $lastUpdated = $timeline.LastUpdatedTime
             if ($isPlaying -and $lastUpdated.Year -gt 2000) {
                 $elapsed = ([DateTimeOffset]::Now - $lastUpdated).TotalMilliseconds

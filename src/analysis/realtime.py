@@ -122,6 +122,7 @@ class StreamingAnalyzer:
         """
         if self._next_beat_frame is None or self._period_frames <= 0:
             return None
+        # Not via _phase(): its wrap reads a beat one frame overdue as a whole beat back.
         return self._beat_count - (self._next_beat_frame - self._frame_index) / self._period_frames
 
     def last_frame(self):
@@ -273,12 +274,14 @@ class StreamingAnalyzer:
             return
 
         frame_rate = self.sample_rate / float(self.hop)
+        # Fold octave flips before smoothing: averaging 174 with 87 gives 130, a tempo the track never played.
         bpm = _fold_octave(bpm, self._bpm)
         self._bpm = bpm if self._bpm <= 0 else 0.7 * self._bpm + 0.3 * bpm
         self._period_frames = 60.0 * frame_rate / max(1e-6, self._bpm)
         was_locked = self._locked
         self._locked = confidence > 0.25
 
+        # Find the phase from onset history: the onset pull corrects only a third of a beat, so a guessed start never converges.
         if self._next_beat_frame is None or not was_locked:
             self._align_phase(window)
 

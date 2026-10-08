@@ -61,13 +61,14 @@ def separate(mono, sample_rate, overlap=0.10, segment_seconds=None, stereo_loade
     import librosa
     from demucs.apply import apply_model
 
+    # Demucs is the default: BS-RoFormer takes ~7x as long, longer than the track on an integrated GPU.
     if models.bs_roformer_enabled() and not models.gpu_fault():
         try:
             return separate_bs_roformer(mono, sample_rate, stereo_loader)
         except Exception as exc:
             models.gpu_fault(exc)
             print(f'[stems] BS-RoFormer unavailable; using Demucs: {exc}', file=sys.stderr)
-            models.unload('bs-roformer-4stem')
+            models.unload('bs-roformer-4stem')  # never hold both; the next track retries BS-RoFormer on a clean card
 
     model = models.separator()
 
@@ -95,7 +96,7 @@ def separate(mono, sample_rate, overlap=0.10, segment_seconds=None, stereo_loade
         signal = source.mean(dim=0).numpy()
         back = librosa.resample(signal, orig_sr=model.samplerate,
                                 target_sr=sample_rate)
-        if back.size < mono.size:
+        if back.size < mono.size:  # two resamples can drift a sample; stems must match the feature grid
             back = np.pad(back, (0, mono.size - back.size))
         out[name] = back[:mono.size].astype(np.float32)
 
@@ -106,6 +107,7 @@ def separate(mono, sample_rate, overlap=0.10, segment_seconds=None, stereo_loade
 
 BS_ROFORMER_RATE = 44100
 
+# Calls swap the shared separator's output_dir; interleaved swaps landed stems in the working directory.
 _BS_ROFORMER_LOCK = threading.Lock()
 
 STEM_OF = {'drums': 'drums', 'bass': 'bass', 'vocals': 'vocals', 'other': 'other',
@@ -133,7 +135,7 @@ def separate_bs_roformer(mono, sample_rate, stereo_loader=None):
         else:
             sf.write(source, np.asarray(mono, dtype=np.float32), sample_rate)
         with _BS_ROFORMER_LOCK:
-            targets = [separator, separator.model_instance]
+            targets = [separator, separator.model_instance]  # audio-separator copies output_dir into the model
             previous_dirs = [target.output_dir for target in targets]
             try:
                 for target in targets:

@@ -1,4 +1,4 @@
-"""ITU-R BS.1770-4 loudness measurement (the LUFS scale broadcasters use)."""
+"""ITU-R BS.1770-4 loudness (LUFS), implemented here rather than as a dependency: two biquads and a gated mean."""
 
 import numpy as np
 

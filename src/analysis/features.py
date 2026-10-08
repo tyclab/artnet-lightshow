@@ -31,6 +31,7 @@ class FrameFeatures:
     chroma: np.ndarray = field(default_factory=lambda: np.zeros((12, 0)))
     harmonic_magnitude: np.ndarray = field(default_factory=lambda: np.zeros((0, 0)))
     percussive_magnitude: np.ndarray = field(default_factory=lambda: np.zeros((0, 0)))
+    #: Empty when the source has nothing above the analysis Nyquist: `air` is then absent, not silent.
     wideband_magnitude: np.ndarray = field(default_factory=lambda: np.zeros((0, 0)))
     wideband_frequencies: np.ndarray = field(default_factory=lambda: np.zeros(0))
 
@@ -106,6 +107,7 @@ def extract(audio, config: PreprocessConfig = None) -> FrameFeatures:
     except Exception:
         chroma = librosa.feature.chroma_stft(S=harmonic_mag, sr=sr)
 
+    # K-weighting-shaped tilt per frame, not full BS.1770; absolute calibration comes from stage 1's integrated value.
     weights = _k_weight_response(frequencies)
     weighted_power = np.sum((magnitude ** 2) * weights[:, None], axis=0)
     with np.errstate(divide='ignore'):

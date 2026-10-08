@@ -92,6 +92,7 @@ def beat_synchronous_features(features, beat_frames):
             out = librosa.util.sync(matrix, frames, aggregate=np.median)
         except Exception:
             return None
+        # librosa.util.sync adds a leading bucket for the span before the first beat.
         if out.shape[1] == frames.size + 1:
             out = out[:, 1:]
         return out[:, :frames.size]
@@ -378,6 +379,7 @@ def assign_roles(sections: List[Section], duration, drops=(), config=None):
             role = 'bridge'
         section.role = role
 
+    # Intro/outro are positional; other roles, drop included, must agree per cluster or repeats get different beat divisions.
     positional = {'intro', 'outro'}
     by_label = {}
     for s in sections:
@@ -386,7 +388,7 @@ def assign_roles(sections: List[Section], duration, drops=(), config=None):
         by_label.setdefault(s.label, []).append(s)
     for label, group in by_label.items():
         roles = [s.role for s in group]
-        best = max(group, key=lambda s: s.energy).role
+        best = max(group, key=lambda s: s.energy).role  # ties: loudest section's role, not set order
         winner = max(sorted(set(roles)), key=lambda r: (roles.count(r), r == best))
         for s in group:
             s.role = winner
@@ -565,6 +567,7 @@ def _snap(t, beats, downbeats, beat_period, bar_period):
     return float(t)
 
 
+# SongFormer has no drop label. Overriding other functions turned correctly named verses into drops on SALAMI live rock.
 DROP_FUNCTIONS = {'chorus', 'inst'}
 
 

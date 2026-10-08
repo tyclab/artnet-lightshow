@@ -15,7 +15,7 @@ from support import AudioTestCase, analyse_track, needs_audio
 from analysis import schema
 
 
-COMPATIBILITY_FIELDS = [
+COMPATIBILITY_FIELDS = [  # the web client, timeline and cache read these; no analyser test catches a removal
     'duration', 'bpm', 'tempoCurve', 'tempoStability', 'beatSource', 'beats',
     'beatStrengths', 'downbeats', 'meter', 'downbeatConfidence', 'key', 'scale',
     'keyStrength', 'mood', 'genre', 'segments', 'onsets', 'kickOnsets', 'drops',

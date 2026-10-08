@@ -12,7 +12,7 @@ from .config import RhythmConfig
 class Rhythm:
     bpm: float = 120.0
     stability: float = 1.0
-    source: str = 'model'
+    source: str = 'model'  # always 'model'; kept because cached documents and the web client read it
     beats: np.ndarray = field(default_factory=lambda: np.zeros(0))
     strengths: np.ndarray = field(default_factory=lambda: np.zeros(0))
     confidences: np.ndarray = field(default_factory=lambda: np.zeros(0))
@@ -427,6 +427,7 @@ def model_beats(audio, config: RhythmConfig):
             with models.inference('beat_this', first=True):
                 beats, downbeats = tracker(signal, audio.sample_rate)
         except Exception as exc:
+            # The beat grid is the one answer the show cannot do without: retry on the CPU after a GPU fault or OOM.
             if not (models.gpu_fault(exc) or models.out_of_memory(exc, 'the beat model')):
                 raise
             beats, downbeats = models.beat_tracker(on='cpu')(signal, audio.sample_rate)
@@ -445,7 +446,7 @@ def model_beats(audio, config: RhythmConfig):
 
 
 def decode_downbeats(beats, activations, meters=(4, 3)):
-    """Fit a regular bar grid to the model activations on the beat grid.
+    """Fit a regular bar grid to the activations: Beat This! alone marks two thirds of a waltz's beats as downbeats.
     Rank metre/phase pairs by precision times recall; recall alone favors short bars.
     Return (downbeats, indices into beats, metre, confidence in 0..1).
     """
@@ -504,6 +505,7 @@ def analyse(audio, features, config: RhythmConfig = None, model_result=None) -> 
         onset_env[:blend_len] = (0.6 * dsp.robust_norm(features.percussive_onset[:blend_len])
                                  + 0.4 * dsp.robust_norm(levelled_onset[:blend_len]))
 
+    # The model only: periodicity cannot tell a song counted at 99 BPM from the same song at 198.
     beats, model_downbeats = model_result() if model_result else model_beats(audio, config)
     source = 'model'
     frames = librosa.time_to_frames(beats, sr=sr, hop_length=hop) \

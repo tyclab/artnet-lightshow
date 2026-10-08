@@ -1,4 +1,5 @@
-// Temporarily acknowledge flashes in memory only; the returned callback restores settings.
+// Photosensitivity acknowledgement, in memory only: the live engine renders strobe energies only with it.
+// The returned callback restores settings.
 import { settings } from '../../src/server/settings.ts';
 
 /** Acknowledge until the returned function is called. */

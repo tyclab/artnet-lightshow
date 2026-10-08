@@ -16,7 +16,7 @@ class Drop:
     breakdown: float
     sustain: float
     snap: str = 'raw'
-    kind: str = 'hype'
+    kind: str = 'hype'  # 'proper': breakdown then sustained slam; 'hype': impact without one
 
     def to_dict(self):
         return {
@@ -130,6 +130,7 @@ def detect_drops(impact, times, frame_rate, beats, downbeats, config: DynamicsCo
 
     drops = []
     for i in candidates:
+        # No before/after at the file edges: the fade-in from silence would read as a drop two seconds in.
         if i < long_span or i + sustain_span >= impact.size:
             continue
         rise_value = float(rise[i])
@@ -233,6 +234,7 @@ def detect_buildups(impact, features, times, frame_rate, drops, onsets,
             continue
 
         smooth = dsp.moving_average(combined, max(3, int(frame_rate * 0.5)))
+        # Anchor on the quietest point and take the most ramp-like start; slope or earliest-passing pulls in the verse.
         anchor = int(np.argmin(smooth))
         step = max(1, int(frame_rate * 0.25))
         best_start, best_trend = None, config.buildup_trend
@@ -327,6 +329,7 @@ def detect_silences(features, config: DynamicsConfig):
     """Contiguous near-silent passages. The show must go dark here, not idle."""
     if features.rms.size == 0:
         return []
+    # Smoothed: raw RMS dips between kicks and reported hundreds of silences on four-on-the-floor tracks.
     energy = dsp.robust_norm(
         dsp.moving_average(features.rms, max(3, int(features.frame_rate * 0.5))))
     quiet = energy < config.silence_threshold

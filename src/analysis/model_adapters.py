@@ -44,6 +44,7 @@ def _load_muq(kind, model_id):
         target = models.home()
         kwargs = {"local_files_only": True}
         if kind == "MuQMuLan":
+            # MuLan's checkpoint also builds a MuQ backbone; point it at the provisioned local one, never fetch.
             with open(Path(model_id) / "config.json") as handle:
                 config = json.load(handle)
             config["audio_model"]["name"] = _model_path("muq", "ARTNET_MUQ_MODEL")
@@ -56,6 +57,7 @@ def _load_muq(kind, model_id):
         with contextlib.redirect_stdout(sys.stderr):
             cls = getattr(module, kind)
             binary = Path(model_id) / "pytorch_model.bin"
+            # HubMixin 0.x assumes local checkpoints are safetensors; the published MuLan one is PyTorch format.
             if kind == "MuQMuLan" and binary.is_file() and not (Path(model_id) / "model.safetensors").is_file():
                 import torch
                 model = cls(config=kwargs["config"])
@@ -96,7 +98,7 @@ def preload():
 # Four windows avoid the 4 GB cuDNN workspace selected at six or more on an 8 GB GPU.
 _MUQ_BATCH = max(1, int(os.environ.get("ARTNET_MUQ_BATCH", "4")))
 
-EMBEDDING_DIGITS = 4
+EMBEDDING_DIGITS = 4  # full precision made the document megabytes; 4 places is below the spread between windows
 
 
 def _rounded(vector):
@@ -194,7 +196,7 @@ def mulan_scores(waveform, sample_rate: int, vocabularies):
     return models.run_pass("muq-mulan", run, modules=[model])
 
 
-_TEXT_LATENTS = {}
+_TEXT_LATENTS = {}  # keyed by model, labels and device; the model is held so a dead object's id is never reused
 
 
 def _text_latents(model, labels, device=None):
@@ -222,9 +224,8 @@ def semantic_scores(waveform, sample_rate: int, vocabulary):
 
 
 def muq_pass(waveform, sample_rate: int, vocabularies):
-    """Run MuQ embeddings and MuLan scores using one shared 24 kHz resampling pass.
-    The caller may overlap this stage with DSP. Checkpoints and failures remain
-    independent: a missing or failed tower returns empty results only for that tower.
+    """Run MuQ embeddings and MuLan scores on one shared 24 kHz resample; the caller may overlap it with DSP.
+    Checkpoints and failures are independent: a missing or failed tower empties only its own result.
     """
     audio = _to_24k(waveform, sample_rate)
     try:
@@ -320,7 +321,7 @@ def skey_key(audio_path: str, samples=None, sample_rate=None):
     else:
         module.load_audio = _skey_load_audio
     try:
-        module.print = lambda *args, **kwargs: None
+        module.print = lambda *args, **kwargs: None  # its emoji raises on a Windows console; redirect_stdout races other threads
         result = module.detect_key(audio_path, device=os.environ.get('ARTNET_ANALYSIS_DEVICE', 'cpu'))
         value = result[0] if isinstance(result, list) else result
         return {"value": str(value), "confidence": 1.0, "source": "s-key"}

@@ -29,6 +29,7 @@ EFFECTS = ('accent', 'pulse', 'flash', 'strobe', 'blinder', 'chase', 'sweep',
            'ramp')
 
 
+# Every event has the same fields so the show engine handles unknown types; `effect` is a hint src/show/director.ts may refuse.
 @dataclass
 class Event:
     t: float

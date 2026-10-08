@@ -69,6 +69,7 @@ SAMPLE_RATE = 22050
 HOP = 256
 N_FFT = 1024
 
+# Frames are dated by window start but onsets register about half a window in: 23 ms, 15-33 ms measured (test_live.py).
 WINDOW_LAG_SEC = N_FFT / 2 / SAMPLE_RATE
 
 MAX_BANDS = 12
@@ -318,7 +319,7 @@ def capture_soundcard(sc, source, device, service, emitter, stop):
     else:
         mic = sc.get_microphone(device) if device else sc.default_microphone()
         name = mic.name
-    with mic.recorder(samplerate=SAMPLE_RATE, blocksize=HOP) as recorder:
+    with mic.recorder(samplerate=SAMPLE_RATE, blocksize=HOP) as recorder:  # WASAPI shared mode and PulseAudio resample
         emitter.send({'type': 'ready', 'backend': 'soundcard', 'source': source, 'device': name,
                       'sampleRate': SAMPLE_RATE, 'hop': HOP})
         while not stop():

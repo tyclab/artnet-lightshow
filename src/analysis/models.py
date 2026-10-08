@@ -7,7 +7,7 @@ import threading
 import warnings
 import weakref
 
-_LOCK = threading.RLock()
+_LOCK = threading.RLock()  # re-entrant: build() calls device(), which locks too; a plain Lock deadlocks the first load
 _CACHE = {}
 _DEVICE = None
 _OFFLOAD = None
@@ -70,6 +70,7 @@ class _Turns:
 
 _TURNS = _Turns()
 
+# Before the first CUDA allocation: fixed segments fragment across track lengths until no checkpoint fits.
 os.environ.setdefault('PYTORCH_CUDA_ALLOC_CONF', 'expandable_segments:True')
 
 # Keep rotary-embedding-torch 0.6: 0.8's changed cache semantics silently break audio-separator.
@@ -106,11 +107,13 @@ def device():
             chosen, source = 'cuda', torch.cuda.get_device_name(0)
         else:
             chosen, source = 'cpu', None
+        # Same set-up however the device was chosen: an early return once left MIOpen on and torch on every core.
         if chosen.startswith('cuda'):
             _avoid_miopen(torch)
             _log(f'device: {chosen} ({source})')
             _decide_offload(torch, chosen)
         elif chosen == 'cpu':
+            # Leave one core for the Art-Net render loop and the web server.
             cores = os.cpu_count() or 4
             torch.set_num_threads(max(1, cores - 1))
             _log(f'device: cpu ({max(1, cores - 1)} of {cores} threads'
@@ -150,7 +153,8 @@ def _avoid_miopen(torch):
         _log('MIOpen off (ROCm): using PyTorch kernels; ARTNET_MIOPEN=1 to re-enable')
 
 
-
+# 8 GB cannot hold every model: offloaded weights stay pinned in RAM and go onto the card for their pass only.
+# ARTNET_GPU_MEMORY: 'offload', 'resident' or 'auto' (offload below SMALL_CARD_GB); the analysis settings set it.
 SMALL_CARD_GB = 12
 _PARKED = weakref.WeakKeyDictionary()   # module -> its weights in RAM
 _PINNED = [0]                           # bytes pinned so far
@@ -472,7 +476,7 @@ _GPU_FAULT = None
 
 
 def gpu_fault(exc=None):
-    """Record a persistent GPU FFT fault, or return the recorded fault when called bare.
+    """Record a persistent GPU FFT fault (ROCm HIPFFT_PARSE_ERROR under parallel load), or return it when called bare.
     With an exception, return whether it is a recognized fault. The failing stage
     and later stages use CPU; recycle the worker after replying to restore the GPU.
     """
@@ -554,7 +558,7 @@ def cancel_turn(token):
 
 
 def beat_tracker(on=None):
-    """Load Beat This! without the madmom DBN postprocessor.
+    """Load Beat This! without the madmom DBN postprocessor (madmom needs Cython and an old numpy pin).
     on='cpu' uses a separate CPU instance after a GPU fault.
     """
     target = on or device()
@@ -592,6 +596,7 @@ def bs_roformer_separator():
         module = require('audio_separator.separator', 'pip install -r requirements.txt')
         Separator = module.Separator
         model_dir, filename = bs_roformer_checkpoint()
+        # model_file_dir is read once, at construction; setting it afterwards loads from the default directory.
         model = Separator(output_dir=None, output_format='WAV',
                           model_file_dir=model_dir,
                           log_level=40, use_autocast=False)

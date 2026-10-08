@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  # Test the supported Node release and the minimum native TypeScript version.
+  # Node 24 is the LTS target; 22.18 is the first Node to strip TypeScript types unflagged.
   check:
     runs-on: ubuntu-latest
     strategy:
@@ -88,7 +88,7 @@ jobs:
           python-version: '3.11'
           cache: pip
 
-      # Keep torch and torchaudio on the same CPU build/index.
+      # Same index for both: a torchaudio built against another torch fails its native load and every model test errors.
       - name: Install torch and torchaudio (CPU build)
         run: |
           pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu

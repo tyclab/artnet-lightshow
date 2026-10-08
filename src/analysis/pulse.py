@@ -6,7 +6,9 @@ import numpy as np
 
 from . import dsp
 
+# MDB Drums F within 50 ms on the Demucs drum stem: kick 0.88, snare 0.71, hats 0.50 (texture only).
 RATE = 50                 # envelope points per second
+# Lane-rule version (schema pulse.detector): 2 = rules measured on real drumming (scripts/eval-drums.py).
 DETECTOR = 2
 DB_RANGE = 36.0           # what 0..1 spans, below the stem's own loud level
 SILENT_DB = -60.0         # a stem never louder than this is empty
@@ -64,6 +66,7 @@ def _band_flux(magnitude, frequencies, low, high):
     mask = (frequencies >= low) & (frequencies < high)
     if not np.any(mask):
         return np.zeros(magnitude.shape[1])
+    # Linear, not log: on a log scale a hat's faint tail below 5 kHz reads as a snare.
     band = magnitude[mask]
     flux = np.maximum(np.diff(band, axis=1, prepend=band[:, :1]), 0.0).mean(axis=0)
     scale = float(np.percentile(flux, 99)) if flux.size else 0.0
@@ -92,6 +95,7 @@ def lanes(drums, sample_rate):
     near = {name: local(values) for name, values in flux.items()}
     snare = np.where(near['kick'] > flux['snare'] * 1.2, 0.0, flux['snare'])
     claims = {
+        # Only a weak low rise under a bigger snare is its body; a kick played with the snare is a full rise.
         'kick': np.where((near['snare'] > flux['kick']) & (flux['kick'] < _KICK_UNDER_SNARE), 0.0, flux['kick']),
         'snare': np.where(near['hats'] > snare * 1.5, 0.0, snare),
         'hats': np.where(near['snare'] > flux['hats'] * 0.8, 0.0, flux['hats']),

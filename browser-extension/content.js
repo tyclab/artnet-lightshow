@@ -1,4 +1,5 @@
 // Inject into the page context to read dzPlayer; relay snapshots through the background page.
+// inject.js must be in manifest web_accessible_resources; MV3 needs the object form with `matches`.
 (function () {
   'use strict';
 

@@ -222,7 +222,7 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
             'rhythm': 'beat_this',
             'separation': getattr(stems, 'backend', 'none') if stems is not None else 'none',
             'key': 'internal_perception',
-            'tagger': 'panns' if tag_future is not None else 'none',
+            'tagger': 'panns' if tag_future is not None else 'none',  # the future: silence legitimately yields no tags
             'genre': perception.genre_source,
             'skey': False,
             'structure': 'songformer' if named_by_model else 'laplacian',
@@ -242,6 +242,7 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
             document['meta']['elapsedSec'] / max(0.001, audio.duration), 4)
         document['meta']['withinRealtimeBudget'] = (
             document['meta']['processingRatio'] < 1.0)
+        # Again over the finished document: late-attached results can hold NaN, which no JSON parser accepts.
         document = json_safe(document)
         _log(f'{os.path.basename(path)}: {audio.duration:.1f}s analysed in '
              f'{document["meta"]["elapsedSec"]}s '
@@ -415,7 +416,7 @@ def build_document(audio, frames, rhythm, band_map, roles, sections, dynamics,
             'mode': perception.scale,
         },
 
-        'duration': round(duration, 3),
+        'duration': round(duration, 3),  # flat compatibility fields: the web client, timeline and cache read them
         'bpm': round(rhythm.bpm, 1),
         'tempoCurve': dsp.resample_curve(rhythm.tempo_values, rhythm.tempo_times,
                                          2.0, duration),

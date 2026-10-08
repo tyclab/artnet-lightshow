@@ -30,13 +30,13 @@ BAND_ORDER = list(BANDS.keys())
 @dataclass(frozen=True)
 class PreprocessConfig:
     sample_rate: int = 22050
-    wideband_rate: int = 32000
+    wideband_rate: int = 32000  # what PANNs expects
     highpass_hz: float = 18.0
     target_lufs: float = -18.0
-    max_gain_db: float = 24.0
+    max_gain_db: float = 24.0  # more turns near-silence into noise the onset detectors read as beats
     noise_floor_percentile: float = 5.0
     noise_reduction: float = 0.5
-    hpss_margin: float = 3.0
+    hpss_margin: float = 3.0  # from 3.0 hats stop leaking into `harmonic`
     n_fft: int = 2048
     hop_length: int = 512
 
@@ -71,7 +71,7 @@ class StructureConfig:
 class DynamicsConfig:
     drop_min_rise: float = 0.22
     drop_min_breakdown: float = 0.18
-    drop_sustain_sec: float = 4.0
+    drop_sustain_sec: float = 4.0  # a cymbal crash rises as fast as a drop; only the drop sustains
     #: Minimum gap between two accepted drops, seconds.
     drop_min_gap_sec: float = 12.0
     #: Roughly one drop per this many seconds of track is kept, most confident
@@ -80,7 +80,7 @@ class DynamicsConfig:
     #: Build-up search window before a drop, seconds.
     buildup_max_sec: float = 16.0
     buildup_min_sec: float = 1.5
-    buildup_trend: float = 0.80
+    buildup_trend: float = 0.80  # correlation with time; a rising-frames share swallowed the section before the drop
     silence_threshold: float = 0.06
     silence_min_sec: float = 0.4
     spike_min_sigma: float = 2.2
@@ -106,7 +106,7 @@ class EventConfig:
 class RealtimeConfig:
     sample_rate: int = 22050
     hop_length: int = 512
-    n_fft: int = 1024
+    n_fft: int = 1024  # 46 ms at 22.05 kHz, under the ~80 ms where a lighting cue reads as late
     #: Length of the rolling history used for adaptive thresholds, seconds.
     history_sec: float = 10.0
     onset_k: float = 1.6
@@ -118,7 +118,7 @@ class RealtimeConfig:
     #: syncopated bar is outvoted, few enough to follow a drifting tempo.
     phase_window_sec: float = 4.0
     phase_lock_strength: float = 0.5
-    frequency_lock_strength: float = 0.012
+    frequency_lock_strength: float = 0.012  # larger lets a syncopated passage drag the tempo
 
 
 @dataclass(frozen=True)
@@ -133,7 +133,7 @@ class AnalysisConfig:
     enable_tagger: bool = True
     separate_sources: bool = True
     parallel: bool = True
-    structure_model: str = None
+    structure_model: str = None  # None reads ARTNET_STRUCTURE_MODEL, which the server sets from settings
 
     def tuned(self, **overrides) -> 'AnalysisConfig':
         """Return a copy with top-level fields replaced. Useful from tests."""

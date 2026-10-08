@@ -25,7 +25,7 @@ sys.path.insert(0, str(REPO / 'src'))
 class PannsBootstrapOrdering(unittest.TestCase):
     def setUp(self):
         from analysis import tagger
-        self.ea = importlib.reload(tagger)
+        self.ea = importlib.reload(tagger)  # fresh per test: tests patch module globals
 
     def test_installed_check_does_not_execute_the_package(self):
         """The whole point: asking 'is it installed?' must not import it.

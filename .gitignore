@@ -7,7 +7,7 @@ config/
 
 cache/
 logs/
-# Exclude downloaded audio; retain the source fixtures listed below.
+# Downloaded audio. A glob, not a directory: git cannot re-include paths under an excluded directory.
 tests/fixtures/*
 !tests/fixtures/tracks/
 !tests/fixtures/ofl/

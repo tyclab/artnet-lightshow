@@ -1,4 +1,7 @@
-"""Optional AudioSet tagging with PANNs (Cnn14, 527 classes)."""
+"""Optional AudioSet tagging with PANNs (Cnn14, 527 classes).
+
+panns_inference fetches its data with wget at import time and raises without it, so the files are placed before any import.
+"""
 
 import os
 import sys

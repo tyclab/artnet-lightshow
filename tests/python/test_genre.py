@@ -89,6 +89,7 @@ class Calibration(unittest.TestCase):
                                 perception.GENRE_MIN_SCORE)
 
     def test_the_floor_sits_where_the_temperature_was_set_to_put_it(self):
+        # Changing the temperature without the threshold moves the label/signal line for every track.
         from analysis import perception
         under = perception.subgenre_scores_from_prompts(rows(edm=0.05 + 0.08))
         over = perception.subgenre_scores_from_prompts(rows(edm=0.05 + 0.12))

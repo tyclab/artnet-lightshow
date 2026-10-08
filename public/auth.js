@@ -1,5 +1,6 @@
 // Load the token from URL/storage or prompt, remove it from the URL, and attach it to API/socket requests.
-// Retry registered connections after a new token is entered; no configured token leaves requests unchanged.
+// Socket.IO never retries a rejected handshake, so registered connections are retried after a new token.
+// No configured token leaves requests unchanged.
 (function () {
   'use strict';
 
