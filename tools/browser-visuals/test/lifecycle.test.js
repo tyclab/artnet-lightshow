@@ -40,3 +40,10 @@ test('a failed browser action closes the session and clean stop works while reco
   });
   assert.equal(closes, 1); assert.equal(stdin.paused, true);
 });
+
+test('stop after the UTF-8 BOM that Windows PowerShell writes to redirected stdin', async () => {
+  const stdin = input(); let closes = 0;
+  const browser = { connected: true, action: async () => { stdin.emit('data', Buffer.from([0xef, 0xbb, 0xbf, ...Buffer.from('stop\r\n')])); return { ok: true }; }, close: async () => { closes++; } };
+  await run(settings, { stdin, log: () => {}, connectPage: async () => browser, readControls: async () => ({ ok: true, visible: true }) });
+  assert.equal(closes, 1); assert.equal(stdin.paused, true);
+});
