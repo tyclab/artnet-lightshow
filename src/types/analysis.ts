@@ -1,14 +1,7 @@
 // Generated from src/analysis/document.schema.json by scripts/gen-analysis-types.ts.
 // Do not edit: change the schema and run `npm run gen:analysis-types`.
 
-/**
- * What the analyser says about a track: its beat grid, its sections, its dynamics and its event
- * stream. Written by src/analysis/pipeline.py, read by the show engine. The TypeScript types in
- * src/types/analysis.ts are generated from this file (npm run gen:analysis-types);
- * src/analysis/schema.py validates the pipeline's output against it. Only the fields every 2.x
- * document carries are required at the top level: cached documents are replayed across minor
- * versions, and a field added since is simply absent from the older ones.
- */
+/** Track analysis from src/analysis/pipeline.py: timing, sections, dynamics and musical events. */
 export interface AnalysisDocument {
   /** major.minor; see src/analysis/version.py. */
   schemaVersion: string;
@@ -39,15 +32,9 @@ export interface AnalysisDocument {
   /** The track's sections, in order. */
   segments: Section[];
   pulse?: Pulse;
-  /**
-   * Where the sections came from: 'songformer' when the structure model named them, 'analysis' for
-   * the self-similarity labeller, or 'rekordbox' when a CDJ track's phrases replaced them.
-   */
+  /** 'songformer' model labels, 'analysis' self-similarity labels, or 'rekordbox' CDJ phrases. */
   sectionSource?: string;
-  /**
-   * rekordbox's phrase mood, when its phrases are the sections: high for club tracks, mid and low
-   * for songs.
-   */
+  /** rekordbox phrase mood: high for club tracks; mid or low for songs. */
   phraseMood?: "high" | "mid" | "low";
   onsets?: number[];
   kickOnsets?: number[];
@@ -142,8 +129,7 @@ export interface Pulse {
   source?: "stems" | "mix";
   /**
    * Which rules found the drum hits: 2 for the ones measured on real drumming
-   * (scripts/eval-drums.py). Absent for the first, tuned on a synthetic kit, which a show trusts
-   * less.
+   * (scripts/eval-drums.py).
    */
   detector?: number;
   /** mix, and drums, bass, vocals and other when the track was separated. */

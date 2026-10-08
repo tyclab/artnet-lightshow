@@ -1,25 +1,6 @@
-/**
- * Client-side token bootstrap. Loaded before the app on every page.
- *
- * The server requires a shared token whenever it is bound to anything but
- * loopback. Flow:
- *
- *   1. Operator opens  http://host:3000/?token=XYZ  once per browser, or types
- *      the token into the prompt this module raises when the server refuses.
- *   2. We stash the token and strip it from the URL so it does not linger in
- *      the address bar, history or any copied link.
- *   3. Every later /api call carries it as an X-Lightshow-Token header, and
- *      the Socket.IO handshake carries it as auth.token.
- *
- * The prompt matters because the lockout is easy to walk into: set a token in
- * Settings, restart, and the very browser that set it has nothing
- * stored. Before, that browser showed a veil promising it was reconnecting —
- * while Socket.IO, which does not retry a handshake the server rejected, sat
- * there doing nothing. Now it asks for the token and reconnects on the spot.
- *
- * When no token is configured server-side this is inert: nothing is stored and
- * requests go out unchanged.
- */
+// Load the token from URL/storage or prompt, remove it from the URL, and attach it to API/socket requests.
+// Socket.IO never retries a rejected handshake, so registered connections are retried after a new token.
+// No configured token leaves requests unchanged.
 (function () {
   'use strict';
 

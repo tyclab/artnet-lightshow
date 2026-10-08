@@ -1,54 +1,4 @@
-"""
-SongFormer (Hao et al., 2025): the sections a listener would name.
-
-The structure stage finds *where* a song repeats — that is what self-similarity
-is good at — and then has to guess *what* each part is from arrangement rules:
-the loudest repeated block is the chorus, a quiet one in the middle is a
-breakdown. The rules have no pre-chorus, and a song whose chorus is not its
-loudest part gets its roles backwards. SongFormer was trained on thousands of
-annotated songs to answer the second question directly: intro, verse,
-pre-chorus, chorus, bridge, instrumental, outro, silence.
-
-It is optional, and heavy. The published checkpoint carries both of its
-self-supervised backbones (MuQ and MusicFM, 690 M parameters, 2.9 GB), and it
-reads a track in windows of up to 420 seconds, so its attention grows with the
-square of the window. Measured on a CPU, beyond its 3.6 GB of weights it needs
-about 1.25e-4 GB per second² of window: 4 GB at 180 s, 7 GB at 240 s, 22 GB for
-a whole 420 s. A five-minute track read in one window was killed for memory on
-a 16 GB machine — the worker with it, and the track lost its analysis rather
-than falling back. So the window is chosen from the memory free when it runs
-(`window_for`): as long as fits, and a longer track in equal windows. The model
-reads a track longer than its window that way anyway; it is how it was built.
-
-On a four-core laptop CPU it runs at about three quarters of real time; on a
-GPU it is a few seconds. So the default, `auto`, runs it only when the analyser
-has a GPU and the weights are on disk, and the self-similarity labeller answers
-otherwise.
-`ARTNET_STRUCTURE_MODEL` (the Structure setting, under Sources → Analysis) chooses:
-
-    auto        SongFormer on a GPU, the labeller on a CPU
-    songformer  SongFormer whenever the weights are here, CPU included
-    off         the labeller always
-
-The model code ships with the checkpoint (it is not a pip package) and imports
-its modules by bare name — `model`, `dataset`, `postprocessing` — from its own
-directory, so that directory goes on `sys.path` once, when it first loads. Its
-one import nothing here needs, msaf's evaluation metrics, is stubbed rather than
-installed: msaf pins `enum34`, which breaks the standard library on any Python 3.
-
-The companion EDM model (EDMFormer) has no released weights, and SongFormer's
-labels include no drop. The fusion in `structure.from_model` makes a section
-that starts on a detected drop a `drop`, which is the distinction EDMFormer
-would have drawn.
-
-How well it works was measured on real music, not only on synthetic tracks
-(which prove the plumbing and nothing more): scripts/eval-structure.py scores
-it against human annotations of ten SALAMI live recordings, two annotators
-each. Boundaries within 3 s: 0.71 F against the labeller's 0.56; within 0.5 s
-0.58 against 0.15. Section names match over 69 % of the track, against 33 %
-for the labeller and 30 % for "verse" everywhere. Live bands, not studio pop or
-club tracks, and whether SALAMI was in its training data is not known.
-"""
+"""SongFormer (Hao et al., 2025): the sections a listener would name."""
 
 import contextlib
 import importlib.util
@@ -60,25 +10,17 @@ from pathlib import Path
 
 from . import models
 
-#: The rate both backbones were trained at.
 RATE = 24000
-#: The model's analysis window, in seconds (its config's `win_size`): the
-#: longest it reads at once, and what it reads when memory allows.
 WINDOW_SEC = 420
-#: The shortest window worth reading: below this the model sees too little of
-#: the song to place its sections, and the labeller is the better answer.
 MIN_WINDOW_SEC = 60
-#: Working memory beyond the weights, per second² of window (measured on CPU).
+# Working memory per second² of window, on CPU: a 420 s window needs ~22 GB and got the worker OOM-killed on 16 GB.
 GB_PER_SECOND_SQUARED = 1.25e-4
-#: How much of the free memory it may take: the separator and MuQ may be
-#: running beside it.
 MEMORY_SHARE = 0.6
-#: What must be in the model directory for it to load.
 REQUIRED_FILES = ('model.safetensors', 'modeling_songformer.py', 'config.json',
                   'muq_config2.json', 'msd_stats.json')
-#: Packages the model code imports, checked without importing them.
 REQUIRED_PACKAGES = ('muq', 'x_transformers', 'omegaconf', 'ema_pytorch', 'loguru',
                      'safetensors', 'transformers')
+# 'auto' runs SongFormer only on a GPU: on a laptop CPU it takes ~0.75x real time.
 MODES = ('auto', 'songformer', 'off')
 
 
@@ -127,7 +69,7 @@ def wanted(value=None):
 
 
 def _stub_msaf():
-    """The model imports msaf for its evaluation metrics, which inference never calls."""
+    """Stub msaf, imported only for evaluation metrics: msaf pins enum34, which breaks the stdlib on Python 3."""
     if 'msaf' in sys.modules or importlib.util.find_spec('msaf') is not None:
         return
     def compute_results(*_args, **_kwargs):
@@ -159,8 +101,7 @@ def load():
         import torch
         from safetensors.torch import load_file
         _log(f'loading from {directory}…')
-        # Its code and transformers both talk on stdout, which is the worker's
-        # protocol stream.
+        # Its code and transformers print on stdout, the worker's protocol stream.
         with contextlib.redirect_stdout(sys.stderr):
             modeling = importlib.import_module('modeling_songformer')
             configuration = importlib.import_module('configuration_songformer')
@@ -258,8 +199,6 @@ def sections(samples, sample_rate):
 
     def run(device):
         with torch.inference_mode(), contextlib.redirect_stdout(sys.stderr):
-            # Measured once the card is ours, with the weights on it: the
-            # models before this one have handed back what they held.
             window = window_for(audio.size / RATE, available_gb(device))
             if window < WINDOW_SEC:
                 _log(f'reading in {window} s windows ({audio.size / RATE:.0f} s track)')

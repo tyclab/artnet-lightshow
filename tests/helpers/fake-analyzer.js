@@ -1,16 +1,5 @@
-// Stand-in for src/analyze.py --worker. Speaks the same NDJSON protocol and
-// misbehaves on demand so the worker's failure handling can be tested.
-// FAKE_MODE: ok (default) | hang | wrongid | crash | hangslow | gpufault | env
-// env answers with the separator flag it was started with, and its pid.
-// gpufault answers, asks to be recycled, and would crash on a second request:
-// a process whose GPU faulted is not to be trusted with another track.
-// hangslow never answers a source containing "slow" and answers everything
-// else at once — a prefetch that is still running when the next request lands.
-// nanreply answers with a bare NaN in the result, the way Python's json.dumps
-// writes one — valid Python output, unreadable JSON. exitnow dies before
-// reading anything, so the first write to its stdin lands on a closed pipe.
-// In hangslow, a source containing "late" is answered after 300 ms: long
-// enough for recycled workers to die first.
+// NDJSON worker fixture; FAKE_MODE selects success, hangs, crashes, malformed replies or GPU faults.
+// hangslow delays "late" inputs and never answers "slow" inputs to exercise worker recycling.
 import readline from 'node:readline';
 
 const mode = process.env.FAKE_MODE || 'ok';

@@ -1,11 +1,5 @@
-// Content script (isolated world). It can't read window.dzPlayer directly, so
-// it injects inject.js into the page context and relays the snapshots that
-// script postMessage()s back, forwarding them to the background event page
-// (which does the cross-origin POST to the lightshow server).
-//
-// inject.js is reachable because manifest.json lists it under
-// web_accessible_resources — in MV3 that entry is an object with an explicit
-// `matches` list, not a bare filename as it was under MV2.
+// Inject into the page context to read dzPlayer; relay snapshots through the background page.
+// inject.js must be in manifest web_accessible_resources; MV3 needs the object form with `matches`.
 (function () {
   'use strict';
 

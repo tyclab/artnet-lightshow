@@ -1,30 +1,4 @@
-"""
-The one place torch lives.
-
-Every learned component in the pipeline loads through here, for three reasons
-that are all about the machines this runs on rather than about the models:
-
-**Device.** The rig is driven from whatever laptop is at the front of house. A
-desktop with a CUDA card should use it; a laptop without one has to stay
-usable, not merely runnable. `device()` picks once and every model follows it,
-so there is no path where half the pipeline is on the GPU and half is not.
-
-**Cost.** These checkpoints take seconds to load and hundreds of megabytes of
-RAM. The analyser is a long-lived worker process handling one track after
-another, so a model is loaded once per process and kept — which is the whole
-reason the worker exists.
-
-**Failure.** A missing checkpoint on the machine at load-in is a show that does
-not happen, so the errors raised here name the model and say what to install
-rather than surfacing a bare ImportError from three frames down.
-
-**Room.** One card, several models, one process that never exits. `inference()`
-is how anything touches the GPU: it takes turns and it hands back what it
-reserved. See the note above it for why both halves matter. On a card too
-small to hold every model at once, the weights live in RAM and go onto the
-card for their pass only (`offloading()`), and a pass that still runs out of
-memory is run again on the CPU (`run_pass()`).
-"""
+"""The one place torch lives."""
 
 import contextlib
 import os
@@ -33,8 +7,7 @@ import threading
 import warnings
 import weakref
 
-# Re-entrant: a model's build() calls device(), which locks too. A plain
-# Lock deadlocks the first load, and a deadlock at load-in is a dead show.
+# Re-entrant: build() calls device(), which locks too; a plain Lock deadlocks the first load.
 _LOCK = threading.RLock()
 _CACHE = {}
 _DEVICE = None
@@ -42,23 +15,9 @@ _OFFLOAD = None
 
 
 class _Turns:
-    """
-    The card, one model's pass at a time, with the beat model at the front.
-
-    Held for the duration of one model's pass over one track. Separate from
-    _LOCK, which guards the cache dict: a model loading must not block a
-    different model that is mid-inference.
-
-    Every pass takes its turn, but not every pass is equally urgent. The beat
-    grid is what the rest of the analysis is built on — the bands, the
-    dynamics and the sections all wait for it — while the separator and MuQ
-    are collected later. Queued behind them the beat model used to wait out
-    a whole separation, with the DSP that follows it idle for as long. A
-    pass that asks to go `first` goes before anyone else waiting, and the
-    pipeline can `reserve` it a place before the others are even started.
-    Nothing is interrupted: a pass that has the card keeps it to the end.
-
-    Re-entrant for the thread that holds it, as the RLock it replaced was.
+    """Re-entrant GPU turn queue; first/reserve prioritize the beat model.
+    Active passes are never interrupted. Separate from the model-cache _LOCK so
+    loading a model cannot block another model's in-flight inference.
     """
 
     def __init__(self):
@@ -112,29 +71,10 @@ class _Turns:
 
 _TURNS = _Turns()
 
-# Growable allocator segments, set before torch makes its first CUDA
-# allocation. The analyser is a long-lived process that sees a different track
-# length every time, so every pass asks for slightly different block sizes.
-# With fixed segments the freed blocks cannot be merged back together, and
-# after a few dozen tracks the card reports gigabytes free with no single piece
-# of it big enough to hold a checkpoint — which is what "not enough memory to
-# load a model" turns out to mean here. An operator who has already set this
-# keeps their value.
+# Before the first CUDA allocation: fixed segments fragment across track lengths until no checkpoint fits.
 os.environ.setdefault('PYTORCH_CUDA_ALLOC_CONF', 'expandable_segments:True')
 
-# Two deprecation warnings every worker printed at start, both from code this
-# project cannot change, and both about calls that still work on the torch the
-# lock installs. Each is silenced by its own message, and nothing else is.
-#
-# rotary-embedding-torch 0.6 decorates with `torch.cuda.amp.autocast`. Its 0.8
-# series uses `torch.amp.autocast` instead, but it is not ours to take:
-# audio-separator's BS-RoFormer reads the library's internal frequency cache,
-# which from 0.8 is a buffer of zeros it would mistake for cached angles, and
-# the separation would come out wrong without an error. audio-separator pins
-# the 0.6 series for that reason.
-#
-# MuQ builds its encoder with `torch.nn.utils.weight_norm`, which torch has
-# replaced with a parametrization. Nothing here calls it.
+# Keep rotary-embedding-torch 0.6: 0.8's changed cache semantics silently break audio-separator.
 warnings.filterwarnings(
     'ignore', message=r'`torch\.cuda\.amp\.autocast\(args\.\.\.\)` is deprecated',
     category=FutureWarning, module=r'rotary_embedding_torch')
@@ -168,18 +108,13 @@ def device():
             chosen, source = 'cuda', torch.cuda.get_device_name(0)
         else:
             chosen, source = 'cpu', None
-        # The same set-up whichever way the device was chosen. The override
-        # used to return before it, so forcing the card on a ROCm build left
-        # MIOpen on (every BatchNorm model failing), and forcing the CPU left
-        # torch on every core, starving the render loop.
+        # Same set-up however the device was chosen: an early return once left MIOpen on and torch on every core.
         if chosen.startswith('cuda'):
             _avoid_miopen(torch)
             _log(f'device: {chosen} ({source})')
             _decide_offload(torch, chosen)
         elif chosen == 'cpu':
-            # Threads rather than a GPU. Leave one core for the Art-Net render
-            # loop and the web server: a analysis that starves the output is
-            # worse than one that takes a few seconds longer.
+            # Leave one core for the Art-Net render loop and the web server.
             cores = os.cpu_count() or 4
             torch.set_num_threads(max(1, cores - 1))
             _log(f'device: cpu ({max(1, cores - 1)} of {cores} threads'
@@ -191,13 +126,7 @@ def device():
 
 
 def _override(torch):
-    """
-    ARTNET_ANALYSIS_DEVICE, if it names a device this torch can use.
-
-    A typo, or `cuda` on a CPU-only build, used to be handed to every model
-    as it was, and every track failed at its first tensor. Now it is named in
-    the log and the device is chosen as if it were not set.
-    """
+    """Return a usable ARTNET_ANALYSIS_DEVICE override; log and ignore invalid values."""
     wanted = os.environ.get('ARTNET_ANALYSIS_DEVICE', '').strip().lower()
     if not wanted:
         return None
@@ -217,42 +146,16 @@ def _override(torch):
 
 
 def _avoid_miopen(torch):
-    """
-    On a ROCm build, use PyTorch's own GPU kernels rather than MIOpen's.
-
-    MIOpen compiles some kernels on first use, BatchNorm among them, and AMD's
-    Windows wheels ship a runtime compiler that cannot find the C++ standard
-    headers: the compile fails, and every model with a BatchNorm layer (the
-    beat tracker, PANNs) fails with `miopenStatusUnknownError`. PyTorch's
-    native kernels run the same layers at much the same speed on an RDNA 3.5
-    iGPU, so nothing is lost by skipping MIOpen. Set ARTNET_MIOPEN=1 to try it
-    again on a build that has fixed this.
+    """Disable ROCm MIOpen kernels whose runtime compiler lacks C++ headers on Windows.
+    PyTorch native kernels avoid BatchNorm failures; ARTNET_MIOPEN=1 opts back in.
     """
     if getattr(torch.version, 'hip', None) and os.environ.get('ARTNET_MIOPEN', '') != '1':
         torch.backends.cudnn.enabled = False
         _log('MIOpen off (ROCm): using PyTorch kernels; ARTNET_MIOPEN=1 to re-enable')
 
 
-# ── Room on the card ────────────────────────────────────────────────────────
-#
-# An 8 GB card holds any one of these models with room for its pass, and not
-# all of them at once. Resident, the separator, MuQ, MuQ-MuLan and SongFormer
-# are several gigabytes of weights before a single track is read, and the
-# pass that comes last finds the card full: CUDA out of memory, on some tracks
-# and not others, depending on how long they are.
-#
-# So on a card that small the weights live in RAM and go onto the card for
-# their own pass only. They stay in RAM — pinned, so the copy is a DMA at the
-# bus's full speed rather than a page at a time — and nothing is read from
-# disk again: a gigabyte crosses PCIe in a small fraction of a second, where
-# loading it from its checkpoint took seconds. Weights do not change during
-# inference, so after the pass the copy on the card is simply dropped for the
-# one in RAM, and nothing is copied back.
-#
-# ARTNET_GPU_MEMORY chooses: 'offload' always, 'resident' never, 'auto' (the
-# default) when the card has less than SMALL_CARD_GB. The analysis settings
-# set it from GPU memory.
-
+# 8 GB cannot hold every model: offloaded weights stay pinned in RAM and go onto the card for their pass only.
+# ARTNET_GPU_MEMORY: 'offload', 'resident' or 'auto' (offload below SMALL_CARD_GB); the analysis settings set it.
 SMALL_CARD_GB = 12
 _PARKED = weakref.WeakKeyDictionary()   # module -> its weights in RAM
 _PINNED = [0]                           # bytes pinned so far
@@ -538,15 +441,8 @@ def checkpoint_cache():
 
 
 def local_checkpoint(filename):
-    """
-    Path to an already-downloaded checkpoint, or None.
-
-    Loading by shortname sends the resolver to the network even when the file
-    is already on disk, and a hung request there is a show that does not start.
-    That is not hypothetical — it hung repeatedly while this was being built.
-    At load-in on venue wifi it is the difference between a five-second model
-    load and an analyser that never returns, so a checkpoint that is already
-    local is always loaded from the local path.
+    """Return a downloaded checkpoint path, or None, without network resolution.
+    Shortname lookup can hang on venue networks even when weights are already local.
     """
     path = os.path.join(checkpoint_cache(), filename)
     return path if os.path.isfile(path) else None
@@ -564,13 +460,7 @@ def cached(key, build):
 
 
 def unload(key):
-    """
-    Drop a cached model and give the card back its weights.
-
-    Used where two models answer the same question and only one of them is
-    going to be asked — keeping the loser resident costs hundreds of megabytes
-    for the life of the process and buys nothing.
-    """
+    """Evict a cached model and release its GPU weights."""
     with _LOCK:
         model = _CACHE.pop(key, None)
     if model is None:
@@ -587,19 +477,9 @@ _GPU_FAULT = None
 
 
 def gpu_fault(exc=None):
-    """
-    Record, or report, that the GPU's FFT has broken for this process.
-
-    AMD's ROCm nightlies sometimes fail a GPU FFT with HIPFFT_PARSE_ERROR,
-    intermittently and only under the pipeline's parallel load, and once one
-    has failed every later one in the process fails too — the beat model, then
-    each separator in turn. So the first such error marks the process: the
-    stage that hit it reruns on the CPU, later stages go straight to the CPU,
-    and the worker asks to be replaced once the track is answered, which is
-    what gives the next track a working GPU again.
-
-    Called with an exception, returns whether it was such a fault (and records
-    it). Called bare, returns the recorded fault or None.
+    """Record a persistent GPU FFT fault (ROCm HIPFFT_PARSE_ERROR under parallel load), or return it when called bare.
+    With an exception, return whether it is a recognized fault. The failing stage
+    and later stages use CPU; recycle the worker after replying to restore the GPU.
     """
     global _GPU_FAULT
     if exc is None:
@@ -619,13 +499,7 @@ def on_gpu():
 
 
 def release_memory():
-    """
-    Return the caching allocator's free blocks to the driver.
-
-    Worth doing between stages and between tracks, and not inside a loop: it
-    synchronises with the device, so calling it per window would cost more than
-    the fragmentation it prevents.
-    """
+    """Release unused allocator blocks between stages/tracks; per-window calls would synchronize the GPU."""
     if not on_gpu():
         return
     try:
@@ -648,34 +522,10 @@ def gc_collect():
 
 @contextlib.contextmanager
 def inference(label='model', first=False, modules=()):
-    """
-    Hold the device for one model's pass over one track, then hand it back.
-
-    Two separate problems, one context manager.
-
-    *Taking turns.* The pipeline deliberately runs the separator, the tagger
-    and MuQ-MuLan in parallel threads, which is right on a CPU and wrong on one
-    GPU: run concurrently their peak allocations add together rather than
-    taking turns, so a card that fits any one of them comfortably fits all
-    three only sometimes. Which tracks fail then depends on their length and on
-    who won the race, which is exactly the "occasionally" in the bug report.
-    Serialising costs close to nothing, because a single one of these models
-    already saturates the card — the threads still overlap the DSP stages,
-    which is where the parallelism was actually paying.
-
-    *Handing it back.* Releasing after each stage keeps the high-water mark at
-    one model's working set instead of the sum of every model that ran this
-    track.
-
-    *Going first.* `first=True` is for the beat model: it takes the next turn
-    ahead of anyone already waiting (see `_Turns`).
-
-    *Bringing the weights.* `modules` go onto the card once the turn is ours,
-    and back to RAM after it when models are kept there (`offloading`). A model
-    run on the CPU after a fault comes back to the card the same way.
-
-    On CPU this is a no-op wrapper: there is no single device to contend for,
-    and the existing parallelism is what the CPU numbers in the docs measure.
+    """Serialize one model's GPU pass and release cached allocations afterwards.
+    first=True prioritizes the beat model without interrupting an active pass.
+    Move modules to the device for the turn and back to RAM when offloading.
+    On CPU this context is a no-op, preserving pipeline parallelism.
     """
     if not on_gpu():
         yield
@@ -697,13 +547,7 @@ def inference(label='model', first=False, modules=()):
 
 
 def reserve_first_turn():
-    """
-    Hold the card's next turn for the beat model before anything else asks.
-
-    The pipeline starts the separator and MuQ on their own threads at the top
-    of a track; whichever reaches the card first would otherwise have it for
-    tens of seconds. Returns a token for `cancel_turn`, or None on the CPU.
-    """
+    """Reserve the next GPU turn for the beat model; return a cancel token or None on CPU."""
     return _TURNS.reserve() if on_gpu() else None
 
 
@@ -713,22 +557,10 @@ def cancel_turn(token):
         _TURNS.cancel(token)
 
 
-# ── Beat and downbeat tracking ──────────────────────────────────────────────
 
 def beat_tracker(on=None):
-    """
-    Beat This! (Foscarin et al., ISMIR 2024) — a transformer that predicts beats
-    and downbeats directly.
-
-    Chosen over madmom's RNN+DBN, which is the other standard, for two reasons.
-    It is more accurate, particularly on downbeats. And it is plain PyTorch: no
-    Cython, no C compiler, no unmaintained package pinned to a numpy from 2018 —
-    which matters when the person installing this is a VJ on a Windows laptop
-    rather than a researcher.
-
-    Run without the DBN post-processor, so madmom is not a dependency at all.
-    `on='cpu'` builds a second instance on the CPU, for when the GPU has
-    faulted (see `gpu_fault`).
+    """Load Beat This! without the madmom DBN postprocessor (madmom needs Cython and an old numpy pin).
+    on='cpu' uses a separate CPU instance after a GPU fault.
     """
     target = on or device()
 
@@ -744,17 +576,9 @@ def beat_tracker(on=None):
     return cached('beat_this' if target == device() else f'beat_this:{target}', build)
 
 
-# ── Source separation ───────────────────────────────────────────────────────
 
 def separator(name='htdemucs'):
-    """
-    Demucs v4. Splits a track into drums, bass, vocals and other.
-
-    This is what turns the instrument roles from inference into measurement.
-    The old pipeline guessed at the kick from a band's attack time and at the
-    vocal from mid-band harmonic movement weighted by how much it moved; with
-    stems, "is there a voice here" is a question about the vocals stem.
-    """
+    """Load Demucs v4 for drums, bass, vocals and other stems."""
     def build():
         require('demucs', 'pip install -r requirements.txt')
         from demucs.pretrained import get_model
@@ -773,10 +597,7 @@ def bs_roformer_separator():
         module = require('audio_separator.separator', 'pip install -r requirements.txt')
         Separator = module.Separator
         model_dir, filename = bs_roformer_checkpoint()
-        # The directory has to be known before the separator is built: it is
-        # read once, at construction. A checkpoint given as a path used to
-        # set it afterwards, and audio-separator looked for the file in the
-        # default directory instead.
+        # model_file_dir is read once, at construction; setting it afterwards loads from the default directory.
         model = Separator(output_dir=None, output_format='WAV',
                           model_file_dir=model_dir,
                           log_level=40, use_autocast=False)
@@ -787,7 +608,6 @@ def bs_roformer_separator():
                 f'BS-RoFormer checkpoint is not registered by audio-separator: {filename}. '
                 'Set ARTNET_BS_ROFORMER_MODEL to a supported audio-separator model name '
                 'or leave ARTNET_USE_BS_ROFORMER disabled.') from exc
-        # audio-separator puts it on the card itself; kept in RAM, it leaves.
         if offloading():
             park(bs_roformer_module(model))
         return model
@@ -822,30 +642,13 @@ def bs_roformer_checkpoint():
 
 
 def bs_roformer_enabled():
-    """
-    Is BS-RoFormer the configured separator? One reader, several callers.
-
-    The server sets ARTNET_USE_BS_ROFORMER from the Separator setting
-    field when it starts the worker. Unset — a one-shot run from the command
-    line — it is Demucs, the same default as the settings.
-    """
+    """Read ARTNET_USE_BS_ROFORMER; unset uses the same Demucs default as server settings."""
     return os.environ.get('ARTNET_USE_BS_ROFORMER', '0').lower() not in ('0', 'false', 'no', '')
 
 
 def warm_up():
-    """
-    Load every model now rather than on the first track.
-
-    The worker is spawned at server start precisely so this cost lands while
-    the operator is still opening the UI, not while a track is waiting.
-
-    Only the separator that is actually going to run is warmed. Loading both
-    used to leave whichever one lost sitting on the card for the life of the
-    process, which on an 8 GB card is memory the track being analysed needs.
-
-    The beat model loads first: it is the one no track can do without, and a
-    worker that runs out of room or time loading the rest still has it.
-    Returns the names of the models that loaded.
+    """Load the beat model first, then optional models and only the selected separator.
+    Returns the loaded model names; avoids first-track latency and unused GPU weights.
     """
     chosen = bs_roformer_separator if bs_roformer_enabled() else separator
     loaded = []

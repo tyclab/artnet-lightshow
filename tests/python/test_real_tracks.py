@@ -63,8 +63,6 @@ class GenreDecision(unittest.TestCase):
                             Tempo(fixture['bpm']))
 
     def test_a_weak_tag_does_not_get_to_silence_a_track(self):
-        # 'les filles, les meufs': ambient 0.108 over funk 0.105. A three
-        # percent margin decided the track was calm for three minutes.
         fixture = load('marguerite')
         top = sorted(fixture['genre']['subScores'].values(), reverse=True)
         self.assertLess(top[0] / top[1], 1.2, 'fixture should be a near-tie')
@@ -75,9 +73,6 @@ class GenreDecision(unittest.TestCase):
         self.assertEqual(self.decide(fixture)['genre'], 'unknown')
 
     def test_a_loud_danceable_track_is_never_lit_as_a_ballad(self):
-        # 'I Want It That Way' reached `ambient` on `christian music`, which
-        # AudioSet fires on close vocal harmony. Arousal 0.84 says otherwise,
-        # and arousal is measured rather than inferred.
         fixture = load('backstreet')
         self.assertGreaterEqual(fixture['mood']['arousal'], 0.7)
         self.assertNotEqual(self.decide(fixture)['style'], 'calm')
@@ -117,11 +112,6 @@ class SectionRoles(unittest.TestCase):
         return sections
 
     def test_a_ballad_is_not_mostly_drops(self):
-        # Five of nine sections of a piano ballad were `drop`. Three remain, and
-        # they are the one cluster the chorus lifts belong to — whether that
-        # cluster is better called `drop` or `chorus` is a labelling question
-        # the show engine does not act on (the two role profiles are
-        # identical). What it must not be is *most of the track*.
         fixture = load('p-nk')
         sections = self.roles(fixture)
         before = sum(1 for s in fixture['segments'] if s['role'] == 'drop')
@@ -133,8 +123,6 @@ class SectionRoles(unittest.TestCase):
         self.assertEqual(len(labels), 1, 'and they should all be the same music')
 
     def test_the_drop_role_becomes_rare_across_the_board(self):
-        # Four of the five tracks are pop, rock or rap — none of them has a
-        # drop in the sense the role means.
         for name in ('backstreet', 'elton', 'marguerite', 'orelsan'):
             with self.subTest(track=name):
                 fixture = load(name)
@@ -142,7 +130,6 @@ class SectionRoles(unittest.TestCase):
                 self.assertEqual(after, 0)
 
     def test_a_hype_moment_does_not_make_a_section_a_drop(self):
-        # A hype drop is an accent inside a section; a proper one starts one.
         from analysis.structure import Section, _starts_on_a_drop
         section = Section(start=10.0, end=40.0, label='A', energy=0.9)
         hype = [{'t': 10.5, 'kind': 'hype'}]
@@ -182,8 +169,6 @@ class SectionRoles(unittest.TestCase):
                 self.assertEqual(conflicts, {})
 
     def test_the_fixtures_still_record_the_conflicts_this_fixes(self):
-        # If a future change makes the fixtures agree by accident, the test
-        # above stops proving anything.
         positional = {'intro', 'outro'}
         total = 0
         for path in FIXTURES:
@@ -198,8 +183,6 @@ class SectionRoles(unittest.TestCase):
         self.assertGreaterEqual(total, 4)
 
     def test_intro_and_outro_survive_the_reconciliation(self):
-        # They are defined by position: the first section of a track is an
-        # intro however much it resembles the chorus.
         for name in ('p-nk', 'elton'):
             with self.subTest(track=name):
                 roles = [s.role for s in self.roles(load(name))]

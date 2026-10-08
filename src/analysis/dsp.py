@@ -1,15 +1,8 @@
-"""
-Small numeric primitives shared by the analysis stages.
-
-Nothing here knows about music. Everything here is pure: same input, same
-output, no globals, no I/O — which is what makes the stages above testable
-with synthetic signals.
-"""
+"""Small numeric primitives shared by the analysis stages."""
 
 import numpy as np
 
 
-# ── Normalisation ───────────────────────────────────────────────────────────
 
 def robust_norm(arr, percentile=95.0, floor_percentile=5.0):
     """
@@ -51,7 +44,6 @@ def safe_div(a, b, default=0.0):
     return out
 
 
-# ── Smoothing ───────────────────────────────────────────────────────────────
 
 def moving_average(x, width):
     """Centred box filter with edge-preserving ends. `width` in samples."""
@@ -102,7 +94,6 @@ def envelope_follower(x, attack_frames, release_frames):
     return out
 
 
-# ── Peak picking ────────────────────────────────────────────────────────────
 
 def adaptive_peaks(x, pre=30, post=30, delta=0.07, wait=10, floor_ratio=0.02):
     """
@@ -138,7 +129,6 @@ def adaptive_peaks(x, pre=30, post=30, delta=0.07, wait=10, floor_ratio=0.02):
         if i + 1 < n and x[i] < x[i + 1]:
             continue
         if i - last < wait:
-            # Keep the taller of the two when they collide.
             if peaks and x[i] > x[peaks[-1]]:
                 peaks[-1] = i
                 last = i
@@ -148,7 +138,6 @@ def adaptive_peaks(x, pre=30, post=30, delta=0.07, wait=10, floor_ratio=0.02):
     return np.asarray(peaks, dtype=int)
 
 
-# ── Resampling helpers ──────────────────────────────────────────────────────
 
 def resample_curve(values, times, step=1.0, duration=None):
     """
@@ -196,7 +185,6 @@ def nearest_index(sorted_values, target):
     return i if abs(arr[i] - target) < abs(arr[i - 1] - target) else i - 1
 
 
-# ── Statistics ──────────────────────────────────────────────────────────────
 
 def autocorrelation(x, max_lag=None):
     """Normalised autocorrelation of a mean-removed signal, lags 0..max_lag."""

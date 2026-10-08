@@ -1,6 +1,4 @@
-// Where the end-to-end server keeps its throwaway config and cache, named
-// from the port so the specs (another process) can find the analysed track it
-// seeds (serve.js).
+// Shared throwaway paths keyed by E2E_PORT for the server and browser tests.
 
 import os from 'node:os';
 import path from 'node:path';

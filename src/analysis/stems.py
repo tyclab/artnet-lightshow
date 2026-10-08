@@ -1,21 +1,4 @@
-"""
-Source separation, so the instrument roles are measured rather than inferred.
-
-The old pipeline guessed. The kick was "the bass band, if its attack is short
-enough"; the vocal was "mid-band harmonic energy, weighted by how much it
-moves, because a held pad must not read as a singer". Those rules are the best
-you can do from a spectrogram, and they are wrong often enough to matter — a
-sustained synth bass reads as a kick, a bright pad reads as a voice.
-
-Demucs answers the same questions directly: the kick is in the drums stem, the
-voice is in the vocals stem. Everything downstream that used to reason about
-bands and attack times now reasons about the stem that actually contains the
-thing.
-
-The separation is the single most expensive step in the pipeline — roughly a
-third of real time on a laptop CPU, far less on a GPU — so it happens once and
-every consumer reads the result.
-"""
+"""Source separation, so the instrument roles are measured rather than inferred."""
 
 from dataclasses import dataclass, field
 import os
@@ -46,8 +29,7 @@ class Stems:
         return ('drums', 'bass', 'vocals', 'other')
 
     def energies(self):
-        """RMS per stem, as a share of the total. A cheap description of the
-        arrangement: what a track is *made of*."""
+        """RMS per stem as a share of the total: what a track is *made of*."""
         levels = {}
         for name in self.names:
             signal = self.named(name)
@@ -78,29 +60,18 @@ def separate(mono, sample_rate, overlap=0.10, segment_seconds=None, stereo_loade
     import librosa
     from demucs.apply import apply_model
 
-    # BS-RoFormer when the settings ask for it (see
-    # models.bs_roformer_enabled), with Demucs as the fallback if it cannot
-    # load or run. Demucs is the default: BS-RoFormer takes about seven times
-    # as long, which on an integrated GPU is longer than the track plays.
+    # Demucs is the default: BS-RoFormer takes ~7x as long, longer than the track on an integrated GPU.
     if models.bs_roformer_enabled() and not models.gpu_fault():
         try:
             return separate_bs_roformer(mono, sample_rate, stereo_loader)
         except Exception as exc:
             models.gpu_fault(exc)
             print(f'[stems] BS-RoFormer unavailable; using Demucs: {exc}', file=sys.stderr)
-            # Never hold both. The usual reason this path is taken is that the
-            # card had no room for BS-RoFormer, and answering that by loading a
-            # second separator alongside it is how one bad track turns into
-            # every later track failing too. Dropping it also means the next
-            # track retries BS-RoFormer from a clean card rather than being
-            # quietly downgraded for the rest of the night.
+            # Never hold both separators; the next track retries BS-RoFormer on a clean card.
             models.unload('bs-roformer-4stem')
 
     model = models.separator()
 
-    # Demucs wants stereo at its own rate. Given the real stereo at that rate it
-    # gets it; otherwise the mono analysis signal goes up to its rate and is
-    # copied into both channels. Either way the stems come back down.
     stereo = stereo_loader(model.samplerate) if stereo_loader else None
     if stereo is not None and np.ndim(stereo) == 2 and stereo.shape[0] == 2:
         pair = np.asarray(stereo, dtype=np.float32)
@@ -118,9 +89,6 @@ def separate(mono, sample_rate, overlap=0.10, segment_seconds=None, stereo_loade
         with torch.no_grad():
             return apply_model(model, tensor, device=device, **kwargs)[0].cpu()
 
-    # On the card, with its weights brought from RAM when they are kept there.
-    # A card that faulted, or that the pass ran out of memory, and it is Demucs
-    # on the CPU: slower, but still an answer (see models.run_pass).
     separated = models.run_pass('demucs', run, modules=[model])
 
     out = {}
@@ -128,9 +96,7 @@ def separate(mono, sample_rate, overlap=0.10, segment_seconds=None, stereo_loade
         signal = source.mean(dim=0).numpy()
         back = librosa.resample(signal, orig_sr=model.samplerate,
                                 target_sr=sample_rate)
-        # Length can drift by a sample or two through two resamples; the rest
-        # of the pipeline indexes stems against the feature grid, so they have
-        # to line up exactly.
+        # Two resamples can drift by a sample; stems must line up with the feature grid.
         if back.size < mono.size:
             back = np.pad(back, (0, mono.size - back.size))
         out[name] = back[:mono.size].astype(np.float32)
@@ -140,21 +106,11 @@ def separate(mono, sample_rate, overlap=0.10, segment_seconds=None, stereo_loade
                     for name in ('drums', 'bass', 'vocals', 'other')})
 
 
-# The rate BS-RoFormer's checkpoints are trained at; audio-separator resamples
-# anything else to it on load, so handing it the source at this rate costs no
-# extra pass.
 BS_ROFORMER_RATE = 44100
 
-# One cached separator is shared by every caller, and each call points its
-# output directory at its own temp folder and back. Two calls at once — a
-# failed analysis leaves its separation thread running into the next track —
-# interleave those swaps, and one call's stems land in the process's working
-# directory where it never looks for them.
+# Calls swap the shared separator's output_dir; interleaved swaps landed stems in the working directory.
 _BS_ROFORMER_LOCK = threading.Lock()
 
-# What each separator output counts as. The default checkpoint,
-# BS-Roformer-SW, has six stems; guitar and piano are what Demucs calls
-# "other", and dropping them left "other" with only what was left over.
 STEM_OF = {'drums': 'drums', 'bass': 'bass', 'vocals': 'vocals', 'other': 'other',
            'guitar': 'other', 'piano': 'other'}
 
@@ -179,9 +135,8 @@ def separate_bs_roformer(mono, sample_rate, stereo_loader=None):
             sf.write(source, np.asarray(stereo, dtype=np.float32).T, BS_ROFORMER_RATE)
         else:
             sf.write(source, np.asarray(mono, dtype=np.float32), sample_rate)
-        # audio-separator copies output_dir into the loaded model. Redirect
-        # both: otherwise its WAVs land in the worker's current directory.
         with _BS_ROFORMER_LOCK:
+            # audio-separator copies output_dir into the loaded model, so redirect both.
             targets = [separator, separator.model_instance]
             previous_dirs = [target.output_dir for target in targets]
             try:
@@ -208,12 +163,7 @@ def separate_bs_roformer(mono, sample_rate, stereo_loader=None):
 
 
 def envelope(signal, features, smooth_sec=0.0):
-    """
-    A stem's level on the feature grid, normalised 0..1.
-
-    Framed with the same hop as everything else so a stem envelope can be
-    indexed by frame alongside the bands and the onset curve.
-    """
+    """A stem's 0..1 level on the feature grid (same hop), indexable alongside the bands and onsets."""
     from . import dsp
     if signal.size == 0 or features.n_frames == 0:
         return np.zeros(features.n_frames)

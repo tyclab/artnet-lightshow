@@ -25,8 +25,7 @@ sys.path.insert(0, str(REPO / 'src'))
 class PannsBootstrapOrdering(unittest.TestCase):
     def setUp(self):
         from analysis import tagger
-        # A fresh copy per test: these tests monkey-patch module globals, and a
-        # shared instance would leak a patched path into the next test.
+        # Reload per test: these tests patch module globals, which a shared module would leak.
         self.ea = importlib.reload(tagger)
 
     def test_installed_check_does_not_execute_the_package(self):
@@ -40,7 +39,6 @@ class PannsBootstrapOrdering(unittest.TestCase):
             pkg = Path(tmp) / 'panns_inference'
             pkg.mkdir()
             marker = Path(tmp) / 'was-imported'
-            # A stand-in whose import has an observable side effect.
             (pkg / '__init__.py').write_text(
                 f'open({str(marker)!r}, "w").close()\n'
                 'raise RuntimeError("import should not have happened")\n'
@@ -125,8 +123,7 @@ class PannsBootstrapOrdering(unittest.TestCase):
         self.assertIn("'--labels-only'", setup)
 
     def test_setup_dependency_check_does_not_import_panns(self):
-        """Same trap, other script: importing to check would report an
-        installed package as missing on exactly the machines this fixes."""
+        """Same trap, other script: importing to check reports an installed package as missing."""
         setup = (REPO / 'scripts' / 'setup-panns.py').read_text()
         check = setup.split('def check_python_deps')[1].split('\ndef ')[0]
         self.assertNotIn('import panns_inference', check)

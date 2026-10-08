@@ -1,10 +1,4 @@
-// Looks that change "n bars later" have to change on a bar line, and on a
-// phrase boundary. Both used to fail for the same root cause: the director took
-// a bar's length from the first two downbeats alone — the least trustworthy
-// gap in the track, off by up to 6% on the committed tracks — and scheduled
-// rotations by multiplying it. Eight bars in, a rotation could be half a bar
-// adrift. Only 25 of 171 rotations across the five tracks landed on a bar line,
-// and 10 on a phrase boundary.
+// Rotations must use tracked bar/phrase boundaries; multiplying an early beat interval accumulates drift.
 
 import test from 'node:test';
 import assert from 'node:assert';

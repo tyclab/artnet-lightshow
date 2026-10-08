@@ -1,27 +1,4 @@
-"""
-Stage 2 — frame-level features on one shared time grid.
-
-Every later stage reads from this object rather than touching the waveform, for
-two reasons: the STFT gets computed once instead of six times, and every stage
-sees frame `i` as the same instant, so a band peak and a spectral flux peak can
-be compared without resampling anything.
-
-The features here are the standard MIR set. What each one is *for* in a
-lighting context:
-
-  rms / loudness   how hard to drive the rig
-  centroid         where the energy sits — dark and warm vs bright and sharp,
-                   which is the single most useful input to colour temperature
-  rolloff          how much top end there really is; separates a muffled verse
-                   from an open chorus better than centroid alone
-  flux             how much the spectrum is *changing*; the raw material for
-                   onsets, and a good proxy for "is something happening"
-  zcr              noisiness; separates hats and distortion from tonal content
-  flatness         tonal vs noise-like; a wash of white noise (riser, crash)
-                   reads high, a sustained chord reads low
-  contrast         peak-to-valley per band; high on clear arrangements, low on
-                   dense walls of sound
-"""
+"""Stage 2 — frame-level features on one shared time grid."""
 
 from dataclasses import dataclass, field
 
@@ -34,7 +11,6 @@ from .config import PreprocessConfig
 @dataclass
 class FrameFeatures:
     times: np.ndarray
-    #: Linear magnitude spectrogram of the full signal, (bins, frames).
     magnitude: np.ndarray
     frequencies: np.ndarray
     sample_rate: int
@@ -42,9 +18,7 @@ class FrameFeatures:
     n_fft: int
 
     rms: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    #: RMS scaled to 0..1 against its own percentiles.
     energy: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    #: Momentary loudness in LUFS, on the frame grid.
     loudness: np.ndarray = field(default_factory=lambda: np.zeros(0))
     centroid: np.ndarray = field(default_factory=lambda: np.zeros(0))
     rolloff: np.ndarray = field(default_factory=lambda: np.zeros(0))
@@ -53,17 +27,11 @@ class FrameFeatures:
     zcr: np.ndarray = field(default_factory=lambda: np.zeros(0))
     flatness: np.ndarray = field(default_factory=lambda: np.zeros(0))
     contrast: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    #: Percussive-only onset strength — the rhythm stage's primary input.
     percussive_onset: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    #: Chroma of the harmonic component, (12, frames).
     chroma: np.ndarray = field(default_factory=lambda: np.zeros((12, 0)))
-    #: Harmonic and percussive magnitude spectrograms, for band attribution.
     harmonic_magnitude: np.ndarray = field(default_factory=lambda: np.zeros((0, 0)))
     percussive_magnitude: np.ndarray = field(default_factory=lambda: np.zeros((0, 0)))
-    #: Magnitude spectrogram of the wideband pass, on the same time grid.
-    #: Empty when the source had no content above the analysis Nyquist — the
-    #: `air` band is then reported as absent rather than as silent, which are
-    #: different facts about a recording.
+    #: Empty when the source has nothing above the analysis Nyquist: `air` is then absent, not silent.
     wideband_magnitude: np.ndarray = field(default_factory=lambda: np.zeros((0, 0)))
     wideband_frequencies: np.ndarray = field(default_factory=lambda: np.zeros(0))
 
@@ -139,10 +107,7 @@ def extract(audio, config: PreprocessConfig = None) -> FrameFeatures:
     except Exception:
         chroma = librosa.feature.chroma_stft(S=harmonic_mag, sr=sr)
 
-    # Momentary loudness on the frame grid. Derived from the band-summed power
-    # with a K-weighting-shaped tilt rather than by running the full BS.1770
-    # filter per frame — same ordering, a fraction of the cost, and the
-    # absolute calibration comes from the integrated value measured in stage 1.
+    # K-weighting-shaped tilt per frame, not full BS.1770; absolute calibration comes from stage 1's integrated value.
     weights = _k_weight_response(frequencies)
     weighted_power = np.sum((magnitude ** 2) * weights[:, None], axis=0)
     with np.errstate(divide='ignore'):
@@ -221,9 +186,7 @@ def _k_weight_response(frequencies):
     """
     f = np.asarray(frequencies, dtype=float)
     f = np.maximum(f, 1e-6)
-    # High-pass stage: second-order, corner ~38 Hz.
     hp = (f ** 2) / (f ** 2 + 38.0 ** 2)
-    # High-shelf stage: +4 dB above ~1682 Hz.
     shelf_gain = 10.0 ** (3.99984385397 / 20.0)
     shelf = 1.0 + (shelf_gain - 1.0) * (f ** 2) / (f ** 2 + 1681.97 ** 2)
     return (hp * shelf) ** 2

@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""
-Launcher for the audio analysis pipeline.
-
-Exists so the package can be spawned by absolute path without the caller having
-to arrange `sys.path` or a working directory:
-
-    python /path/to/src/analyze.py --worker
-
-The real implementation is in `src/analysis/`; see `analysis/cli.py` for the
-modes and `docs/audio-analysis.md` for what the pipeline does.
-"""
+"""Launcher for the audio analysis pipeline."""
 
 import os
 import sys

@@ -89,10 +89,7 @@ class Calibration(unittest.TestCase):
                                 perception.GENRE_MIN_SCORE)
 
     def test_the_floor_sits_where_the_temperature_was_set_to_put_it(self):
-        # A tenth of a cosine of lead is the documented meaning of
-        # GENRE_MIN_SCORE. Changing the temperature without revisiting the
-        # threshold moves the line between "labelled" and "signal" for every
-        # track, so the relationship is pinned rather than left implicit.
+        # Changing the temperature without the threshold moves the label/signal line for every track.
         from analysis import perception
         under = perception.subgenre_scores_from_prompts(rows(edm=0.05 + 0.08))
         over = perception.subgenre_scores_from_prompts(rows(edm=0.05 + 0.12))

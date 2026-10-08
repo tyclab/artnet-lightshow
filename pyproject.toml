@@ -1,21 +1,6 @@
-# The Python half of the lightshow: the audio analysis in src/analysis and the
-# live input in src/live_input.py. Not a package to install — a locked
-# environment to run them in:
-#
-#     uv sync --extra cpu        any machine, no GPU
-#     uv sync --extra cu128      an NVIDIA card (CUDA 12.8)
-#     uv sync --extra rocm       an AMD card on Linux (ROCm 7.2)
-#
-# Exactly one of the three. torch, torchaudio and torchvision have to come from
-# the same build — a torchvision built for another torch installs cleanly and
-# then fails every model with "operator torchvision::nms does not exist" —
-# which is what the per-extra indexes below guarantee and a plain
-# `pip install -r requirements.txt` cannot. The server picks up the .venv this
-# creates by itself (src/python-env.ts).
-#
-# AMD iGPUs on Windows (Radeon 780M/890M) are not covered: their torch comes
-# from AMD's own index with a per-GPU extra. See requirements.txt for that
-# install, which remains the route for anything uv does not fit.
+# Choose one torch extra: cpu, cu128 or rocm; all torch packages must use the same index.
+# A torchvision from another torch build installs, then fails every model with "operator torchvision::nms does not exist".
+# The server picks up the .venv uv creates (src/python-env.ts). Windows AMD iGPUs use requirements.txt instead.
 
 [project]
 name = "artnet-lightshow-analysis"
@@ -57,12 +42,9 @@ dependencies = [
     # Live input.
     "soundcard>=0.4.6",
     "sounddevice>=0.5",
-    # Audio download fallback, with the JavaScript runtime YouTube's challenges
-    # need (Deno, installed beside it, where yt-dlp looks first) — nothing to
-    # install separately, and nothing the packaged build's executable can be.
+    # Include the Deno runtime needed by yt-dlp.
     "yt-dlp[default,deno]>=2025.11.12",
-    # An ffmpeg for yt-dlp and for converting downloads, used when there is
-    # none on PATH (the server asks imageio-ffmpeg where its binary is).
+    # ffmpeg fallback when none is on PATH.
     "imageio-ffmpeg>=0.5",
 ]
 
@@ -75,11 +57,7 @@ rocm = ["torch>=2.7", "torchaudio>=2.7", "torchvision>=0.22", "triton-rocm; sys_
 package = false
 conflicts = [[{ extra = "cpu" }, { extra = "cu128" }, { extra = "rocm" }]]
 
-# S-KEY as it declares itself would hold torch and torchaudio at 2.7.x and numpy
-# at 2.2.x, and taking it at its word replaced a GPU torch with the 2.7 CPU wheel —
-# so it was left out, and every track's key fell back to the internal estimate.
-# Nothing in its code needs 2.7 (it finds keys on the locked torch 2.11); what
-# it needs, without the pins:
+# Override S-KEY metadata pins to keep the selected GPU torch build; its code supports the locked version.
 [[tool.uv.dependency-metadata]]
 name = "skey"
 version = "0.1.0"

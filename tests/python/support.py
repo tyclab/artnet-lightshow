@@ -1,12 +1,4 @@
-"""
-Shared scaffolding for the analysis tests.
-
-Two jobs. First, put `src/` on the path so `analysis` imports as a package.
-Second, let the whole suite skip cleanly on a machine without the scientific
-stack: a contributor working on the Node side should be able to run the tests
-without a 300 MB install, and CI installs the dependencies so the real
-assertions run there.
-"""
+"""Shared scaffolding for the analysis tests."""
 
 import os
 import sys
@@ -55,9 +47,6 @@ class AudioTestCase(unittest.TestCase):
         return track.write(os.path.join(self.tmpdir, name))
 
 
-# Analysing a track is several seconds, and half the assertions in this suite
-# want the same one. Cache per (generator arguments) so the whole file pays for
-# each track once.
 _ANALYSIS_CACHE = {}
 
 

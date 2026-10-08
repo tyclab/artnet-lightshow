@@ -1,11 +1,4 @@
-"""
-BS.1770 loudness, checked against the reference cases in the standard.
-
-These numbers are not arbitrary: the spec defines a 1 kHz sine at -20 dBFS as
-reading -20 LUFS, and defines two coherent channels as summing +3 LU. An
-implementation that gets either wrong will normalise every track to the wrong
-level, and every threshold in the pipeline is measured against that level.
-"""
+"""BS.1770 loudness, checked against the reference cases in the standard."""
 
 import unittest
 
@@ -99,8 +92,6 @@ class TruePeak(unittest.TestCase):
         from analysis import loudness
         sr = 48000
         t = np.arange(sr) / sr
-        # A tone at a quarter of Nyquist, phase-offset so no sample lands on the
-        # crest of the waveform.
         signal = 0.99 * np.sin(2 * np.pi * (sr / 4.0) * t + np.pi / 4)
         sample_peak = 20 * np.log10(float(np.max(np.abs(signal))))
         self.assertGreater(loudness.true_peak_dbfs(signal, sr), sample_peak)

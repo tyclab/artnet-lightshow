@@ -5,6 +5,23 @@ Entertainment. Control it from the browser, MIDI, Bitfocus Companion or REST.
 Manual looks, effects, pads and sequences work without Python; analysed shows
 and live audio use the optional analysis environment.
 
+## Signal flow
+
+```mermaid
+flowchart LR
+  Controls[Browser / MIDI / Companion / REST] --> Server[Server state and validation]
+  Playback[Playback sources] --> Clock[Musical clock]
+  Audio[Audio file or live input] --> Analysis[Python analysis / live features]
+  Analysis --> Show[Auto show and effect inputs]
+  Analysis --> Clock
+  Clock --> Engine[Engine renderer / blackout / flash limits]
+  Server --> Engine
+  Show --> Engine
+  Engine --> Preview[Browser preview]
+  Engine --> Guard[Output arming / transport gates]
+  Guard --> Outputs[Art-Net / sACN / DDP / OpenRGB / Hue]
+```
+
 ## Setup and deployment
 
 ### Source checkout
@@ -518,6 +535,17 @@ GPU memory policy and timeouts. `analysis.pythonPath` selects an interpreter;
 `ARTNET_PYTHON` overrides discovery. See
 [Audio analysis](docs/audio-analysis.md) for the analysis schema and controls.
 
+The analysis package separates preprocessing, frame features, perceptual bands,
+rhythm, structure, dynamics and perception into modules. `events` combines their
+results; `pipeline.analyze()` orchestrates offline analysis and `realtime` uses the
+same event vocabulary for live input. The show engine combines musical events
+with timing, section and feature data to choose and schedule lighting.
+
+`src/analysis/document.schema.json` defines the shared contract. Python validates
+pipeline output through `src/analysis/schema.py`; `npm run gen:analysis-types`
+generates the TypeScript types. Cached 2.x documents remain readable across minor
+versions: fields introduced later are optional and absent from older documents.
+
 ### Playback sources
 
 | Source | Setup |
@@ -1006,6 +1034,7 @@ npm run watch:client       # rebuild browser assets on changes
 npm run dev                # watch the server, without supervisor
 npm run lint
 npm run typecheck
+npm ci --prefix companion-module # dependency used by Companion tests
 node --test --test-concurrency=3 tests/unit/*.test.js
 npm run test:e2e
 npm run gen:analysis-types # after changing the analysis document schema
@@ -1020,6 +1049,11 @@ install its Chromium with `npx playwright install chromium` when needed.
 Build packages with Node 24 on the target platform. Package/release workflows
 are in `.github/workflows/`; a version tag matching `package.json` drafts the
 release. Preserve repository hooks, CI checks and normal release policies.
+
+Python validation uses the analysis environment:
+`python -m unittest discover -s tests/python -v`. Optional model and audio
+dependencies determine which tests can run; report skips alongside results.
+Repository contribution rules and comment-limit approvals live in [AGENTS.md](AGENTS.md).
 
 ## Hardware capability and admission
 

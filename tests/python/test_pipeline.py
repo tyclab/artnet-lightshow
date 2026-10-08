@@ -15,9 +15,7 @@ from support import AudioTestCase, analyse_track, needs_audio
 from analysis import schema
 
 
-# Field names the web client, the timeline view and the on-disk cache all read.
-# Removing one is a UI regression that no test of the analyser would otherwise
-# catch, because the analyser would still be perfectly correct.
+# The web client, timeline view and cache read these; no analyser test would catch a removal.
 COMPATIBILITY_FIELDS = [
     'duration', 'bpm', 'tempoCurve', 'tempoStability', 'beatSource', 'beats',
     'beatStrengths', 'downbeats', 'meter', 'downbeatConfidence', 'key', 'scale',
@@ -147,8 +145,7 @@ class Reporting(AudioTestCase):
         html = report.analysis_to_html(doc, title='test', waveform=[0.1, 0.9, 0.4])
         self.assertIn('<!doctype html>', html)
         self.assertIn('application/json', html)
-        # No external requests: an operator debugging a rig is not necessarily
-        # on a network.
+        # No external requests: an operator debugging a rig may be offline.
         self.assertNotIn('src="http', html)
         self.assertNotIn('href="http', html)
 

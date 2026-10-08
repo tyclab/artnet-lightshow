@@ -1,28 +1,4 @@
-"""
-Stage 7 — what the track *feels* like.
-
-Everything up to here is measurement. This stage is interpretation, and it is
-where the show's personality comes from: the same drop should look different in
-a trance track and in a ballad, and nothing in the signal says which is which
-without an opinion about what the numbers mean.
-
-Three outputs:
-
-  key / scale     Krumhansl-Schmuckler correlation against the chroma profile.
-                  Drives palette selection, so that two songs in the same key
-                  reach for the same colours and a modulation is visible.
-  mood            valence and arousal on Russell's circumplex, plus the two
-                  derived measures a lighting desk actually wants:
-                  danceability and "kickiness".
-  genre / style   MuQ-MuLan scored against the sixteen subgenres by name, and
-                  the subgenre folded into one of four show styles. The style is
-                  the single most consequential number in the whole document —
-                  it decides whether the rig strobes at all.
-
-Each has a documented fallback: no chroma means no key (and a neutral palette),
-no classifier means the style comes from tempo and arousal instead. Nothing
-here can fail the analysis.
-"""
+"""Stage 7 — what the track *feels* like."""
 
 from dataclasses import dataclass, field
 
@@ -31,8 +7,6 @@ import numpy as np
 from . import dsp
 
 
-# Krumhansl-Kessler key profiles: how strongly each scale degree is used in
-# major and minor tonality, measured from listener ratings.
 MAJOR_PROFILE = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09,
                           2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
 MINOR_PROFILE = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53,
@@ -40,20 +14,7 @@ MINOR_PROFILE = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53,
 KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
 
-# Zero-shot genre prompts for MuQ-MuLan, which is what actually answers the
-# genre question now.
-#
-# The point of a joint music/text embedding is that the classes are whatever
-# you ask it for, so these prompts *are* the sixteen subgenres the show engine
-# knows about. The AudioSet fold below had to work the other way round — guess
-# that `independent music` means rock, that `flamenco` means latin, that a
-# close vocal harmony tagged `christian music` does not mean gospel — and that
-# fold is where its wrong answers came from, not the model's confidence.
-#
-# Several phrasings per subgenre, scored by their best match. One phrasing can
-# miss for reasons that have nothing to do with the music ("disco" is also a
-# room, "country" is also a place), and asking three ways costs one text-tower
-# pass over 40-odd short strings while the audio is encoded exactly once.
+# Several phrasings per subgenre, best match wins: one phrasing can miss ('disco' is also a room).
 GENRE_PROMPTS = {
     'edm':       ('electronic dance music', 'house music',
                   'a four to the floor club track'),
@@ -76,30 +37,9 @@ GENRE_PROMPTS = {
     'ambient':   ('ambient music', 'a slow atmospheric drone with no beat'),
 }
 
-# Cosine similarities are not probabilities, and the thresholds below are
-# written against a distribution: a softmax is what makes them comparable.
-#
-# The temperature is the only free parameter in the transform, and it is set by
-# where it puts `GENRE_MIN_SCORE`. With sixteen classes an undecided model sits
-# at 1/16 = 0.06, comfortably under the 0.15 floor, so it falls through to the
-# signal — which is what the floor is for. At 0.1 the floor then lands almost
-# exactly on a best prompt leading the field by 0.10 of a cosine: below that the
-# model is not saying much, and a 0.3 lead comes out at 0.57. Lower it and
-# near-ties start deciding shows; raise it and only a certainty gets a label.
-#
-# Note which of the two thresholds is load-bearing here. After a softmax the
-# margin is the weaker one — `GENRE_MIN_MARGIN` of 1.5 is only 0.04 of a cosine
-# between the top two — because the floor already encodes "leads the whole
-# field". On the AudioSet path below, where the scores are unnormalised sums,
-# it is the other way round and the margin is what catches a four-way tie.
+# 0.1 puts GENRE_MIN_SCORE at a 0.10 cosine lead; test_genre.py pins the pairing.
 GENRE_SOFTMAX_TEMPERATURE = 0.1
 
-# AudioSet labels grouped into the subgenres the show engine has looks for.
-#
-# The fallback path, kept for rigs that have `panns_inference` installed but no
-# MuQ-MuLan checkpoint. See `GENRE_PROMPTS` above for why it is second choice:
-# a general-audio tagger has to be folded into musical categories, and the fold
-# is lossy in exactly the places a lighting desk cares about.
 SUBGENRES = {
     'edm':       ['electronic dance music', 'house music', 'techno',
                   'dance music', 'electronica', 'electronic music'],
@@ -120,32 +60,15 @@ SUBGENRES = {
     'classical': ['classical music', 'opera', 'choir', 'orchestra'],
     'folk':      ['folk music', 'acoustic guitar', 'traditional music',
                   'middle eastern music'],
-    # `piano`, `gospel music` and `christian music` used to sit here. They are
-    # not genres in any sense the rig cares about — a piano appears in ballads,
-    # jazz and hip hop alike, and AudioSet fires `christian music` on close
-    # vocal harmony. Together they were enough to carry a Backstreet Boys track
-    # to `ambient`, and from there to the `calm` tier, which turns the whole
-    # show off. A label that does not predict how to light a track does not
-    # belong in a bucket that does.
+    # No piano/gospel/christian music: they carried a Backstreet Boys track to ambient, i.e. the calm tier.
     'ambient':   ['ambient music', 'new-age music'],
 }
 
-# How sure the classifier has to be before its answer is allowed to set the
-# show's style, and by how much it has to beat the runner-up.
-#
-# The old floor of 0.08 with no margin let a four-way statistical tie decide:
-# on one track `ambient` won at 0.108 over `funk` at 0.105 — a three-percent
-# margin — and that coin toss put the track in the `calm` tier for its whole
-# duration. Below these thresholds the answer is noise and the signal-derived
-# style is the more honest one.
+# A 0.108 vs 0.105 near-tie once lit a whole track as calm; below these the signal-derived style decides.
 GENRE_MIN_SCORE = 0.15
 GENRE_MIN_MARGIN = 1.5
 
-# Show style per subgenre. This is the contract with the show engine:
-#   dance     strobes, chases, hard cuts, fast beat divisions
-#   moderate  bursts and movement, strobes reserved for drops
-#   rock      strong beats and colour changes, sparing effects
-#   calm      fades and gradients only, no strobes at any intensity
+# Show-engine contract: dance strobes and chases, moderate strobes only on drops, rock sparing effects, calm never strobes.
 GENRE_STYLE = {
     'edm': 'dance', 'dubstep': 'dance', 'trance': 'dance', 'disco': 'dance',
     'hiphop': 'moderate', 'pop': 'moderate', 'funk': 'moderate',
@@ -167,12 +90,11 @@ class Perception:
     tension: float = 0.5
     genre: str = 'unknown'
     genre_confidence: float = 0.0
-    #: Which classifier produced the label: `muq-mulan`, `panns` or `signal`.
     genre_source: str = 'signal'
     style: str = 'unknown'
     subgenre_scores: dict = field(default_factory=dict)
     top_tags: list = field(default_factory=list)
-    #: Raw AudioSet probabilities, for the band stage. Not serialised.
+    # Raw AudioSet probabilities for the band stage; not serialised.
     tags: dict = field(default_factory=dict)
 
     def to_dict(self):
@@ -190,9 +112,7 @@ class Perception:
             'genre': {
                 'label': self.genre,
                 'confidence': round(self.genre_confidence, 3),
-                # The web client reads `labelConf`. Kept alongside the clearer
-                # name rather than renamed, because cached documents carry
-                # whichever one was current when they were written.
+                # Kept beside `confidence`: the web client and cached documents read `labelConf`.
                 'labelConf': round(self.genre_confidence, 3),
                 'style': self.style,
                 'source': self.genre_source,
@@ -202,7 +122,6 @@ class Perception:
         }
 
 
-# ── Key ─────────────────────────────────────────────────────────────────────
 
 def estimate_key(chroma):
     """
@@ -240,7 +159,6 @@ def estimate_key(chroma):
     return KEY_NAMES[tonic], scale, round(strength, 3)
 
 
-# ── Mood ────────────────────────────────────────────────────────────────────
 
 def estimate_mood(features, bands, rhythm, scale, key_strength, roles=None):
     """
@@ -277,22 +195,13 @@ def estimate_mood(features, bands, rhythm, scale, key_strength, roles=None):
     valence = dsp.clamp01(
         0.5 + 0.30 * mode_bias + 0.22 * (brightness - 0.45) + 0.18 * (consonance - 0.5))
 
-    # Danceability: a steady grid you can move to. Beat confidence carries most
-    # of it — music you cannot find the beat of is not danceable however fast
-    # it is — with a tempo window on top, because 190 BPM and 60 BPM are both
-    # hard to dance to for opposite reasons.
     beat_confidence = float(np.mean(rhythm.confidences)) if rhythm.confidences.size else 0.0
     tempo_fit = float(np.exp(-0.5 * ((tempo - 122.0) / 38.0) ** 2))
     danceability = dsp.clamp01(
         0.40 * beat_confidence + 0.25 * tempo_fit
         + 0.20 * rhythm.stability + 0.15 * density)
 
-    # Kickiness: is the low end punching or sustaining? This is the number that
-    # decides whether the rig hits on the beat or breathes across the bar.
-    #
-    # Read off the *kick role*, not the raw bass band: the bass band contains
-    # the bass line as well, and on any track with a sustained sub the band's
-    # own percussive ratio reports the bass line rather than the drum.
+    # Kickiness reads the kick role too: the bass band alone reports a sustained bass line, not the drum.
     kick_band = bands.get('bass')
     kickiness = 0.5
     if kick_band is not None:
@@ -302,7 +211,6 @@ def estimate_mood(features, bands, rhythm, scale, key_strength, roles=None):
             + 0.20 * tight_attack
             + 0.20 * (roles.scores.get('kick', 0.5) if roles is not None else 0.5))
 
-    # Tension: bright, noisy, dense and *un*resolved. Rises through build-ups.
     tension = dsp.clamp01(
         0.35 * brightness + 0.30 * dsp.clamp01(float(np.mean(features.flatness)) * 5.0)
         + 0.35 * (1.0 - float(np.mean(rhythm.confidences)) if rhythm.confidences.size else 0.5))
@@ -313,7 +221,6 @@ def estimate_mood(features, bands, rhythm, scale, key_strength, roles=None):
     }
 
 
-# ── Genre ───────────────────────────────────────────────────────────────────
 
 def genre_prompts():
     """Every zero-shot prompt in one flat tuple, for the model adapter."""
@@ -369,9 +276,6 @@ def classify_genre(tags, mood, rhythm, genre_scores=None):
 
     result = decide_genre(scores, mood, rhythm)
     result['subgenre_scores'] = scores
-    # The tag list is what the operator sees when the label looks wrong, so it
-    # shows the evidence that was actually used: AudioSet classes for the fold,
-    # the subgenre distribution itself for the zero-shot pass.
     result['top_tags'] = _top_tags(tags if source == 'panns' else scores)
     if result['genre_source'] == 'scores':
         result['genre_source'] = source
@@ -405,18 +309,13 @@ def decide_genre(scores, mood, rhythm):
 
     style = GENRE_STYLE.get(label, 'moderate')
 
-    # The veto. Even a confident tag does not get to call a track calm when the
-    # signal is plainly saying otherwise: a loud, danceable track lit as a
-    # ballad is the most visible failure the show engine has, and arousal and
-    # danceability are measured rather than inferred.
+    # Veto: a loud, danceable track is never lit as calm, whatever the tag says.
     if style == 'calm' and mood['arousal'] >= 0.70 and mood['danceability'] >= 0.60:
         style = _style_from_signal(mood, rhythm)['style']
 
     return {
         'genre': label,
         'genre_confidence': dsp.clamp01(confidence),
-        # Overwritten by `classify_genre` with the classifier that produced the
-        # scores; `decide_genre` deliberately does not know which one that was.
         'genre_source': 'scores',
         'style': style,
         'subgenre_scores': {},
@@ -459,7 +358,6 @@ def _style_from_signal(mood, rhythm):
     }
 
 
-# ── Entry point ─────────────────────────────────────────────────────────────
 
 def analyse(features, bands, rhythm, roles=None, tags=None,
             genre_scores=None) -> Perception:

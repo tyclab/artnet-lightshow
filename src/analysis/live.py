@@ -47,9 +47,8 @@ first state over them, with the list as it was sent:
 
 A list it cannot take is an error that is not fatal, and the bands stay.
 
-Capture uses the `soundcard` package, which does loopback on Windows and Linux
-alike; `sounddevice` is the fallback for a line-in when `soundcard` is not
-installed. Neither is needed for a file, which is what the tests use.
+Capture uses `soundcard` (loopback on Windows and Linux); `sounddevice` is the line-in fallback.
+Neither is needed for a file, which is what the tests use.
 """
 
 import argparse
@@ -69,18 +68,11 @@ SAMPLE_RATE = 22050
 HOP = 256
 N_FFT = 1024
 
-# The analyser dates a frame by where its window starts, but an onset only
-# tips the spectral flux once the window is about half over it, so its grid
-# runs early by about half a window: 15–33 ms on the synthetic tracks at
-# 100–174 BPM (tests/python/test_live.py), 23 ms by the arithmetic.
+# Frames are dated by window start but onsets register about half a window in: 23 ms, 15-33 ms measured (test_live.py).
 WINDOW_LAG_SEC = N_FFT / 2 / SAMPLE_RATE
 
-# The band powers asked for with --bands: a dozen at most, every edge at or
-# under the Nyquist frequency of the service's own rate.
 MAX_BANDS = 12
 BAND_HZ_MAX = SAMPLE_RATE / 2.0
-# The dominant frequency is looked for up to here: the melody and the bass,
-# not the hats.
 DOMINANT_MAX_HZ = 2000.0
 
 _EDGE = r'(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?'
@@ -174,15 +166,12 @@ class LiveService:
         from .realtime import StreamingAnalyzer
         self.emitter = emitter
         self.sample_rate = sample_rate
-        # No bands, no spectrum: the lines stay as they were for every reader
-        # that never asked.
         self.band_bins = None
         self.top_hz = min(BAND_HZ_MAX, sample_rate / 2.0)
         if bands:
             self.band_bins = band_bins(check_bands(bands, self.top_hz), sample_rate)
         self.analyzer = StreamingAnalyzer(live_config(), sample_rate=sample_rate)
         self.captured = 0
-        # The server's lines, from the stdin thread; taken between two hops.
         self._requests = collections.deque()
 
     def ask(self, line):
@@ -273,7 +262,6 @@ def read_requests(stream, service):
             service.ask(line)
 
 
-# ── Sources ───────────────────────────────────────────────────────────────────
 
 def _soundcard():
     try:
@@ -330,8 +318,7 @@ def capture_soundcard(sc, source, device, service, emitter, stop):
     else:
         mic = sc.get_microphone(device) if device else sc.default_microphone()
         name = mic.name
-    # The backends resample to what is asked for: WASAPI shared mode and
-    # PulseAudio both convert, so the analyser gets its own rate directly.
+    # WASAPI shared mode and PulseAudio resample to the requested rate.
     with mic.recorder(samplerate=SAMPLE_RATE, blocksize=HOP) as recorder:
         emitter.send({'type': 'ready', 'backend': 'soundcard', 'source': source, 'device': name,
                       'sampleRate': SAMPLE_RATE, 'hop': HOP})
@@ -412,7 +399,6 @@ def main(argv=None):
     except KeyboardInterrupt:
         return 0
     except BrokenPipeError:
-        # The server went away; there is no one left to tell.
         return 0
     except Exception as err:  # noqa: BLE001 — reported to the server, which decides
         emitter.send({'type': 'error', 'fatal': True, 'message': f'{type(err).__name__}: {err}'})

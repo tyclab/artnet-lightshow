@@ -1,29 +1,13 @@
 <#
 .SYNOPSIS
-  Streams the Windows "now playing" media session as newline-delimited JSON.
-
+  Stream Windows media-session state as NDJSON for src/smtc-source.ts.
 .DESCRIPTION
-  Reads the System Media Transport Controls (SMTC) — the same OS media session
-  that powers the volume-overlay now-playing widget — and prints one compact
-  JSON object per poll to stdout. The Node side (src/smtc-source.js) spawns this
-  and feeds the snapshots into the now-playing source, so any player that reports
-  to SMTC (e.g. a track playing in a Chromium browser) drives the auto-show — no
-  per-service developer credentials required.
-
-  MUST run under Windows PowerShell 5.1 (powershell.exe): PowerShell 7 (pwsh)
-  dropped the built-in WinRT projection this relies on. Node invokes it with the
-  full path to powershell.exe, never pwsh.
-
+  Requires Windows PowerShell 5.1 and its WinRT projection; do not use pwsh.
 .PARAMETER IntervalMs
-  Poll interval in milliseconds. Default 500 — snappy enough for track changes,
-  cheap enough to run forever on localhost.
-
+  Poll interval in milliseconds; default 500.
 .OUTPUTS
-  One JSON line per poll, e.g.
-    {"ok":true,"title":"...","artist":"...","album":"...","appId":"...",
-     "isPlaying":true,"positionMs":42100,"durationMs":215000}
-  When nothing is playing: {"ok":true,"title":null}
-  On error:                {"ok":false,"error":"..."}
+  JSON: ok, title, artist, album, appId, isPlaying, positionMs, durationMs.
+  Idle: {"ok":true,"title":null}. Error: {"ok":false,"error":"..."}.
 #>
 [CmdletBinding()]
 param([int]$IntervalMs = 500)
@@ -49,7 +33,6 @@ function Await($op, $resultType) {
     $task.Result
 }
 
-# Project the SMTC WinRT types into PowerShell.
 $null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
 $null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties, Windows.Media.Control, ContentType = WindowsRuntime]
 $null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus, Windows.Media.Control, ContentType = WindowsRuntime]
@@ -84,16 +67,12 @@ while ($true) {
             $posMs   = [double]$timeline.Position.TotalMilliseconds - $startMs
             $durMs   = $endMs - $startMs
 
-            # Sanity bounds: some apps report uninitialised/garbage timelines
-            # (huge or negative values). Treat anything implausible as "unknown".
+            # Treat invalid or uninitialised timeline values as unknown.
             $MAX_MS = 24 * 60 * 60 * 1000   # 24h
             if ($durMs -lt 0 -or $durMs -gt $MAX_MS) { $durMs = 0 }
             if ($posMs -lt 0 -or $posMs -gt $MAX_MS) { $posMs = 0 }
 
-            # SMTC only refreshes Position on play/pause/seek. Interpolate from
-            # LastUpdatedTime while playing so the lightshow stays beat-aligned —
-            # but only if LastUpdatedTime is fresh (a stale one means the app
-            # doesn't keep the timeline current, so interpolation would drift).
+            # SMTC refreshes Position only on play/pause/seek; interpolate while LastUpdatedTime is fresh.
             $lastUpdated = $timeline.LastUpdatedTime
             if ($isPlaying -and $lastUpdated.Year -gt 2000) {
                 $elapsed = ([DateTimeOffset]::Now - $lastUpdated).TotalMilliseconds

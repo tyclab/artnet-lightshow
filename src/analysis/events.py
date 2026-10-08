@@ -1,30 +1,4 @@
-"""
-Stage 8 — the musical event stream.
-
-This is the interface between everything above and everything the lighting side
-does. Nothing downstream reads a spectrogram; it reads events.
-
-    audio -> analysis -> MUSICAL EVENTS -> lighting intent -> DMX
-
-The indirection is the point. A direct audio-to-DMX mapping can only express
-"louder means brighter", and it has to re-derive the same facts in every effect
-it implements. An event stream lets the show engine reason about *music*: it can
-decide to ignore three of the next four bars because a drop is coming, or to
-hold a colour through a vocal phrase, because those are statements about events,
-not about samples.
-
-Every event carries the same five fields, so the show engine can treat an
-unfamiliar type generically rather than crashing on it:
-
-    t           when it happens, in seconds from the start of the track
-    confidence  0..1, how sure the analyser is that this is real
-    intensity   0..1, how big it is musically — *not* how bright to make it
-    duration    how long it lasts, in seconds (0 for instantaneous)
-    effect      the recommended gesture, as a hint the director may override
-
-`effect` is advice, not instruction. The director owns pacing and contrast and
-will refuse events that would break either; see `show/director.js`.
-"""
+"""Stage 8 — the musical event stream."""
 
 from dataclasses import dataclass, asdict
 
@@ -34,7 +8,6 @@ from . import dsp
 from .config import EventConfig
 
 
-# The event vocabulary. Anything not in here is a bug in this module.
 BEAT = 'BEAT'
 BAR = 'BAR'
 DROP = 'DROP'
@@ -51,12 +24,12 @@ SECTION = 'SECTION'
 TYPES = (BEAT, BAR, DROP, BUILDUP, ENERGY_SPIKE, BASS_HIT, VOCAL_SECTION,
          MELODY_CHANGE, SILENCE, TRANSITION, BREAK, SECTION)
 
-# Recommended gestures. The renderer maps these onto whatever the rig can do.
 EFFECTS = ('accent', 'pulse', 'flash', 'strobe', 'blinder', 'chase', 'sweep',
            'fade', 'wash', 'hold', 'blackout', 'color-shift', 'scene-change',
            'ramp')
 
 
+# Every event has the same fields so the show engine handles unknown types; `effect` is a hint src/show/director.ts may refuse.
 @dataclass
 class Event:
     t: float
@@ -81,7 +54,6 @@ class Event:
         return out
 
 
-# ── Generators, one per event type ──────────────────────────────────────────
 
 def beat_events(rhythm, config: EventConfig):
     """
@@ -338,7 +310,6 @@ def section_events(sections):
     ]
 
 
-# ── Entry point ─────────────────────────────────────────────────────────────
 
 def generate(features, bands_map, roles, rhythm, structure_sections, dynamics,
              config: EventConfig = None):

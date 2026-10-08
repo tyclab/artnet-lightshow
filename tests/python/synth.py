@@ -206,9 +206,6 @@ def waltz(bpm=150.0, bars=24, sr=SR):
         for b in range(3):
             t = bar_t + b * beat_sec
             beats.append(t)
-            # Kick on one, snare on two and three — the jazz-waltz pattern. The
-            # drums carry the metre for a beat tracker; the harmony alone does
-            # not, because a tracker keys off percussive onsets.
             if b == 0:
                 _place(buf, kick(sr), t, sr, gain=0.9)
             else:

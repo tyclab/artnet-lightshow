@@ -49,9 +49,6 @@ from .version import SCHEMA_VERSION
 from . import model_adapters, models
 
 
-# The mood words MuQ-MuLan is asked about alongside the genre prompts. These
-# are descriptions of a look rather than of a genre: the show engine reads them
-# as colour and movement hints where the style only says how hard to push.
 SEMANTIC_VOCABULARY = (
     'euphoric', 'dark', 'mechanical', 'organic', 'intimate', 'aggressive',
     'spacious', 'ceremonial', 'warm', 'cold', 'suspended', 'triumphant',
@@ -95,9 +92,7 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
     if not os.path.isfile(path):
         raise FileNotFoundError(path)
 
-    # Declared before the try so the `finally` can shut them down whichever
-    # stage failed. The separation pool used to be declared inside it, and an
-    # exception between its start and its collection left it behind.
+    # Declared before the try so `finally` shuts them down whichever stage failed.
     tag_pool, tag_future = None, None
     mulan_pool, mulan_future = None, None
     stem_pool, stem_future = None, None
@@ -122,54 +117,27 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
         with timings.stage('preprocess'):
             audio = preprocess_stage.prepare(path, config.preprocess, target_duration_sec)
 
-        # The beat model first, on its own thread and first in line for the
-        # card. Everything from the rhythm stage on waits for the grid, and it
-        # needs nothing but the decoded audio — so it runs beside the feature
-        # extraction instead of after it, and the separator and MuQ, started
-        # next, queue behind it instead of in front of it.
         beat_turn = models.reserve_first_turn()
         beat_pool = ThreadPoolExecutor(max_workers=1)
         beat_future = beat_pool.submit(timings.timed('beats', _beat_pass), audio, config.rhythm, beat_turn)
 
-        # The tagger used to read the file itself, which let it start before
-        # preprocessing — at the price of decoding and resampling the whole
-        # track a second time. Preprocessing already produces exactly what it
-        # wants: mono at 32 kHz, and loudness-normalised, so the same track
-        # masters at two levels no longer tags differently. Waiting for that
-        # costs less than the decode it saves, and it still overlaps every
-        # stage after this one.
+        # Tag the preprocessed 32 kHz normalised mono: no second decode, and two masters of a track tag alike.
         if tagging:
             tag_pool = ThreadPoolExecutor(max_workers=1)
             tag_future = tag_pool.submit(timings.timed('tagger', _safe_tag), path, audio)
 
-        # Separation is the most expensive stage and needs nothing but the
-        # waveform, so it starts here and is collected as late as possible. On
-        # a GPU it genuinely overlaps the feature extraction below; on a CPU it
-        # queues behind it, which is no worse than running it in sequence.
         if config.separate_sources:
             stem_pool = ThreadPoolExecutor(max_workers=1)
             stem_future = stem_pool.submit(timings.timed('separation', _safe_separate), audio)
 
-        # MuQ-MuLan answers the genre question, so it has to be collected
-        # before perception rather than tacked on after the document is built.
-        # It wants the waveform rather than the file, which is why it starts
-        # here and not alongside the AudioSet tagger. The timbre embeddings
-        # ride along on the same thread: they share the resample, and nothing
-        # in the pipeline reads them, so running them here rather than inline
-        # at the end takes the slowest optional model off the critical path.
         if config.enable_semantics:
             mulan_pool = ThreadPoolExecutor(max_workers=1)
             mulan_future = mulan_pool.submit(timings.timed('muq', _safe_muq), audio)
 
-        # SongFormer names the sections (see songformer.py). The slowest model
-        # here, and needed only by the structure stage, so it starts now and
-        # is collected last.
         if songformer.wanted(config.structure_model):
             form_pool = ThreadPoolExecutor(max_workers=1)
             form_future = form_pool.submit(timings.timed('songformer', _safe_songformer), audio)
 
-        # The key model reads the decoded file rather than decoding it again,
-        # and nothing but the document waits for it.
         if model_adapters.skey_available():
             key_pool = ThreadPoolExecutor(max_workers=1)
             key_future = key_pool.submit(timings.timed('skey', _safe_skey), audio)
@@ -199,8 +167,6 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
         with timings.stage('wait.songformer'):
             model_sections = _collect(form_future) or None
 
-        # Structure and perception are independent of each other and are the
-        # two slowest remaining stages, so they run side by side.
         if config.parallel:
             with ThreadPoolExecutor(max_workers=2) as pool:
                 sections_future = pool.submit(
@@ -248,11 +214,8 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
             'rhythm': 'beat_this',
             'separation': getattr(stems, 'backend', 'none') if stems is not None else 'none',
             'key': 'internal_perception',
-            # A successful model run can legitimately return no tags (for
-            # silence), so use the submitted future rather than the result.
+            # Test the submitted future, not the result: silence legitimately yields no tags.
             'tagger': 'panns' if tag_future is not None else 'none',
-            # What actually decided the show style, which is not the same as
-            # what ran: a model that came back undecided loses to the signal.
             'genre': perception.genre_source,
             'skey': False,
             'structure': 'songformer' if named_by_model else 'laplacian',
@@ -272,10 +235,7 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
             document['meta']['elapsedSec'] / max(0.001, audio.duration), 4)
         document['meta']['withinRealtimeBudget'] = (
             document['meta']['processingRatio'] < 1.0)
-        # Once more over the finished document: the embeddings, the MuLan
-        # scores and the S-KEY result were attached after the first pass, and
-        # a NaN in any of them would reach the wire as a bare `NaN` that no
-        # JSON parser accepts.
+        # Again over the finished document: late-attached results can hold NaN, which no JSON parser accepts.
         document = json_safe(document)
         _log(f'{os.path.basename(path)}: {audio.duration:.1f}s analysed in '
              f'{document["meta"]["elapsedSec"]}s '
@@ -449,10 +409,7 @@ def build_document(audio, frames, rhythm, band_map, roles, sections, dynamics,
             'mode': perception.scale,
         },
 
-        # ── Compatibility surface ──
-        # Flat field names the previous analyser emitted. The web client, the
-        # timeline view and the cache all read these; new code should prefer
-        # the nested objects below.
+        # Flat compatibility fields from here on: the web client, timeline view and cache read them.
         'duration': round(duration, 3),
         'bpm': round(rhythm.bpm, 1),
         'tempoCurve': dsp.resample_curve(rhythm.tempo_values, rhythm.tempo_times,

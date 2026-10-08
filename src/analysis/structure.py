@@ -1,34 +1,4 @@
-"""
-Stage 5 — where the song changes, and what each part of it is.
-
-Two questions, answered separately, because they need different evidence.
-
-**Where the boundaries are** comes from self-similarity. Build a feature
-sequence over beats (harmony, timbre, band balance), compare every beat to
-every other, and the resulting matrix has visible block structure wherever the
-music repeats. Spectral clustering of that matrix's Laplacian recovers the
-blocks — this is McFee & Ellis (2014), and it is the standard because it finds
-*repetition*, which is what a section boundary actually is, rather than finding
-loud/quiet changes, which is what energy thresholding finds.
-
-**What each section is** cannot come from self-similarity, which only knows
-that section 2 and section 5 are the same, never that they are the chorus. That
-needs the arrangement conventions the music was written to: the first section
-is an intro, the loudest repeated one is the chorus, the quietest one in the
-middle is the breakdown, and so on. Those rules are in `assign_roles` below,
-stated explicitly so they can be argued with and adjusted per genre, rather
-than buried in a threshold.
-
-The show engine uses both: boundaries decide *when* to change the look, roles
-decide *what to change it to*, and a section labelled `chorus` gets the same
-look every time it comes back because the label, not the clock, drives it.
-
-When a structure model has named the sections (SongFormer, see songformer.py),
-`from_model` builds them from its answer instead: its boundaries, put on the
-bar line, and its functions as the roles, with the self-similarity clusters
-still deciding which sections are the same music. The rules above are the
-fallback, for a track the model did not see.
-"""
+"""Stage 5 — where the song changes, and what each part of it is."""
 
 from dataclasses import dataclass, field
 from typing import List
@@ -47,7 +17,6 @@ ROLES = ('intro', 'verse', 'prechorus', 'chorus', 'drop', 'bridge', 'instrumenta
 class Section:
     start: float
     end: float
-    #: Cluster identity — sections with the same label are musically similar.
     label: str
     role: str = 'verse'
     energy: float = 0.0
@@ -55,11 +24,8 @@ class Section:
     bass: float = 0.0
     rhythmic: float = 0.0
     vocal: float = 0.0
-    #: 'low' | 'mid' | 'high' — coarse level, kept for the show engine.
     level: str = 'mid'
     confidence: float = 0.0
-    #: What a structure model called it (intro, verse, pre-chorus, chorus,
-    #: bridge, inst, outro, silence), when one did.
     function: str = None
 
     @property
@@ -83,7 +49,6 @@ class Section:
         }
 
 
-# ── Boundaries ──────────────────────────────────────────────────────────────
 
 def beat_synchronous_features(features, beat_frames):
     """
@@ -127,8 +92,7 @@ def beat_synchronous_features(features, beat_frames):
             out = librosa.util.sync(matrix, frames, aggregate=np.median)
         except Exception:
             return None
-        # librosa.util.sync emits one extra leading bucket for the interval
-        # before the first beat; drop it so column i is beat i.
+        # librosa.util.sync adds a leading bucket for the span before the first beat.
         if out.shape[1] == frames.size + 1:
             out = out[:, 1:]
         return out[:, :frames.size]
@@ -138,8 +102,6 @@ def beat_synchronous_features(features, beat_frames):
     if not parts:
         return None
     n = min(p.shape[1] for p in parts)
-    # Normalise each block to unit scale so timbre does not swamp harmony
-    # purely because MFCCs have a bigger numeric range.
     normalised = []
     for p in parts:
         p = p[:, :n]
@@ -163,14 +125,9 @@ def laplacian_labels(feature_stack, config: StructureConfig):
     recurrence = librosa.segment.recurrence_matrix(
         feature_stack, width=min(config.recurrence_width, max(1, n_beats // 4)),
         mode='affinity', sym=True)
-    # Path enhancement: smooth along the diagonals so a repeat that drifts a
-    # beat out of alignment still reads as a repeat.
     recurrence = librosa.segment.path_enhance(recurrence, n=9)
 
-    # Local connectivity: neighbouring beats are similar by construction, which
-    # is what keeps clusters contiguous in time instead of scattering.
     path = np.diag(np.ones(n_beats - 1), 1) + np.diag(np.ones(n_beats - 1), -1)
-    # Balance the two graphs by their own scale, per McFee & Ellis.
     mu = float(np.mean(recurrence)) if recurrence.size else 0.0
     balance = np.clip(mu, 0.05, 0.95)
     combined = balance * recurrence + (1.0 - balance) * path
@@ -189,7 +146,6 @@ def laplacian_labels(feature_stack, config: StructureConfig):
     if max_k < config.min_clusters:
         return None
 
-    # Eigengap heuristic: the number of clusters is where the eigenvalues jump.
     gaps = np.diff(values[:max_k + 1])
     search = gaps[config.min_clusters - 1:max_k]
     k = config.min_clusters + int(np.argmax(search)) if search.size else config.min_clusters
@@ -308,7 +264,6 @@ def _add_novelty_boundaries(change_beats, novelty, beats, n_beats, config):
     return np.asarray(sorted(set(edges)), dtype=int)
 
 
-# ── Section assembly ────────────────────────────────────────────────────────
 
 def _measure(section, features, rhythm_intensity, vocal_curve):
     times = features.times
@@ -378,29 +333,11 @@ def _level(energy, energies):
     return 'mid'
 
 
-# ── Roles ───────────────────────────────────────────────────────────────────
 
 def assign_roles(sections: List[Section], duration, drops=(), config=None):
-    """
-    Name each section. The rules, in the order they are applied:
-
-    1. A section containing a detected drop is a `drop`. This overrides
-       everything: a drop is the loudest thing in the track and the show must
-       treat it as one even if the clustering merged it into the chorus.
-    2. The first section is an `intro` when it is quieter than the track's
-       median or short. A track that opens at full tilt has no intro, and
-       pretending otherwise costs the show the first thirty seconds.
-    3. The last section is an `outro` when it is quieter than what precedes it.
-    4. Of the labels that repeat, the one with the highest mean energy is the
-       `chorus`; every section carrying that label becomes one.
-    5. A low-energy section in the middle third, at least eight seconds long,
-       is a `breakdown`.
-    6. A label that appears exactly once, past the first third, is a `bridge`.
-    7. Everything else is a `verse`.
-
-    Sections sharing a cluster label are then reconciled to a single role by
-    majority, because a chorus that lights differently on its second appearance
-    reads as a mistake rather than as variety.
+    """Assign drop, intro, outro, chorus, breakdown, bridge or verse in that priority.
+    A drop must pass _starts_on_a_drop; repeated labels reconcile by majority.
+    The chorus is the repeating label with greatest mean energy.
     """
     if not sections:
         return sections
@@ -442,13 +379,7 @@ def assign_roles(sections: List[Section], duration, drops=(), config=None):
             role = 'bridge'
         section.role = role
 
-    # Reconcile by label. Only intro and outro are exempt: those are defined by
-    # *position*, and the first section of a track is an intro however much it
-    # resembles the chorus. Everything else — `drop` included — has to agree
-    # across a cluster, because the show engine biases a section's energy tier
-    # by its role, and two appearances of one cluster that disagree get
-    # different beat divisions for identical music. That is precisely the
-    # "repeats look like repeats" property the clustering exists to provide.
+    # Intro/outro are positional; other roles, drop included, must agree per cluster or repeats get different beat divisions.
     positional = {'intro', 'outro'}
     by_label = {}
     for s in sections:
@@ -457,8 +388,7 @@ def assign_roles(sections: List[Section], duration, drops=(), config=None):
         by_label.setdefault(s.label, []).append(s)
     for label, group in by_label.items():
         roles = [s.role for s in group]
-        # Ties go to the role of the loudest section in the cluster, so the
-        # outcome does not depend on set iteration order.
+        # Ties go to the loudest section's role, not to set order.
         best = max(group, key=lambda s: s.energy).role
         winner = max(sorted(set(roles)), key=lambda r: (roles.count(r), r == best))
         for s in group:
@@ -468,34 +398,9 @@ def assign_roles(sections: List[Section], duration, drops=(), config=None):
 
 
 def _starts_on_a_drop(section, drops, median_energy):
-    """
-    Is this section a *drop section*, as opposed to a section that happens to
-    contain a drop?
-
-    The distinction matters because it was being lost. "Contains a drop
-    anywhere" labelled five of the nine sections of a piano ballad `drop`, and
-    four of seven on a rap track, simply because the detector emits a few drops
-    on every track and most sections are long enough to contain one.
-
-    Three conditions, all of them saying the same thing from different angles —
-    that the drop is what the section *is*, not something that happens during
-    it:
-
-      it is a `proper` drop     a breakdown followed by a sustained slam. A
-                                `hype` moment is an accent inside a section.
-      it lands in the first
-      quarter of the section    a drop starts a section. One in the middle means
-                                the segmentation and the detector disagree, and
-                                neither reading is worth acting on.
-      the section is one of
-      the louder ones           at or above the track's median. A drop into a
-                                quiet passage is a transition, not a drop
-                                section.
-
-    Note this only changes the section's *label*, and through it the energy tier
-    the show engine gives it. The DROP event still fires at the same instant and
-    still gets the full drop gesture — the two were conflated, and they are not
-    the same thing.
+    """True for a proper drop in the section's first quarter at or above median energy.
+    This changes the section label/energy tier only; the timed DROP event remains
+    unchanged. A hype accent or a drop later in a section does not relabel it.
     """
     if not drops or section.duration <= 0:
         return False
@@ -512,7 +417,6 @@ def _starts_on_a_drop(section, drops, median_energy):
     return False
 
 
-# ── Fallback ────────────────────────────────────────────────────────────────
 
 def energy_sections(features, rhythm_intensity, vocal_curve, config: StructureConfig):
     """
@@ -548,7 +452,6 @@ def energy_sections(features, rhythm_intensity, vocal_curve, config: StructureCo
     return _merge_short(sections, config.min_section_sec)
 
 
-# ── Entry point ─────────────────────────────────────────────────────────────
 
 def _similarity(features, rhythm, config):
     """(beat-synchronous feature stack, cluster labels per beat), either None."""
@@ -638,11 +541,7 @@ def analyse(features, rhythm, roles=None, drops=(), config: StructureConfig = No
     return assign_roles(sections, duration, drops, config)
 
 
-# ── From a structure model ──────────────────────────────────────────────────
 
-#: A structure model's section functions, as the show's roles. `inst` and
-#: `silence` are not here: what an instrumental passage is to a lighting
-#: designer depends on how loud it is and where it falls (see `_model_role`).
 FUNCTION_ROLES = {
     'intro': 'intro', 'verse': 'verse', 'pre-chorus': 'prechorus', 'prechorus': 'prechorus',
     'chorus': 'chorus', 'bridge': 'bridge', 'outro': 'outro',
@@ -669,13 +568,7 @@ def _snap(t, beats, downbeats, beat_period, bar_period):
     return float(t)
 
 
-#: The functions a detected drop can turn into a `drop`. SongFormer has no
-#: drop label — its eight are intro, verse, pre-chorus, chorus, bridge, inst,
-#: outro and silence — and a drop section is loud and usually instrumental,
-#: so it comes back as a chorus or an instrumental. Letting the detector
-#: override anything else was tried, and on real music (ten SALAMI live
-#: recordings, human-annotated) it turned correctly named verses into drops:
-#: the detector fires on live rock too. A verse stays a verse.
+# SongFormer has no drop label. Overriding other functions turned correctly named verses into drops on SALAMI live rock.
 DROP_FUNCTIONS = {'chorus', 'inst'}
 
 
@@ -690,10 +583,6 @@ def _model_role(section, index, count, drops, median_energy):
     if function == 'silence':
         return 'intro' if first else 'outro' if last else 'breakdown'
     if function == 'inst':
-        # An instrumental passage is its own thing — a solo, a break, a
-        # theme — and folding it into the chorus or the verse by how loud it
-        # is threw away what the model got right. At the ends of the track it
-        # is the intro or the outro; quiet, it is a breakdown.
         if first and (section.energy <= median_energy or section.duration < 20.0):
             return 'intro'
         if last and section.energy <= median_energy:
@@ -757,13 +646,10 @@ def from_model(model_sections, features, rhythm, roles=None, drops=(), config=No
                 cluster = int(np.bincount(labels[inside]).argmax())
                 label = chr(ord('A') + cluster % 26)
                 if novelty is not None and inside[0] < novelty.size:
-                    # A boundary the repetition structure agrees with is surer.
                     confidence = 0.7 + 0.3 * float(novelty[inside[0]])
         sections.append(Section(start=start, end=end, label=label, function=function,
                                 confidence=dsp.clamp01(confidence)))
 
-    # The model folds its own fragments, and a four-bar breakdown it found is
-    # a section: only what snapping squeezed below two bars is folded here.
     shortest = min(config.min_section_sec, max(4.0, 2 * rhythm.bar_period))
     sections = _cover(_merge_short(sections, shortest), duration)
     for s in sections:
@@ -775,8 +661,6 @@ def from_model(model_sections, features, rhythm, roles=None, drops=(), config=No
     for i, s in enumerate(sections):
         s.role = _model_role(s, i, len(sections), drops, median_energy)
 
-    # One drop, one look: repeats of the same music agree on whether they are
-    # a drop, as the labeller's sections do.
     groups = {}
     for s in sections:
         if (s.function or '').lower() in DROP_FUNCTIONS and s.role not in ('intro', 'outro'):

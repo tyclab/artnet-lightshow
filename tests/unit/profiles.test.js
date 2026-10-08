@@ -23,9 +23,7 @@ test('profiles register, list and unregister', () => {
   assert.strictEqual(unregisterProfile(HUE_WHITE_PROFILE_ID), false);
 });
 
-// On a plain object literal, obj["__proto__"] = v reassigns the
-// prototype instead of adding a key, so every unknown-profile lookup would then
-// resolve to the attacker's object.
+// Reject __proto__: assignment on a plain object would replace its prototype.
 test('a __proto__ id cannot hijack the registry', () => {
   const hostile = { id: '__proto__', name: 'evil', channelCount: 99, channelMap: { red: 0 } };
   assert.strictEqual(registerProfile(hostile), false, 'rejected outright');

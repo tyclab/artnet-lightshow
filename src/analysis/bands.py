@@ -1,29 +1,4 @@
-"""
-Stage 3 — seven perceptual bands, and what each one is doing musically.
-
-The point of this stage is the second half of that sentence. A band's *level*
-is the least interesting thing about it: mapping level to brightness is exactly
-the naive volume-reactive behaviour the show engine is meant to replace. What a
-lighting designer actually reads off a mix is character —
-
-  is the low end punching (kick) or sustaining (bass line)?
-  is the top end ticking (hats) or washing (cymbals, reverb)?
-  is the middle carrying a voice, or a pad?
-
-so each band is described by an envelope plus four shape measurements:
-
-  attack      how fast it rises into a hit, in milliseconds. Short = percussive.
-  decay       how fast it falls after one. Short = tight, long = sustained.
-  variation   how much it moves relative to its own average. A pad sits still;
-              a kick pattern swings the whole way every bar.
-  rhythmic    how well the envelope correlates with the beat grid. This is what
-              separates "there is bass energy" from "the bass is the groove".
-
-Those four combine into an `importance` score — how much of the track's
-identity this band carries — which is what the show engine uses to decide which
-band drives which fixture group, instead of always driving everything from the
-kick.
-"""
+"""Stage 3 — seven perceptual bands, and what each one is doing musically."""
 
 from dataclasses import dataclass, field
 
@@ -38,13 +13,9 @@ class Band:
     name: str
     low_hz: float
     high_hz: float
-    #: Normalised envelope on the frame grid.
     envelope: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    #: Raw RMS envelope, before normalisation.
     raw: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    #: Half-wave rectified difference of the envelope — the band's own onsets.
     flux: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    #: Onset times detected within this band alone, seconds.
     onsets: np.ndarray = field(default_factory=lambda: np.zeros(0))
     energy: float = 0.0
     attack_ms: float = 0.0
@@ -153,8 +124,6 @@ def _rhythmic_correlation(envelope, times, beat_times):
     if overall <= 1e-9:
         return 0.0
 
-    # Offsets by a half beat: if the band is the groove, the half-beat sample
-    # is markedly lower; if it is a pad, both are the same.
     period = float(np.median(np.diff(beats))) if beats.size > 1 else 0.0
     if period <= 0:
         return dsp.clamp01(on_beat / (2.0 * overall))
@@ -196,8 +165,6 @@ def analyse(features, beat_times=None, config=None):
     bands = {}
     for name in BAND_ORDER:
         low, high = BANDS[name]
-        # Bands that reach past the analysis Nyquist are measured off the
-        # wideband pass instead; `air` is entirely above it.
         source, source_freqs = features.magnitude, frequencies
         if high > nyquist and features.wideband_magnitude.size:
             source = features.wideband_magnitude
@@ -256,21 +223,6 @@ def _score_importance(bands):
             0.30 * level + 0.30 * movement + 0.40 * band.rhythmic), 4)
 
 
-# ── Instrument roles ────────────────────────────────────────────────────────
-#
-# The band measurements above are enough to name what is playing, without a
-# separate source-separation model. These are the rules a mix engineer would
-# use by ear, written down:
-#
-#   kick    sub/bass, percussive, attack under ~40 ms, strongly on the grid
-#   bassline sub/bass, harmonic or long-decay, moves with the harmony
-#   snare   presence band, percussive, on the backbeat
-#   hats    high/air, percussive, very short attack, dense
-#   vocal   mid + presence, harmonic, moderate variation, not on the grid
-#   synth   mid/lowmid harmonic with chroma movement
-#
-# Each role gets an activity curve on the frame grid, which the event stage
-# turns into BASS_HIT / VOCAL_SECTION / MELODY_CHANGE events.
 
 ROLES = ('kick', 'bassline', 'snare', 'hats', 'vocal', 'synth')
 
@@ -349,8 +301,6 @@ def _roles_from_stems(features, stems, tags=None):
         'synth': stems_mod.envelope(stems.named('other'), features),
     }
 
-    # The share of the mix each source occupies, which is a far better score
-    # than "how much mid-band harmonic energy moved" ever was.
     share = stems.energies()
 
     def presence(name):
@@ -366,9 +316,6 @@ def _roles_from_stems(features, stems, tags=None):
         curve = curves[name]
         return float(np.percentile(curve, 90)) if curve.size else 0.0
 
-    # Each stem's share is renormalised against the loudest stem, so a quiet
-    # mix does not read as an absent band. A source has to both be a real part
-    # of the mix and be audible when it plays.
     loudest = max(share.values()) or 1.0
 
     def score(stem, role):
@@ -438,14 +385,10 @@ def _roles_from_bands(features, bands, tags=None):
     vocal = band_of(harm, 300.0, 3500.0)
     synth = band_of(harm, 500.0, 6000.0)
 
-    # A vocal is a mid-band harmonic that *moves*: sustained pads sit at the
-    # same level for bars at a time. Weight the curve by local movement so a
-    # held pad does not read as a singer.
     vocal_motion = dsp.moving_average(
         np.abs(np.diff(vocal, prepend=vocal[:1])), max(3, int(features.frame_rate * 0.5)))
     vocal = dsp.robust_norm(vocal * dsp.unit_norm(vocal_motion + 0.15))
 
-    # A synth line is defined by harmonic movement, which shows up in chroma.
     chroma_change = np.zeros(n)
     if features.chroma.size:
         c = features.chroma[:, :n]
@@ -478,7 +421,6 @@ def _roles_from_bands(features, bands, tags=None):
     }
 
     if tags:
-        # AudioSet labels are a strong prior on presence, a weak one on level.
         for role, prior in _tag_priors(tags).items():
             if prior > 0:
                 scores[role] = dsp.clamp01(0.7 * scores[role] + 0.3 * prior + 0.15 * prior)

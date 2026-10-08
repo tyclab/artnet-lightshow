@@ -1,10 +1,4 @@
-// End-to-end tests: the real server (tests/e2e/serve.js — its own port and
-// config, no output) and the real page in Chromium.
-//
-//   npm run test:e2e
-//
-// Pinned to the Playwright whose Chromium the development container ships;
-// CI installs that browser (`npx playwright install --with-deps chromium`).
+// Real-server browser tests; isolated configuration, no physical outputs.
 
 import { defineConfig, devices } from '@playwright/test';
 

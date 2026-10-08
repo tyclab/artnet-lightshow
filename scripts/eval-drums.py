@@ -3,38 +3,8 @@
 How well the pulse's drum lanes find the kick, the snare and the hats in real
 drumming, scored against hand-marked hits.
 
-    python scripts/eval-drums.py                      every track, all three paths
-    python scripts/eval-drums.py --paths drums mix    skip the separator
-    python scripts/eval-drums.py --split test         MIREX 2017's test half only
-
-The music is MDB Drums (Southall et al., 2017): 23 excerpts from MedleyDB, from
-jazz and reggae to punk and metal, each with its drum track on its own, the full
-mix, and every hit marked by instrument. CC BY-NC-SA 4.0; fetched at run time
-into ~/.cache/artnet-lightshow/eval/mdb-drums and never redistributed.
-
-Three ways the analyser can hear the drums, scored separately:
-
-    drums   the drum track alone: the lanes' own ceiling, and what a perfect
-            separator would hand them
-    stems   the full mix through the separator the analyser runs (Demucs),
-            its drum stem: what a track analysed with separation gets
-    mix     the full mix's percussive half (HPSS): what a track analysed
-            without separation gets
-
-For each lane it reports precision, recall and F-measure within ±50 ms (the
-MIREX drum-transcription tolerance), summed over every hit of every track in
-the split, against two references:
-
-    strict  the dataset's classes: every kick, every snare stroke, every
-            hi-hat including the foot's
-    marked  the hits a light should mark: the snare without its ghost notes
-            and the hi-hat without the pedal's chick — both played quiet on
-            purpose, and a third of the snare strokes in these recordings.
-            A lane firing on one of them is not counted against it either.
-
-A hat lane that fires on a ride or a crash counts as a false hit in both.
-
-The separator's stems are cached, so a second run re-scores in seconds.
+MDB Drums (Southall et al., 2017), CC BY-NC-SA 4.0: downloaded at runtime
+to ~/.cache/artnet-lightshow/eval/mdb-drums and never redistributed.
 """
 
 import argparse
@@ -53,13 +23,11 @@ from analysis import preprocess, pulse  # noqa: E402
 RAW = 'https://raw.githubusercontent.com/CarlSouthall/MDBDrums/master/MDB%20Drums'
 CACHE = Path(os.environ.get('ARTNET_EVAL_DIR', Path.home() / '.cache' / 'artnet-lightshow' / 'eval')) / 'mdb-drums'
 
-# MIREX 2017's halves: the first to tune on, the second to report.
 TRAIN = ['80sRock', 'BebopJazz', 'Britpop', 'CoolJazz', 'Disco', 'FunkJazz', 'FusionJazz',
          'Reggae', 'Rock', 'Rockabilly', 'Shadows', 'Zeppelin']
 TEST = ['Beatles', 'Country1', 'FreeJazz', 'Gospel', 'Grunge', 'Hendrix', 'LatinJazz',
         'ModalJazz', 'Punk', 'SpeedMetal', 'SwingJazz']
 
-# The dataset's classes, as the lanes name them.
 CLASSES = {'KD': 'kick', 'SD': 'snare', 'HH': 'hats'}
 TOLERANCE = 0.05
 
@@ -86,7 +54,6 @@ def files(name):
     }
 
 
-# Played quiet on purpose: the snare's ghost notes and the hi-hat's pedal.
 QUIET = {'SDG', 'PHH'}
 
 
