@@ -17,6 +17,7 @@ import { attachAudioRoutes } from './routes/audio.ts';
 import { attachEffectRoutes } from './routes/effects.ts';
 import { attachVoiceRoutes } from './routes/voices.ts';
 import { attachSequenceRoutes } from './routes/sequence.ts';
+import { attachRoomSceneRoutes } from './routes/room-scene.ts';
 
 export type { RouteDeps, RouteContext } from './routes/common.ts';
 export type { AnalyzeSource } from './routes/auto.ts';
@@ -38,6 +39,7 @@ function attachRoutes(app: Express, deps: RouteDeps): void {
   attachEffectRoutes(app, ctx);
   attachVoiceRoutes(app, ctx);
   attachSequenceRoutes(app, ctx);
+  attachRoomSceneRoutes(app);
   attachOpsRoutes(app, ctx);
   // Must be registered last (see errorHandler).
   app.use(errorHandler);

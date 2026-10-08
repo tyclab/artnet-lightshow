@@ -1,7 +1,7 @@
 {
   "name": "artnet-lightshow",
   "version": "3.0.0",
-  "description": "ArtNet light show controller for 4x Cameo ROOT PAR 6",
+  "description": "Lighting controller for Art-Net, sACN, WLED, OpenRGB and Hue Entertainment",
   "main": "server.js",
   "type": "module",
   "scripts": {

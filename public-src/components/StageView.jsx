@@ -4,22 +4,9 @@ import { fmtTime, rigLights } from '../utils.js';
 import { useDmxFeed } from '../use-dmx.js';
 import { useTimeline } from '../use-timeline.js';
 import { useRehearsalTrack, useRehearsalSampler } from '../rehearsal.js';
-import { placeRig, lightRGB, STAGE_W, STAGE_D, TRUSS_H } from '../stage3d/world.js';
+import { placeRig, roomRig, lightRGB, STAGE_W, STAGE_D, TRUSS_H } from '../stage3d/world.js';
 import { buildRig, rigSignature } from '../../src/shared/rig.ts';
-
-/**
- * The Stage view: the rig in 3D, in a hazy room, from where the audience
- * stands — or from above, or the side.
- *
- * Live, it draws what is going out: the DMX feed read through each fixture's
- * profile, every light of every bar. Rehearsing, it draws the loaded track's
- * planned show at any moment of it, sampled from the timeline by the same
- * shared code the engine renders with (shared/preview.ts), at the display's
- * frame rate — scrub to a drop and see it.
- *
- * three.js is loaded the first time the view opens, and a browser without
- * WebGL is told so rather than shown a black box.
- */
+import { StageRoomPanel } from './StageRoomPanel.jsx';
 
 const VIEWS = [
   { id: 'audience', label: 'Audience' },
@@ -48,6 +35,9 @@ export function StageView() {
   const [status, setStatus] = useState('loading');   // loading | ready | nowebgl | error
   const [view, setView] = useState('audience');
   const [haze, setHaze] = useState(readHaze);
+  const [roomState, setRoomState] = useState({ room: null, revision: null });
+  const [cutaway, setCutaway] = useState(true);
+  const room = roomState.room;
   const canvas = useRef(null);
   const scene = useRef(null);
   useRehearsalTrack(s.autoShow);
@@ -56,6 +46,7 @@ export function StageView() {
   // The rig changes only when the patch does: compare its signature.
   const signature = rigSignature(fixtures, JSON.stringify(Object.keys(profiles)));
   const rig = useMemo(() => buildRig(fixtures, (f) => profiles[f.profileId] || null), [signature]);
+  const placed = useMemo(() => room ? roomRig(fixtures, rig, room) : placeRig(fixtures, profiles, rig), [rig, room, fixtures, profiles]);
   const sample = useRehearsalSampler(data);
 
   // What the frame loop reads, without restarting it for every change.
@@ -86,8 +77,11 @@ export function StageView() {
   }, []);
 
   useEffect(() => {
-    if (status === 'ready') scene.current.setRig(placeRig(fixtures, profiles, rig), rig.units.length);
-  }, [status, rig]);
+    if (status === 'ready') scene.current.setRig(placed, rig.units.length);
+  }, [status, placed]);
+
+  useEffect(() => { if (status === 'ready') scene.current.setRoom(room); }, [status, room]);
+  useEffect(() => { if (status === 'ready') scene.current.setCutaway(cutaway); }, [status, cutaway]);
 
   useEffect(() => {
     try { localStorage.setItem('lightshow.stage.haze', String(haze)); } catch { /* private mode */ }
@@ -171,6 +165,7 @@ export function StageView() {
 
   return (
     <div class="stage3d-view">
+      <StageRoomPanel snapshot={roomState} coverage={room ? placed : null} fixtures={fixtures} rig={rig} onChange={setRoomState} />
       <div class="stage3d-tools" role="toolbar" aria-label="Stage view">
         <span class="panel-tag">{rehearsing ? 'Rehearsal' : connected ? 'Live output' : 'Offline'}</span>
         <div class="segmented" role="group" aria-label="Viewpoint">
@@ -179,6 +174,7 @@ export function StageView() {
               onClick={() => setView(v.id)}>{v.label}</button>
           ))}
         </div>
+        {room && <button type="button" class="btn sm" aria-pressed={cutaway} onClick={() => setCutaway(!cutaway)}>Cutaway walls</button>}
         <label class="stage3d-haze">
           <span>Haze</span>
           <input type="range" min="0" max="100" value={haze} aria-valuetext={`${haze} percent`}
@@ -206,11 +202,12 @@ export function StageView() {
         )}
         {status === 'error' && <p class="stage3d-note" role="alert">The 3D stage could not be loaded. Reload the page to try again.</p>}
         {status === 'ready' && !fixtures.length && <p class="stage3d-note">Nothing is patched yet: add fixtures in the Rig view.</p>}
+        {status === 'ready' && room && fixtures.length > 0 && !placed.lamps.length && !placed.cells.length && <p class="stage3d-note">This room has no positions for the current fixtures. Review its bindings above.</p>}
       </div>
       <p class="look-note">
         Drag to look around, scroll or pinch to move closer; on the stage, the arrow keys turn and tilt and + and − move
-        closer. Fixtures hang where the plan puts them — on the truss aimed down at the stage, on the deck aimed up for
-        the floor group, around the room for Hue lamps. {rehearsing
+        closer. {room ? `${room.name}: imported light positions; missing bindings are listed above. `
+          : 'Generic venue: fixture heights follow the plan when set; otherwise groups supply approximate mounting heights. '}{rehearsing
           ? 'Rehearsing: the planned show, as the timeline has it; nothing goes out to the rig.'
           : 'Live: what is going out to the rig now.'}
       </p>

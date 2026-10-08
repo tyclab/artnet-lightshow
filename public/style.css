@@ -3610,6 +3610,28 @@ input[type=range]::-moz-range-thumb {
    STAGE — the rig in 3D
    ============================================================= */
 .stage3d-view { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.stage-room-panel { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); min-width: 0; }
+.stage-room-panel summary { cursor: pointer; min-height: 24px; overflow-wrap: anywhere; }
+.stage-room-status, .stage-room-error { margin: 8px 0; overflow-wrap: anywhere; }
+.stage-room-error { color: var(--text-red); }
+.stage-room-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.stage-room-unplaced { max-height: 180px; overflow: auto; margin: 8px 0; padding-left: 20px; }
+.stage-room-file { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
+.stage-room-file input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.stage-room-file:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.stage-room-editor { margin: 12px 0; }
+.stage-room-editor-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.stage-room-editor label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.stage-room-editor input, .stage-room-editor select {
+  width: 100%; min-width: 0; min-height: 36px; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text);
+}
+.stage-room-editor .stage-room-actions { grid-column: 1 / -1; }
+.stage-room-unplaced .btn { margin: 4px 0 4px 6px; }
+@media (pointer: coarse) {
+  .stage-room-panel summary, .stage-room-panel .btn, .stage-room-editor input, .stage-room-editor select { min-height: 44px; }
+  .stage-room-panel summary { align-content: center; }
+}
 .stage3d-tools {
   display: flex;
   flex-wrap: wrap;
@@ -3627,9 +3649,7 @@ input[type=range]::-moz-range-thumb {
 .stage3d-time { font-family: var(--mono); font-size: 11px; color: var(--text-2); white-space: nowrap; }
 .stage3d-wrap {
   position: relative;
-  /* The stage is wider than it is deep: fill the width, and as much of the
-     height as leaves the toolbar and a line of help in view. */
-  height: clamp(280px, calc(100vh - 260px), 900px);
+  height: clamp(240px, calc(100dvh - var(--header-height, 47px) - var(--commands-height, 0px) - var(--views-height, 0px) - 200px), 900px);
   background: #030306;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -3652,7 +3672,6 @@ input[type=range]::-moz-range-thumb {
 }
 @media (max-width: 560px) {
   .stage3d-sep { display: none; }
-  .stage3d-wrap { height: clamp(240px, 60vh, 520px); }
 }
 
 /* =============================================================
@@ -3957,7 +3976,9 @@ input[type=range]::-moz-range-thumb {
 .seq-clip-row.selected { background: var(--card-hi); }
 .seq-inspector, .seq-automation { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
 .seq-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
-.seq-field input, .seq-field select { min-height: 40px; min-width: 80px; }
+.seq-field input, .seq-field select { min-height: 44px; min-width: 80px; }
+.seq-pattern-editor { max-height: calc(100dvh - 32px); overflow-y: auto; }
+.seq-pattern-editor .confirm-actions { flex-wrap: wrap; margin-top: 12px; }
 .seq-check { flex-direction: row; align-items: center; }
 .matrix-modes { display: flex; flex-wrap: wrap; gap: 8px; }
 .matrix-mode { min-height: 48px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--border-hi); background: var(--card); color: var(--text); font-size: 15px; }
@@ -3965,6 +3986,12 @@ input[type=range]::-moz-range-thumb {
 .matrix-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; user-select: none; -webkit-user-select: none; }
 .matrix-cell { aspect-ratio: 1; min-height: 72px; border-radius: 12px; border: 2px solid transparent; -webkit-touch-callout: none; }
 .matrix-cell.held { border-color: #fff; box-shadow: 0 0 18px rgba(255, 255, 255, 0.6); transform: scale(0.96); }
+.matrix-palette-tools label { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
+.matrix-palette-tools select { width: 100%; min-width: 0; }
+@media (max-width: 560px) {
+  .matrix-modes { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+  .matrix-mode { padding: 0 4px; font-size: 12px; }
+}
 @media (min-width: 900px) { .matrix-grid { grid-template-columns: repeat(8, 1fr); } }
 
 /* ── Perform: transport, meters and safety ── */
@@ -3990,6 +4017,13 @@ input[type=range]::-moz-range-thumb {
 .override-name { font-size: 13px; text-align: left; }
 .override-custom { font-size: 13px; color: var(--muted); }
 .perform-audio { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+.audio-master summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.audio-master fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
+.audio-master label { display: grid; gap: 4px; }
+.audio-master input { min-width: 0; width: 100%; min-height: 44px; box-sizing: border-box; }
+.audio-master small { color: var(--muted); }
+.audio-master-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.audio-master-actions button { min-height: 44px; }
 .audio-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .audio-mode { min-height: 44px; font-size: 16px; }
 .audio-latency { margin-left: auto; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }

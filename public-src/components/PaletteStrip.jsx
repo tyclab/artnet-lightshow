@@ -3,6 +3,7 @@ import { api, librarySig, pick, send } from '../state.js';
 import { parseHex, toHex } from '../../src/shared/palette-model.ts';
 import { colorToCss } from '../utils.js';
 import { PaletteEditor, isRandom, paletteName } from './PaletteEditor.jsx';
+import { PaletteLibrary } from './PaletteLibrary.jsx';
 
 export const overrideBody = (palette) => ({ paletteId: palette.id });
 const gradientIdentity = (body) => JSON.stringify([
@@ -28,6 +29,7 @@ export function PaletteStrip({ initialTarget = 'override' }) {
   const [draft, setDraft] = useState(null);
   const [invalid, setInvalid] = useState(false);
   const [error, setError] = useState('');
+  const [managing, setManaging] = useState(false);
   const [size, setSize] = useState(() => {
     try { const n = Number(localStorage.getItem('lightshow.paletteSize')); return [2, 3, 4].includes(n) ? n : 4; } catch { return 4; }
   });
@@ -63,6 +65,7 @@ export function PaletteStrip({ initialTarget = 'override' }) {
         if (builtin.some((p) => p.id === active && p.app === 'look')) send({ paletteSize: n });
       }}><option value="2">Classic duo</option><option value="3">Classic triad</option><option value="4">Classic tetrad</option></select>}
       <button type="button" class="btn sm" onClick={() => setDraft(JSON.parse(JSON.stringify(current)))}>Edit palette</button>
+      <button type="button" class="btn sm" onClick={() => setManaging(true)}>Manage palettes</button>
     </div>
     {reason && <p class="muted" role="status">{reason}</p>}
     <div class="perform-override">
@@ -82,5 +85,6 @@ export function PaletteStrip({ initialTarget = 'override' }) {
       <button type="button" class="btn sm" onClick={() => setDraft(null)}>Cancel</button>
       {error && <p role="alert">{error}</p>}
     </div>}
+    {managing && <PaletteLibrary builtin={builtin} user={user} onClose={() => setManaging(false)} />}
   </section>;
 }

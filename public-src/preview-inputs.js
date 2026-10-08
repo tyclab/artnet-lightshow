@@ -17,11 +17,11 @@ export function beatsPerBar(ts) {
   return (ts.beats * 4) / ts.unit;
 }
 
-export function positionText(status, perBar) {
+export function positionText(status, perBar, beatSize = 1) {
   if (!status || !Number.isFinite(status.beat)) return '–';
   const bar = status.bar || Math.floor(status.beat / perBar) + 1;
-  const inBar = Math.floor(status.beat - (bar - 1) * perBar + 1e-6) + 1;
-  return `${bar}.${Math.min(Math.max(inBar, 1), Math.ceil(perBar))}`;
+  const inBar = Math.floor((status.beat - (bar - 1) * perBar) / beatSize + 1e-6) + 1;
+  return `${bar}.${Math.min(Math.max(inBar, 1), Math.ceil(perBar / beatSize))}`;
 }
 
 export function previewOptions(s, { table = null, library = null } = {}) {

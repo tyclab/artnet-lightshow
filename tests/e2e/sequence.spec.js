@@ -79,10 +79,73 @@ test('a sequence started in the view plays, and Unload gives the rig back to the
   await page.getByRole('button', { name: 'Play' }).click();
   await expect(page.locator('.seq-now')).toContainText('Playing');
   await page.getByRole('button', { name: 'Stop' }).click();
+  page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Unload' }).click();
   await expect(page.locator('.seq-now')).toContainText('No sequence loaded');
   const { status } = await (await request.get('/api/sequence/status')).json();
   expect(status.loaded).toBe(null);
+});
+
+for (const action of ['Unload', 'New sequence']) {
+  test(`cancelling ${action} preserves a field edit committed on blur`, async ({ page, request }) => {
+    await open(page, 'sequence');
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
+    await page.getByLabel('Sequence name').fill('Edited sequence');
+    const question = page.waitForEvent('dialog');
+    const clicked = page.getByRole('button', { name: action, exact: true }).click();
+    await (await question).dismiss();
+    await clicked;
+    const { sequence } = await (await request.get('/api/sequence')).json();
+    expect(sequence.id).toBe(BASE.id);
+    expect(sequence.name).toBe('Edited sequence');
+    await expect(page.locator('.seq-unsaved')).toBeVisible();
+  });
+}
+
+test('cancelling a transport change retains the unsaved sequence selection', async ({ page, request }) => {
+  await open(page, 'sequence');
+  const source = page.getByLabel('Transport source');
+  await expect(source).toHaveValue(`sequence:${BASE.id}`);
+  const question = page.waitForEvent('dialog');
+  const selected = source.selectOption('look');
+  await (await question).dismiss();
+  await selected;
+  await expect(source).toHaveValue(`sequence:${BASE.id}`);
+  const { sequence } = await (await request.get('/api/sequence')).json();
+  expect(sequence.id).toBe(BASE.id);
+});
+
+test('cancelling a saved sequence load keeps the current draft', async ({ page, request }) => {
+  const replacement = { ...BASE, id: 'e2e-replacement', name: 'Replacement' };
+  expect((await request.post('/api/sequences', { data: replacement })).ok()).toBe(true);
+  try {
+    await open(page, 'sequence');
+    const question = page.waitForEvent('dialog');
+    const clicked = page.getByRole('button', { name: 'Load Replacement' }).click();
+    await (await question).dismiss();
+    await clicked;
+    const { sequence } = await (await request.get('/api/sequence')).json();
+    expect(sequence.id).toBe(BASE.id);
+  } finally {
+    await request.delete(`/api/sequences/${replacement.id}`);
+  }
+});
+
+test('saving clears the dirty indicator and allows unload without a prompt', async ({ page, request }) => {
+  await open(page, 'sequence');
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(page.locator('.seq-unsaved')).toBeVisible();
+  let prompted = false;
+  page.on('dialog', async (dialog) => { prompted = true; await dialog.dismiss(); });
+  try {
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.locator('.seq-unsaved')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Unload', exact: true }).click();
+    await expect(page.locator('.seq-now')).toContainText('No sequence loaded');
+    expect(prompted).toBe(false);
+  } finally {
+    await request.delete(`/api/sequences/${BASE.id}`);
+  }
 });
 
 test('a pattern from the library inserts in one tap of the editor', async ({ page, request }) => {

@@ -85,6 +85,7 @@ app.use(sourceMapsForLoopback);
 
 app.use(express.static(path.join(import.meta.dirname, '..', 'public')));
 app.use('/api', auth.httpMiddleware);   // before express.json: reject first, parse after
+app.use('/api/stage/room', express.json({ limit: '1mb' }));
 app.use(express.json());
 io.use(auth.socketMiddleware);
 

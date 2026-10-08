@@ -743,6 +743,10 @@ export class Sequencer {
     return this._loaded ? structuredClone(this._loaded) : null;
   }
 
+  paletteRestoreId(): string | null {
+    return this._paletteBefore?.paletteOverrideId ?? null;
+  }
+
   /** The loaded sequence's clip table, frozen; the same object until the sequence changes. */
   table(): SequenceTable | null {
     return this._table;

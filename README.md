@@ -1,9 +1,14 @@
-# ArtNet Lightshow
+# ArtNet Lightshow — Tyclab
 
 Lighting controller for Art-Net, sACN, WLED/DDP, OpenRGB and Philips Hue
 Entertainment. Control it from the browser, MIDI, Bitfocus Companion or REST.
 Manual looks, effects, pads and sequences work without Python; analysed shows
 and live audio use the optional analysis environment.
+
+This is the [Tyclab fork](https://github.com/tyclab/artnet-lightshow) of
+[LightD31's controller](https://github.com/LightD31/artnet-lightshow), with its
+own tested deployment revisions. Upstream changes are reviewed before adoption;
+an upstream release is not a release of this fork.
 
 ## Signal flow
 
@@ -18,6 +23,8 @@ flowchart LR
   Server --> Engine
   Show --> Engine
   Engine --> Preview[Browser preview]
+  Room[Private room export] --> RoomAPI[Authenticated Stage room import]
+  RoomAPI --> Preview
   Engine --> Guard[Output arming / transport gates]
   Guard --> Outputs[Art-Net / sACN / DDP / OpenRGB / Hue]
 ```
@@ -44,9 +51,11 @@ start the pattern engine.
 
 ### Packaged builds
 
-Download from [Releases](https://github.com/LightD31/artnet-lightshow/releases).
-The packages include Node; the analysis environment is installed separately
-from the app when needed.
+This fork has no published release packages yet. Use a pinned source checkout,
+or build a package on the target operating system with `npm run package`.
+The [CI workflows](https://github.com/tyclab/artnet-lightshow/actions) test Windows
+and Linux packaging. Packages include Node; install the analysis environment
+separately from the app when needed.
 
 | Package | Start and data location |
 |---------|-------------------------|
@@ -124,6 +133,33 @@ returns 409. If a Deezer ARL is configured, an unsupervised Node process needs
 
 ## Views and controls
 
+For a live session, configure the fixtures and their positions in Rig, choose
+and edit a preset in Effects, then use Perform for pads, colours and transport.
+Use Sequence to arrange clips or run a playlist. Stage shows the current rig
+or a rehearsal. Arming is a separate action from preparing or previewing a look.
+Import a private floor model and place its lights with the
+[Stage room controls](docs/stage-room.md). Room geometry affects the preview;
+Rig positions still control spatial effects.
+
+To run reactive effects, configure and enable live input in Sources, select
+Reactive in Perform's Audio panel, and choose a Disco or Visualizer preset in
+Effects. Check the meters and preview before arming. Expand Audio response to
+adjust Party sensitivity, threshold, envelope and brightness, or the Light DJ
+trigger threshold. These settings apply globally and are saved by Apply.
+
+For a reusable sequence, create it in Sequence, open Edit, add lanes and clips,
+then Save it to the shelf. Playing or editing a loaded sequence does not save
+it to the shelf. Capture a range as a pattern to reuse it in another sequence
+or assign it to a pad; Perform is the live control surface for those pads.
+
+The effect catalogue covers the supported Hue Dynamics Party/Disco and Light DJ
+Entertainment effects. It does not establish complete application parity: named
+pad-layout libraries, per-show pad/master bundles, clip groups, editor undo/redo
+and source-app backup imports are not implemented. The detailed fields below
+describe the data contract as well as the browser controls.
+See [port coverage](docs/feature-coverage.md) for remaining workflows, deliberate
+scope differences and the upstream adoption policy.
+
 An **effect** draws the lights. A **look** combines the base effect, colours and fixture
 settings. A **pattern** is a reusable sequence of clips. Favourites are quick access
 to effects; pad banks launch effects or patterns over the look.
@@ -198,6 +234,7 @@ Other settings apply immediately. The UI lists pending restart keys.
 | `config/midi-map.json` | Custom MIDI map |
 | `config/effects.json`, `palettes.json`, `pads.json`, `sequences.json` | Effect library, palettes, pad layout, sequences and reusable patterns |
 | `config/look.json` | Supervisor recovery snapshot |
+| `config/stage-room.json` | Optional private Stage geometry and light bindings; mode 0600 |
 | `cache/` | Analysis cache |
 | `logs/` | Structured logs |
 | `.venv/` | Managed analysis environment |
@@ -419,6 +456,14 @@ colours remain separate touches. Modes are `fireworks`, `flashes`, `pulses`,
 `cycle`, `solid`. Cell holds expire without renewal; releasing the final cell
 stops the voice. Stop-all or disarm clears the board and pending changes.
 
+Choose a built-in or saved palette for the grid. Gradient palettes are sampled
+into eight cells; ordinary palettes show their colours, including white, amber
+and UV channels. Random entries resolve once per selection or Reroll. Shuffle
+palette selects another palette. Lock colours turns taps into a retained
+selection while this browser keeps renewing its lease. Unlock, Release colours,
+changing palette, leaving the view, losing focus or disconnecting releases it.
+Locked colours are not restored after a restart.
+
 ### Strobe
 
 | Field | Values/default |
@@ -443,6 +488,14 @@ Create a sequence in Sequence, or load one from its shelf. A new sequence has
 one shared lane and 4/4 at the current BPM. Edit exposes name, lanes, clips,
 mute/solo, pattern insertion and save/duplicate/delete. Deleting a saved
 sequence requires confirmation; Unload releases the current sequence.
+
+Unsaved changes are marked, and replacing or unloading them asks for confirmation.
+Timing and playlist settings are under Edit; saved tempo, music mode and initial
+palette take effect on Play. Select a clip to edit its timing/targets or open its
+effect settings. Apply to clip embeds that edited effect without changing its
+source preset. Hold to audition uses the clip's targets and releases on exit.
+Playlist rows support click or keyboard activation to start/jump; activating the
+playing row stops it. Saved patterns can be renamed, mapped to lanes or deleted.
 
 | Field | Meaning |
 |-------|---------|
@@ -695,6 +748,7 @@ All endpoints return JSON. When a token is configured, send it as an
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/state` | Full current state (`armed` says whether anything leaves the machine) |
+| GET · PUT · DELETE | `/api/stage/room` | Private Stage room model; writes require the current `If-Match` revision. See [room format](docs/stage-room.md) |
 | POST | `/api/set` | Patch state fields (JSON body) |
 | POST | `/api/tap` | Tap tempo |
 | POST | `/api/play` · `/api/stop` | Start / stop the pattern engine |

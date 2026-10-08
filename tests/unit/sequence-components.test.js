@@ -19,6 +19,7 @@ async function load() {
     stdin: {
       contents: `
         export { render as html } from 'preact-render-to-string';
+        export { remapPattern } from './public-src/components/SequencePatterns.jsx';
         export { h } from 'preact';
         export { store, librarySig } from './public-src/state.js';
         export { Sequence, laneStack, moveClip, resizeClip, putSequence, automationStart, newClip, commandAs, createTextDraft, parseNumber, beyondRangeNotice, clipKeySelects, loopRegion, barBeatText, blankSequence, clipPresetRows, createSequenceSync } from './public-src/components/Sequence.jsx';
@@ -47,7 +48,7 @@ const ui = await load();
 
 function given(state) {
   ui.store.applySnapshot({ versions: {}, state: {
-    bpm: 128, running: true, fixtures: [{ id: 1, name: 'Left' }, { id: 2, name: 'Right' }],
+    bpm: 128, running: true, fixtures: [{ id: 1, label: 'Left' }, { id: 2, label: 'Right' }],
     sequence: null, ...state,
   } });
 }
@@ -136,6 +137,15 @@ test('new sequences use valid defaults and a distinct name', () => {
   assert.notStrictEqual(ui.blankSequence([]).id, ui.blankSequence([]).id);
 });
 
+test('pattern remapping swaps occupied slots without dropping either lane', () => {
+  const pattern = { lanes: [{ kind: 'track', slot: 0, clips: [{ id: 'a' }] }, { kind: 'track', slot: 1, clips: [{ id: 'b' }] },
+    { kind: 'shared', slot: 1, clips: [] }] };
+  const mapped = ui.remapPattern(pattern, 0, 1);
+  assert.deepStrictEqual(mapped.lanes.map((lane) => lane.slot), [1, 0, 1]);
+  assert.deepStrictEqual(mapped.lanes.map((lane) => lane.clips), pattern.lanes.map((lane) => lane.clips));
+  assert.deepStrictEqual(pattern.lanes.map((lane) => lane.slot), [0, 1, 1]);
+});
+
 test('sequence and pattern shelves follow live state', () => {
   given({ sequence: STATUS, sequences: SHELF, sequencePatterns: [] });
   let html = ui.html(ui.h(ui.Sequence, { initial: { sequence: SEQ, editing: true } }));
@@ -185,6 +195,24 @@ test('ended arrangements display their endpoint', () => {
   assert.match(html, /Friday.*Ended/s);
   // The bar line after the last clip and command, beat 16, on a ruler of 36 beats.
   assert.match(html, /class="seq-end" style="left: ?44\.44444\d*%;?"/);
+});
+
+test('clips outside Edit do not advertise an inactive button', () => {
+  given({ sequence: STATUS });
+  const html = ui.html(ui.h(ui.Sequence, { initial: { sequence: SEQ } }));
+  const blocks = [...html.matchAll(/<div class="seq-block[^>]*>/g)].map((m) => m[0]);
+  assert.strictEqual(blocks.length, 2);
+  for (const block of blocks) {
+    assert.match(block, /role="group"/);
+    assert.doesNotMatch(block, /tabindex=/i);
+  }
+});
+
+test('track choices use the fixture label', () => {
+  given({ sequence: STATUS });
+  const html = ui.html(ui.h(ui.Sequence, { initial: { sequence: SEQ, editing: true } }));
+  assert.match(html, /<option value="2">Right<\/option>/);
+  assert.doesNotMatch(html, /<option value="2">Fixture 2<\/option>/);
 });
 
 test('clips show their preset by name, a saved preset\'s first', () => {
@@ -406,7 +434,8 @@ test('focused field edits survive live updates until commit', () => {
 });
 
 test('matrix cells reflect canonical held colours', () => {
-  given({ matrix: { mode: 'cycle', colours: ['#FF0000', '#FFFFFF'], voice: 'v1' } });
+  given({ matrix: { mode: 'cycle', colours: ['#FF0000', '#FFFFFF'], voice: 'v1' },
+    builtinPalettes: [{ id: 'rainbow', colours: ['#FF0000', '#FFFFFF'] }], userPalettes: [] });
   const html = ui.html(ui.h(ui.Matrix, {}));
   assert.match(html, /class="matrix-cell held"[^>]*aria-label="Colour #ff0000"/);
   assert.match(html, /class="matrix-cell held"[^>]*aria-label="Colour #ffffff"/);
@@ -453,12 +482,15 @@ test('a press the server takes keeps renewing under its token', async (t) => {
 });
 
 test('the Matrix board is a grid of colours with the five board modes', () => {
-  given({ matrix: { mode: 'flashes', colours: ['#FF0000'], voice: 'v1' } });
+  given({ matrix: { mode: 'flashes', colours: ['#FF0000'], voice: 'v1' },
+    builtinPalettes: [{ id: 'rainbow', colours: ['#FF0000', '#123456789ABC'] }], userPalettes: [] });
   const html = ui.html(ui.h(ui.Matrix, {}));
   assert.deepStrictEqual(ui.MATRIX_MODES.map((m) => m.id), ['fireworks', 'flashes', 'pulses', 'cycle', 'solid']);
   assert.match(html, /role="radiogroup" aria-label="Board mode"/);
   assert.match(html, /role="radio" aria-checked="true"[^>]*>Flashes</);
-  assert.ok(count(html, 'class="matrix-cell') >= 12);
+  assert.equal(count(html, 'class="matrix-cell'), 2);
+  assert.match(html, /aria-label="Colour #123456789abc"/);
+  assert.match(html, /aria-label="Matrix palette"/);
   assert.match(html, /class="matrix-cell held"[^>]*aria-label="Colour #ff0000"/, 'a colour the board plays shows held');
   assert.match(html, /touch-action: none|touch-action:none/);
 });
@@ -481,6 +513,17 @@ test('Matrix arrow keys wrap and select the newly focused mode', () => {
     assert.equal(focused.at(-1), buttons[to].value);
     assert.equal(selected.at(-1), buttons[to].value);
   }
+});
+
+test('Matrix represses use fresh tokens after releasing a cell', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const posted = [];
+  const holds = ui.createMatrixHolds((verb, body) => { posted.push([verb, body]); return true; });
+  holds.press(1, '#ff0000');
+  holds.release(1);
+  holds.press(1, '#ff0000');
+  assert.notEqual(posted[0][1].token, posted[2][1].token);
+  holds.releaseAll();
 });
 
 test('each matrix finger owns an independent hold token', (t) => {
@@ -564,6 +607,13 @@ test('the editor shows the loop region control with the sequence\'s loop', () =>
   assert.match(html, /role="group" aria-label="Loop region"/);
   assert.match(html, /aria-label="Loop start, bars\.beats"[^>]*value="2\.1"|value="2\.1"[^>]*aria-label="Loop start, bars\.beats"/);
   assert.match(html, /aria-label="Loop end, bars\.beats"[^>]*value="4\.1"|value="4\.1"[^>]*aria-label="Loop end, bars\.beats"/);
+});
+
+test('loop positions in six-eight count eighth notes within each bar', () => {
+  const seq = { ...SEQ, timeSignature: { beats: 6, unit: 8 } };
+  assert.deepStrictEqual(ui.loopRegion(seq, { on: true, start: '1.4', end: '2.4' }),
+    { loop: { on: true, startBeat: 1.5, endBeat: 4.5 } });
+  assert.strictEqual(ui.barBeatText(4.5, 3, 0.5), '2.4');
 });
 
 test('a kept take names the removed clips that reached beyond it', async () => {

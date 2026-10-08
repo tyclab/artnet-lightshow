@@ -1,4 +1,8 @@
-import { Transport } from './Transport.jsx';
+import { Transport, runTransport } from './Transport.jsx';
+import { SequencePatterns } from './SequencePatterns.jsx';
+import { Inspector as EffectInspector, findPreset } from './Inspector.jsx';
+import { playlistRowRequests } from '../transport-model.js';
+import { useFocusTrap } from '../focus-trap.js';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { field, api, librarySig } from '../state.js';
 import { drawRuler, drawClips } from '../timeline-renderer.js';
@@ -7,6 +11,7 @@ import { pacesOwnFlashes } from '../../src/shared/effects/registry.ts';
 import { sequenceEnd } from '../../src/shared/effects/sequence.ts';
 import { contentRows } from './Pads.jsx';
 import { readFavourites } from './Effects.jsx';
+import { clipAuditionTargets, confirmSequenceReplacement, sequenceChanged, trackSequenceEdit } from '../sequence-workspace.js';
 
 // The sequencer as an instrument first: what plays and the transport stay
 // on top, saved sequences and patterns are one tap; lanes, clips, commands
@@ -60,7 +65,7 @@ export function createSequenceSync(request, setSeq) {
     fetched = want;
     get();
   };
-  const edit = async (send, show) => {
+  const edit = (send, show) => trackSequenceEdit(async () => {
     pending++;
     const n = ++loads;
     let r;
@@ -68,7 +73,7 @@ export function createSequenceSync(request, setSeq) {
     mine(r);
     settle();
     return r;
-  };
+  });
   return {
     reload(revision) {
       want = revision;
@@ -217,11 +222,11 @@ function Field({ value, parse = (t) => t, onCommit, ...rest }) {
   );
 }
 
-function NumberField({ label, value, step = 1, min, onChange }) {
+function NumberField({ label, value, step = 1, min, max, onChange }) {
   return (
     <label class="seq-field">
       <span>{label}</span>
-      <Field type="number" value={value} step={step} min={min} parse={parseNumber} onCommit={onChange} />
+      <Field type="number" value={value} step={step} min={min} max={max} parse={parseNumber} onCommit={onChange} />
     </label>
   );
 }
@@ -252,7 +257,7 @@ function Ruler({ seq, total, beatsPerBar }) {
   );
 }
 
-function ClipBlock({ clip, label, total, snap, editing, playing, selected, onSelect, onChange }) {
+function ClipBlock({ clip, label, total, snap, editing, playing, selected, onSelect, onChange, onLaunch, launching }) {
   const drag = useRef(null);
   const [delta, setDelta] = useState(null);
   const start = (e, kind) => {
@@ -279,12 +284,12 @@ function ClipBlock({ clip, label, total, snap, editing, playing, selected, onSel
   return (
     <div
       class={cls}
-      role="button"
-      tabIndex={0}
-      aria-label={`${label}, beats ${clip.startBeat} to ${clip.startBeat + clip.lengthBeats}`}
+      role={editing || onLaunch ? 'button' : 'group'}
+      tabIndex={editing || onLaunch ? 0 : undefined}
+      aria-label={`${onLaunch ? launching ? 'Stop ' : 'Play ' : ''}${label}, beats ${clip.startBeat} to ${clip.startBeat + clip.lengthBeats}`}
       style={{ left: `${(shown.startBeat / total) * 100}%`, width: `${(shown.lengthBeats / total) * 100}%` }}
-      onClick={() => editing && onSelect(clip.id)}
-      onKeyDown={(e) => clipKeySelects(e, editing, () => onSelect(clip.id))}
+      onClick={() => editing ? onSelect(clip.id) : onLaunch?.()}
+      onKeyDown={(e) => clipKeySelects(e, editing || !!onLaunch, () => editing ? onSelect(clip.id) : onLaunch())}
       onPointerDown={(e) => start(e, 'move')}
       onPointerMove={move}
       onPointerUp={end}
@@ -297,17 +302,17 @@ function ClipBlock({ clip, label, total, snap, editing, playing, selected, onSel
 }
 
 /** A beat as "bar.beat", both from 1. */
-export function barBeatText(beat, perBar) {
-  return `${Math.floor(beat / perBar) + 1}.${Math.floor(beat % perBar) + 1}`;
+export function barBeatText(beat, perBar, beatSize = 1) {
+  return `${Math.floor(beat / perBar) + 1}.${Math.floor((beat % perBar) / beatSize + 1e-6) + 1}`;
 }
 
-function parseBarBeat(text, perBar) {
+function parseBarBeat(text, perBar, beatSize = 1) {
   const m = /^\s*(\d+)(?:\.(\d+))?\s*$/.exec(String(text));
   if (!m) return undefined;
   const bar = Number(m[1]);
   const beat = m[2] === undefined ? 1 : Number(m[2]);
-  if (bar < 1 || beat < 1 || beat > Math.ceil(perBar)) return undefined;
-  return (bar - 1) * perBar + (beat - 1);
+  if (bar < 1 || beat < 1 || beat > Math.ceil(perBar / beatSize)) return undefined;
+  return (bar - 1) * perBar + (beat - 1) * beatSize;
 }
 
 /**
@@ -316,8 +321,9 @@ function parseBarBeat(text, perBar) {
  */
 export function loopRegion(seq, { on, start, end }) {
   const perBar = barLength(seq.timeSignature);
-  const startBeat = parseBarBeat(start, perBar);
-  const endBeat = parseBarBeat(end, perBar);
+  const beatSize = 4 / (seq.timeSignature?.unit || 4);
+  const startBeat = parseBarBeat(start, perBar, beatSize);
+  const endBeat = parseBarBeat(end, perBar, beatSize);
   if (startBeat === undefined || endBeat === undefined) return { error: 'Write the loop as bars.beats, such as 2.1' };
   if (!(endBeat > startBeat)) return { error: 'The loop ends after it starts' };
   const last = Math.max(perBar, ...(seq.clips || []).map((c) => c.startBeat + c.lengthBeats));
@@ -327,10 +333,11 @@ export function loopRegion(seq, { on, start, end }) {
 
 function LoopControl({ seq, onCommit }) {
   const perBar = barLength(seq.timeSignature);
+  const beatSize = 4 / (seq.timeSignature?.unit || 4);
   const loop = seq.loop;
   const [on, setOn] = useState(loop ? loop.on : true);
-  const [start, setStart] = useState(barBeatText(loop ? loop.startBeat : 0, perBar));
-  const [end, setEnd] = useState(barBeatText(loop ? loop.endBeat : perBar * 4, perBar));
+  const [start, setStart] = useState(barBeatText(loop ? loop.startBeat : 0, perBar, beatSize));
+  const [end, setEnd] = useState(barBeatText(loop ? loop.endBeat : perBar * 4, perBar, beatSize));
   const [error, setError] = useState(null);
   const save = () => {
     const r = loopRegion(seq, { on, start, end });
@@ -374,7 +381,7 @@ function PresetSelect({ clip, rows, onChange, ...rest }) {
   );
 }
 
-function Inspector({ clip, lanes, rows, onChange, onDelete }) {
+function Inspector({ clip, lanes, rows, onChange, onDelete, onEditEffect }) {
   const set = (patch) => onChange({ ...clip, ...patch });
   return (
     <div class="seq-inspector">
@@ -396,9 +403,22 @@ function Inspector({ clip, lanes, rows, onChange, onDelete }) {
           }} /></label>
       <label class="seq-field seq-check"><span>Mute</span>
         <input type="checkbox" checked={clip.mute} onChange={(e) => set({ mute: e.currentTarget.checked })} /></label>
+      <button type="button" class="seq-mini" disabled={!onEditEffect} onClick={onEditEffect}>Edit clip effect</button>
       <button type="button" class="seq-danger" onClick={onDelete}>Remove clip</button>
     </div>
   );
+}
+
+function ClipEffectEditor({ target, clip, lanes, fixtures, onApply, onClose }) {
+  const box = useRef(null);
+  useFocusTrap(box, true, onClose);
+  const audition = clipAuditionTargets(clip, lanes, fixtures);
+  return <div class="effect-sheet-veil" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div ref={box} class="effect-sheet" role="dialog" aria-modal="true" aria-label="Edit clip effect" tabIndex={-1}>
+      <EffectInspector inline={target} onApply={onApply} onClose={onClose}
+        auditionTargets={audition.targets} auditionUnavailable={audition.reason} />
+    </div>
+  </div>;
 }
 
 function AutomationEditor({ name, kind, unit, value, onChange }) {
@@ -423,6 +443,77 @@ function AutomationEditor({ name, kind, unit, value, onChange }) {
   );
 }
 
+function SequenceSettings({ seq, palettes, onChange }) {
+  const set = (patch) => onChange({ ...seq, ...patch });
+  const option = (patch) => set({ options: { ...seq.options, ...patch } });
+  const snaps = [0.25, 0.5, 1, 2, 4];
+  return <details>
+    <summary>Show settings</summary>
+    <p class="seq-note">Start tempo, music mode and initial palette apply when Play starts the show. Blank tempo and “Keep current” preserve the live setting. Timeline positions and snap use quarter-note beats.</p>
+    <div class="seq-inspector">
+      <label class="seq-field">Start tempo, BPM
+        <Field type="number" min={20} max={300} step={0.1} placeholder="Keep current" value={seq.bpm ?? ''}
+          parse={(text) => text.trim() === '' ? null : parseNumber(text)} onCommit={(bpm) => set({ bpm })} />
+      </label>
+      <label class="seq-field">Music mode on start
+        <select value={seq.musicMode ?? ''} onChange={(e) => set({ musicMode: e.currentTarget.value || null })}>
+          <option value="">Keep current</option><option value="off">Off — timeline only</option>
+          <option value="tempo">Tempo — no audio response</option><option value="reactive">Reactive — respond to audio</option>
+        </select>
+      </label>
+      <NumberField label="Beats per bar" value={seq.timeSignature.beats} min={1} max={32}
+        onChange={(beats) => set({ timeSignature: { ...seq.timeSignature, beats } })} />
+      <label class="seq-field">Beat note value
+        <select value={String(seq.timeSignature.unit)} onChange={(e) => set({ timeSignature: { ...seq.timeSignature, unit: Number(e.currentTarget.value) } })}>
+          {[1, 2, 4, 8, 16, 32].map((unit) => <option key={unit} value={unit}>{unit === 1 ? 'Whole note' : `1/${unit} note`}</option>)}
+        </select>
+      </label>
+      <label class="seq-field">Snap grid
+        <select value={String(seq.snap)} onChange={(e) => set({ snap: Number(e.currentTarget.value) })}>
+          {!snaps.includes(seq.snap) && <option value={seq.snap}>{seq.snap} beats</option>}
+          {snaps.map((snap) => <option key={snap} value={snap}>{snap} {snap === 1 ? 'beat' : 'beats'}</option>)}
+        </select>
+      </label>
+      <label class="seq-field">Initial palette
+        <select value={seq.options.initialPalette ?? ''} onChange={(e) => option({ initialPalette: e.currentTarget.value || null })}>
+          <option value="">Keep current</option>
+          {palettes.map((palette) => <option key={palette.id} value={palette.id}>{palette.name || palette.id}</option>)}
+        </select>
+      </label>
+      {seq.mode === 'playlist' && <>
+        <label class="seq-field seq-check"><input type="checkbox" checked={seq.options.autoplay}
+          onChange={(e) => option({ autoplay: e.currentTarget.checked })} />Advance to the next row automatically</label>
+        <label class="seq-field seq-check"><input type="checkbox" checked={seq.options.shuffle}
+          onChange={(e) => option({ shuffle: e.currentTarget.checked })} />Choose the next row at random</label>
+      </>}
+      <label class="seq-field seq-check"><input type="checkbox" checked={seq.options.randomPaletteOnLoop}
+        onChange={(e) => option({ randomPaletteOnLoop: e.currentTarget.checked })} />Choose another palette on each loop</label>
+    </div>
+  </details>;
+}
+
+function SequenceNavigation({ seq, nameOf }) {
+  const [seek, setSeek] = useState(0);
+  const move = (path) => api(`/api/sequence/${path}`, { method: 'POST' });
+  return <details>
+    <summary>Move playhead</summary>
+    <div class="seq-toolbar">
+      <NumberField label="Seek to beat (from 0)" value={seek} min={0} step={seq.snap} onChange={setSeek} />
+      <button type="button" disabled={seek < 0} onClick={() => move(`seek/${seek}`)}>Seek</button>
+      <label class="seq-field">Jump to clip
+        <select value="" onChange={(e) => { if (e.currentTarget.value) move(`jump/${encodeURIComponent(e.currentTarget.value)}`); e.currentTarget.value = ''; }}>
+          <option value="">Choose a clip…</option>
+          {seq.clips.map((clip) => <option key={clip.id} value={clip.id}>
+            {seq.lanes.find((lane) => lane.id === clip.laneId)?.name} · {clip.presetId ? nameOf(clip.presetId) : 'Custom effect'} · beat {clip.startBeat}
+          </option>)}
+        </select>
+      </label>
+      <button type="button" onClick={() => move('resync/beat')}>Resync to beat</button>
+      <button type="button" onClick={() => move('resync/bar')}>Resync to bar</button>
+    </div>
+  </details>;
+}
+
 export function Sequence({ initial = {} }) {
   const status = field('sequence').value;
   const fixtures = field('fixtures').value || [];
@@ -433,8 +524,11 @@ export function Sequence({ initial = {} }) {
   const nameOf = presetNameOf(field('effects').value);
   const acknowledged = !!(field('safety').value || {}).photosensitivityAcknowledged;
   const [seq, setSeq] = useState(initial.sequence || null);
+  const [savedSequence, setSavedSequence] = useState(null);
+  const unsaved = useMemo(() => sequenceChanged(seq, savedSequence), [seq, savedSequence]);
   const [editing, setEditing] = useState(!!initial.editing);
   const [selected, setSelected] = useState(initial.selected || null);
+  const [effectEdit, setEffectEdit] = useState(null);
   // The lane a new clip goes on, picked by hand; the selected clip's lane comes first.
   const [lanePicked, setLanePicked] = useState(initial.lane || null);
   // The id of the saved sequence the view asks about deleting.
@@ -449,15 +543,27 @@ export function Sequence({ initial = {} }) {
   // The live state carries the status only; the sequence itself is fetched when its revision moves.
   const sync = useMemo(() => createSequenceSync(api, setSeq), []);
   useEffect(() => { sync.reload(revision); }, [revision]);
+  useEffect(() => {
+    let live = true;
+    if (!seq || !shelf.some((s) => s.id === seq.id)) { setSavedSequence(null); return; }
+    api(`/api/sequences/${encodeURIComponent(seq.id)}`).then((r) => {
+      if (live && r.ok) setSavedSequence(r.sequence);
+    });
+    return () => { live = false; };
+  }, [seq?.id, shelf]);
 
   const commit = (next) => sync.commit(next);
-  const load = (id) => sync.load(id);
-  const create = () => {
+  const replace = async (action) => {
+    if (await confirmSequenceReplacement(api)) return action();
+    return false;
+  };
+  const load = (id) => replace(() => sync.load(id));
+  const create = () => replace(() => {
     setSelected(null);
     setLanePicked(null);
     setEditing(true);
     return sync.commit(blankSequence(shelf));
-  };
+  });
   const beat = status && Number.isFinite(status.beat) ? status.beat : 0;
 
   const shelfList = (
@@ -491,17 +597,22 @@ export function Sequence({ initial = {} }) {
   const setCommand = (next) => commit({ ...seq, commands: seq.commands.map((c) => (c.id === next.id ? next : c)) });
   const setLane = (id, patch) => commit({ ...seq, lanes: seq.lanes.map((x) => (x.id === id ? { ...x, ...patch } : x)) });
   const library = librarySig.value;
+  const clipSpec = clip?.effect || (clip?.presetId ? findPreset(clip.presetId, library)?.spec : null);
   const rows = clipPresetRows(library, readFavourites());
-  const paletteIds = [...(library.palettes.builtin || []), ...(library.palettes.user || [])].map((p) => p.id).filter(Boolean);
+  const palettes = [...(library.palettes.builtin || []), ...(library.palettes.user || [])];
+  const paletteIds = palettes.map((p) => p.id).filter(Boolean);
   const clipFrom = { selected, library: library.builtin, rows: presetRows, acknowledged };
   const addable = lanes.length > 0 && !!newClip(seq, { ...clipFrom, laneId: '', startBeat: 0, beatsPerBar });
   const target = lanes.find((l) => l.id === (clip ? clip.laneId : lanePicked)) || lanes[0];
   const untracked = fixtures.filter((f) => !seq.lanes.some((l) => l.kind === 'track' && l.fixtureId === f.id));
   const saved = shelf.some((s) => s.id === seq.id);
   // The shelf follows by broadcast; a refused save, copy or delete shows as a toast.
-  const save = () => (saved
-    ? api(`/api/sequences/${encodeURIComponent(seq.id)}`, json('PUT', seq))
-    : api('/api/sequences', json('POST', seq)));
+  const save = async () => {
+    const r = await (saved
+      ? api(`/api/sequences/${encodeURIComponent(seq.id)}`, json('PUT', seq))
+      : api('/api/sequences', json('POST', seq)));
+    if (r.ok) setSavedSequence(r.sequence);
+  };
   const duplicate = () => {
     const copy = { ...seq, name: `${seq.name} copy` };
     delete copy.id;
@@ -520,14 +631,16 @@ export function Sequence({ initial = {} }) {
       <div class="seq-top">
         <div class="seq-now" aria-live="polite">
           <strong>{seq.name}</strong> · {stateText(status)} · Bar {status ? status.bar : 1}
-          <span class="seq-beat"> beat {status ? positionText({ ...status, beat }, beatsPerBar).split('.')[1] : 1}</span>
+          <span class="seq-beat"> beat {status ? positionText({ ...status, beat }, beatsPerBar, 4 / seq.timeSignature.unit).split('.')[1] : 1}</span>
+          {unsaved && <span class="seq-unsaved"> · Unsaved changes</span>}
         </div>
-        <Transport prefer="sequence" initial={initial} />
-        <button type="button" class="seq-mini" title="Back to the look" onClick={() => sync.unload()}>Unload</button>
+        <Transport prefer="sequence" initial={initial.sequence ? initial : undefined} />
+        <button type="button" class="seq-mini" title="Back to the look" onClick={() => replace(() => sync.unload())}>Unload</button>
         <button type="button" class={`seq-edit-toggle${editing ? ' active' : ''}`} aria-pressed={editing}
           onClick={() => setEditing(!editing)}>Edit</button>
       </div>
       {shelfList}
+      <SequenceNavigation key={seq.id} seq={seq} nameOf={nameOf} />
 
       {beyond && <p class="seq-beyond" role="status">{beyond} <button type="button" class="btn sm" onClick={() => setBeyond(null)}>Dismiss</button></p>}
       <div class="seq-record" role="group" aria-label="Record">
@@ -546,14 +659,8 @@ export function Sequence({ initial = {} }) {
           : <button type="button" class="seq-big seq-rec" aria-label="Record" onClick={startRecord}>●</button>}
       </div>
 
-      {editing && patterns.length > 0 && (
-        <div class="seq-patterns" role="group" aria-label="Patterns">
-          {patterns.map((p) => (
-            <button key={p.id} type="button" class="seq-pattern" aria-label={`Insert ${p.name} at beat ${Math.floor(beat)}`}
-              onClick={() => api('/api/sequence/insert-pattern', json('POST', { id: p.id, atBeat: Math.floor(beat) }))}>{p.name}</button>
-          ))}
-        </div>
-      )}
+      {editing && patterns.length > 0 && <SequencePatterns patterns={patterns} fixtures={fixtures} lanes={lanes} beat={beat}
+        onInsert={(id) => trackSequenceEdit(() => api('/api/sequence/insert-pattern', json('POST', { id, atBeat: Math.floor(beat) })))} />}
 
       <p class="seq-note">Shared lanes stack top to bottom: where clips overlap, the last shared lane wins. A track plays on its one fixture.</p>
       <div class="seq-arrangement">
@@ -581,7 +688,8 @@ export function Sequence({ initial = {} }) {
             <div key={l.id} class="seq-lane-row">
               {seq.clips.filter((c) => c.laneId === l.id).map((c) => (
                 <ClipBlock key={c.id} clip={c} label={label(c)} total={total} snap={seq.snap} editing={editing} playing={onTop.has(c.id)}
-                  selected={c.id === selected} onSelect={setSelected} onChange={setClip} />
+                  selected={c.id === selected} onSelect={setSelected} onChange={setClip} launching={status?.playing && onTop.has(c.id)}
+                  onLaunch={!editing && seq.mode === 'playlist' ? () => runTransport(playlistRowRequests(c.id, status?.playing && onTop.has(c.id))) : undefined} />
               ))}
               <div class="seq-end" style={{ left: `${(stop / total) * 100}%` }} aria-hidden="true" />
               <div class="seq-cursor" style={{ left: `${(beat / total) * 100}%` }} aria-hidden="true" />
@@ -592,7 +700,8 @@ export function Sequence({ initial = {} }) {
 
       {editing && (
         <div class="seq-editor">
-          <LoopControl key={`${seq.id}:${JSON.stringify(seq.loop)}`} seq={seq} onCommit={commit} />
+          <SequenceSettings seq={seq} palettes={palettes} onChange={commit} />
+          <LoopControl key={`${seq.id}:${JSON.stringify([seq.loop, seq.timeSignature])}`} seq={seq} onCommit={commit} />
           <div class="seq-toolbar">
             <label class="seq-field"><span>Name</span>
               <Field type="text" aria-label="Sequence name" maxLength={80} value={seq.name}
@@ -602,10 +711,10 @@ export function Sequence({ initial = {} }) {
             <button type="button" onClick={() => commit({ ...seq, lanes: [...seq.lanes, { id: newId('l'), kind: 'shared', name: `Lane ${lanes.length + 1}`, mute: false, solo: false }] })}>Add shared lane</button>
             <select aria-label="Add a track for a fixture" value="" onChange={(e) => {
               const f = fixtures.find((x) => String(x.id) === e.currentTarget.value);
-              if (f) commit({ ...seq, lanes: [...seq.lanes, { id: newId('t'), kind: 'track', fixtureId: f.id, name: f.name || `Fixture ${f.id}`, mute: false, solo: false }] });
+              if (f) commit({ ...seq, lanes: [...seq.lanes, { id: newId('t'), kind: 'track', fixtureId: f.id, name: f.label || `Fixture ${f.id}`, mute: false, solo: false }] });
             }}>
               <option value="">Add a track for…</option>
-              {untracked.map((f) => <option key={f.id} value={f.id}>{f.name || `Fixture ${f.id}`}</option>)}
+              {untracked.map((f) => <option key={f.id} value={f.id}>{f.label || `Fixture ${f.id}`}</option>)}
             </select>
             <button type="button" disabled={!addable} title={addable ? undefined : 'No preset to play yet'} onClick={() => {
               const c = addable && newClip(seq, { ...clipFrom, laneId: target.id, startBeat: toGrid(beat, seq.snap), beatsPerBar });
@@ -633,6 +742,8 @@ export function Sequence({ initial = {} }) {
             ))}
           </div>
           {clip && <Inspector clip={clip} lanes={lanes} rows={rows} onChange={setClip}
+            onEditEffect={clipSpec ? () => setEffectEdit({ key: `${seq.id}:${clip.id}`, sequenceId: seq.id, clipId: clip.id,
+              name: label(clip), spec: JSON.parse(JSON.stringify(clipSpec)) }) : null}
             onDelete={() => { commit({ ...seq, clips: seq.clips.filter((c) => c.id !== clip.id) }); setSelected(null); }} />}
 
           <div class="seq-commands">
@@ -642,9 +753,12 @@ export function Sequence({ initial = {} }) {
                 <select aria-label="Command" value={k.type} onChange={(e) => setCommand(commandAs(k, e.currentTarget.value, paletteIds))}>
                   {COMMAND_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
-                <Field type={k.type === 'palette' ? 'text' : 'number'} aria-label="Value" value={k.value}
-                  parse={k.type === 'palette' ? (t) => t : parseNumber}
-                  onCommit={(v) => setCommand({ ...k, value: k.type === 'brightness' ? Math.round(v) : v })} />
+                {k.type === 'palette'
+                  ? <select aria-label="Value" value={k.value} onChange={(e) => setCommand({ ...k, value: e.currentTarget.value })}>
+                    {palettes.map((palette) => <option key={palette.id} value={palette.id}>{palette.name || palette.id}</option>)}
+                  </select>
+                  : <Field type="number" aria-label="Value" value={k.value} parse={parseNumber}
+                    onCommit={(v) => setCommand({ ...k, value: k.type === 'brightness' ? Math.round(v) : v })} />}
                 <button type="button" class="seq-mini" aria-label="Remove command" onClick={() => commit({ ...seq, commands: seq.commands.filter((x) => x.id !== k.id) })}>×</button>
               </div>
             ))}
@@ -664,6 +778,15 @@ export function Sequence({ initial = {} }) {
           </div>
         </div>
       )}
+      {effectEdit && <ClipEffectEditor target={effectEdit} clip={seq.clips.find((entry) => entry.id === effectEdit.clipId)}
+        lanes={lanes} fixtures={fixtures} onClose={() => setEffectEdit(null)} onApply={async (spec) => {
+          const current = seq.id === effectEdit.sequenceId && seq.clips.find((entry) => entry.id === effectEdit.clipId);
+          if (!current) return { ok: false, error: 'This clip was removed. Close the editor and choose another clip.' };
+          const { presetId: _presetId, ...rest } = current;
+          const result = await setClip({ ...rest, effect: spec });
+          if (result.ok) setEffectEdit(null);
+          return result;
+        }} />}
     </section>
   );
 }

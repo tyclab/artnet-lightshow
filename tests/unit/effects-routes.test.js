@@ -19,6 +19,7 @@ import { attachRoutes } from '../../src/server/routes.ts';
 import { setupIntegrations } from '../../src/server/integrations.ts';
 import { EffectLibrary } from '../../src/server/effect-library.ts';
 import { PaletteStore } from '../../src/server/palette-store.ts';
+import { SequenceStore } from '../../src/server/sequence-store.ts';
 import { attachSockets } from '../../src/server/sockets.ts';
 import { startEngine, stopEngine, setEffectSource, effectChanged, renderInput } from '../../src/server/engine.ts';
 import { applyPatch } from '../../src/server/patch.ts';
@@ -73,7 +74,7 @@ async function serve(t, { cues } = {}) {
     spotify: { ...idle, startPolling() {}, async getQueue() { return []; } },
     nowPlaying: idle,
     deezerSource: { ...idle, getQueue: () => [], updatePlayback() {}, updateQueue() {}, disconnect() {} },
-    prolink, autoShow, effectLibrary, paletteStore,
+    prolink, autoShow, effectLibrary, paletteStore, sequenceStore: new SequenceStore(path.join(dir, 'sequences.json')).load(),
   });
   attachRoutes(app, { integrations, applier: { applyChanged() {} }, ...(cues ? { cues } : {}) });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -103,6 +104,57 @@ const FADE = { kind: 'ldj.FadeCycle', params: { cadence: 2 } };
 // Faster than the photosensitivity threshold, though it does not say so itself.
 const FAST = { kind: 'ldj.StrobeCycle', params: { cadence: 0.25 }, rapidFlash: false };
 const json = (value) => JSON.parse(JSON.stringify(value));
+
+test('palette deletion identifies a saved sequence reference', async (t) => {
+  const s = await serve(t);
+  const palette = s.paletteStore.create({ name: 'Referenced', colours: ['#123456789ABC'] });
+  s.integrations.sequence.store.save({ id: 'night', name: 'Night', options: { initialPalette: palette.id } });
+  const result = await s.call('DELETE', `/api/palettes/${palette.id}`);
+  assert.equal(result.status, 409);
+  assert.deepEqual(result.body.references, ['Saved sequence: Night']);
+  assert.ok(s.paletteStore.get(palette.id));
+});
+
+test('palette deletion identifies a loaded command reference', async (t) => {
+  const s = await serve(t);
+  const palette = s.paletteStore.create({ name: 'Live', colours: ['#123456789ABC'] });
+  s.integrations.sequence.sequencer.load({ id: 'live', name: 'Live show', commands: [{ id: 'c', atBeat: 0, type: 'palette', value: palette.id }] });
+  const result = await s.call('DELETE', `/api/palettes/${palette.id}`);
+  assert.equal(result.status, 409);
+  assert.deepEqual(result.body.references, ['Loaded sequence: Live show']);
+});
+
+test('palette deletion refuses the active override', async (t) => {
+  const s = await serve(t);
+  const palette = s.paletteStore.create({ name: 'Active', colours: ['#123456789ABC'] });
+  await s.call('PUT', '/api/palette-override', { paletteId: palette.id });
+  const result = await s.call('DELETE', `/api/palettes/${palette.id}`);
+  assert.equal(result.status, 409);
+  assert.deepEqual(result.body.references, ['Palette override on stage']);
+});
+
+test('palette deletion refuses the active base palette', async (t) => {
+  const s = await serve(t), before = { palette: state.palette, basePalette: state.basePalette };
+  t.after(() => Object.assign(state, before));
+  const palette = s.paletteStore.create({ name: 'Base', colours: ['#123456789ABC'] });
+  await s.call('POST', '/api/set', { palette: palette.id });
+  const result = await s.call('DELETE', `/api/palettes/${palette.id}`);
+  assert.equal(result.status, 409);
+  assert.deepEqual(result.body.references, ['Base palette on stage']);
+});
+
+test('palette deletion preserves a pending sequence restore reference', async (t) => {
+  const s = await serve(t);
+  const palette = s.paletteStore.create({ name: 'Before', colours: ['#123456789ABC'] });
+  await s.call('PUT', '/api/palette-override', { paletteId: palette.id });
+  const sequencer = s.integrations.sequence.sequencer;
+  sequencer.load({ id: 'restore', name: 'Restore show', options: { initialPalette: 'redCyan' } });
+  sequencer.play();
+  const result = await s.call('DELETE', `/api/palettes/${palette.id}`);
+  assert.equal(result.status, 409);
+  assert.deepEqual(result.body.references, ['Restored after sequence stops: Restore show']);
+  sequencer.stop();
+});
 
 test('GET /api/effects lists families, built-ins, user presets and both palette lists', async (t) => {
   const s = await serve(t);

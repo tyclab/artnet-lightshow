@@ -85,8 +85,12 @@ export function CommandBar({ transport = true } = {}) {
           {/* Wrapped: as bare children of the column flex these stretched to
               full width and stacked, which is not what they are for. */}
           <div class="cb-bpm-nudge">
+            <button type="button" class="btn sm" disabled={bpm < 40} onClick={() => send({ bpm: bpm / 2 })}
+              aria-label="Half tempo" title="Halve the global tempo">½</button>
             <button class="btn icon sm" onClick={() => nudge(-1)} title="BPM −1">−</button>
             <button class="btn icon sm" onClick={() => nudge(1)} title="BPM +1">+</button>
+            <button type="button" class="btn sm" disabled={bpm > 150} onClick={() => send({ bpm: bpm * 2 })}
+              aria-label="Double tempo" title="Double the global tempo">×2</button>
           </div>
           <div class="cb-divs">
             {DIVISIONS.map((d) => (

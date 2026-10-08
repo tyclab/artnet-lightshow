@@ -190,7 +190,7 @@ export function PadEditor({ entry, onClose, initial = {} }) {
           {(s.fixtures || []).map((f) => (
             <label key={f.id} class="pad-choice">
               <input type="checkbox" value={String(f.id)} checked={draft.targets.includes(f.id)} onChange={(e) => toggleFixture(f.id, e.target.checked)} />
-              <span>{f.name}</span>
+              <span>{f.label || `Fixture ${f.id}`}</span>
             </label>
           ))}
         </fieldset>

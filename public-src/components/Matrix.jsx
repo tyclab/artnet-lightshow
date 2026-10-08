@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
-import { field, api } from '../state.js';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { api, connectedSig, librarySig, pick } from '../state.js';
 import { createHoldControl } from '../hold-control.js';
 import { useSafetyGate } from './Photosensitivity.jsx';
 import { matrixAsks } from '../preview-inputs.js';
-
-// Light DJ's Matrix Strobe Maker: every colour held down joins one list that
-// the board plays in its mode; letting go of the last one stops it. The
-// server keeps that one voice; this page only presses and releases colours.
+import { paletteName } from './PaletteEditor.jsx';
+import { parseHex } from '../../src/shared/palette-model.ts';
+import { colorToCss } from '../utils.js';
+import { createMatrixSelection, MATRIX_DEFAULT_PALETTE, matrixPaletteCells, matrixShouldRelease, shuffledMatrixPalette } from '../matrix-selection.js';
 
 export const MATRIX_MODES = [
   { id: 'fireworks', label: 'Fireworks' },
@@ -16,32 +16,11 @@ export const MATRIX_MODES = [
   { id: 'solid', label: 'Solid' },
 ];
 
-// A hue wheel in fourteen steps, then warm white and white.
-const WHEEL = Array.from({ length: 14 }, (_, i) => hslHex((i * 360) / 14));
-export const MATRIX_COLOURS = [...WHEEL, '#ffd9a0', '#ffffff'];
-
-function hslHex(h) {
-  const f = (n) => {
-    const k = (n + h / 30) % 12;
-    const v = 0.5 - 0.5 * Math.max(-1, Math.min(k - 3, 9 - k, 1));
-    return Math.round(v * 255).toString(16).padStart(2, '0');
-  };
-  return `#${f(0)}${f(8)}${f(4)}`;
-}
-
-/**
- * One hold per finger. A hold renews by pressing its colour again under the
- * same token, so a tablet that drops off the Wi-Fi lets the colour go when
- * the server's lease runs out. A first press the server refuses (409 before
- * the photosensitivity acknowledgement, 400 past eight cells) stops renewing
- * and lets the finger go without a release; `onRefused` hears of it.
- * Each finger's requests form one ordered chain: a request waits for the
- * previous one to settle, so a release never overtakes its press or a
- * renewal, and a renewal still waiting when the release is queued is dropped.
- */
+// Serialize each lease's requests so an in-flight renewal cannot overtake release.
 export function createMatrixHolds(post, onRefused = () => {}) {
   const page = Math.random().toString(36).slice(2, 8);
   const fingers = new Map();
+  let generation = 0;
   const release = (pointerId) => {
     const finger = fingers.get(pointerId);
     if (!finger) return;
@@ -58,13 +37,14 @@ export function createMatrixHolds(post, onRefused = () => {}) {
   return {
     press(pointerId, colour) {
       release(pointerId);
+      const serial = ++generation;
       const finger = { colour, refused: false, releasing: false, tail: null };
       finger.control = createHoldControl(({ action, token }) => {
         if (finger.refused) return false;
         if (action === 'release') finger.releasing = true;
         const send = () => {
           if (finger.refused || (action === 'renew' && finger.releasing)) return null;
-          const sent = post(action === 'release' ? 'release' : 'press', { colour, token: `${page}-${pointerId}-${token}` }, action);
+          const sent = post(action === 'release' ? 'release' : 'press', { colour, token: `${page}-${pointerId}-${serial}-${token}` }, action);
           if (!sent || typeof sent.then !== 'function') return null;
           return sent.then((r) => { if (action === 'press' && r && r.ok === false) refuse(pointerId, finger); }, () => {});
         };
@@ -81,7 +61,6 @@ export function createMatrixHolds(post, onRefused = () => {}) {
   };
 }
 
-/** Space or Enter holds a cell from the keyboard; auto-repeat is ignored. */
 export function matrixCellKeys(colour, hold, letGo) {
   const id = `key-${colour}`;
   const ours = (e) => e.key === ' ' || e.key === 'Enter';
@@ -104,8 +83,7 @@ export function matrixModeKey(event, choose) {
   choose(buttons[to].value);
 }
 
-// A renewal that fails says nothing: the lease ending is the fallback. A
-// press or release goes through api(), which shows the server's error.
+// Failed renewals expire on the server; explicit actions use normal API errors.
 function postMatrix(verb, body, action) {
   const init = { method: 'POST', body: JSON.stringify(body) };
   if (action === 'renew') {
@@ -115,48 +93,79 @@ function postMatrix(verb, body, action) {
 }
 
 export function Matrix() {
-  const board = field('matrix').value || {};
-  // No fallback: until the server says, no mode is chosen.
+  const s = pick(['matrix', 'builtinPalettes', 'userPalettes', 'armed', 'running', 'sequence', 'masterBlackout']);
+  const board = s.matrix || {};
   const mode = board.mode || null;
-  // The server keeps colours in upper case; the cells are lower case.
   const playing = Array.isArray(board.colours) ? board.colours.map((c) => String(c).toLowerCase()) : [];
-  const [down, setDown] = useState({});
-  const lift = (pointerId) => setDown((d) => {
-    const next = { ...d };
-    delete next[pointerId];
-    return next;
+  const lib = librarySig.value;
+  const palettes = [...(s.builtinPalettes || lib.palettes?.builtin || []), ...(s.userPalettes || lib.palettes?.user || [])];
+  const [paletteId, setPaletteId] = useState(() => {
+    try { return localStorage.getItem('lightshow.matrix.palette') || 'rainbow'; } catch { return 'rainbow'; }
   });
-  const holds = useMemo(() => createMatrixHolds(postMatrix, lift), []);
+  const [roll, setRoll] = useState(0);
+  const palette = palettes.find((p) => p.id === paletteId) || palettes.find((p) => p.id === 'rainbow') || palettes[0] || MATRIX_DEFAULT_PALETTE;
+  const body = JSON.stringify(palette);
+  const colours = useMemo(() => matrixPaletteCells(JSON.parse(body)), [body, roll]);
+  const [selection, setSelection] = useState({ locked: false, cells: [] });
+  const controls = useMemo(() => {
+    const holds = createMatrixHolds(postMatrix, (key) => control.refused(key));
+    const control = createMatrixSelection(holds, setSelection);
+    return control;
+  }, []);
   useEffect(() => {
-    const letGo = () => { holds.releaseAll(); setDown({}); };
-    window.addEventListener('blur', letGo);
-    return () => { window.removeEventListener('blur', letGo); holds.releaseAll(); };
-  }, [holds]);
+    const clear = () => controls.clear();
+    const hidden = () => { if (document.hidden) clear(); };
+    window.addEventListener('blur', clear);
+    document.addEventListener('visibilitychange', hidden);
+    return () => { window.removeEventListener('blur', clear); document.removeEventListener('visibilitychange', hidden); clear(); };
+  }, [controls]);
+  useEffect(() => { controls.clear(); }, [body, roll]);
+  const previous = useRef(null);
+  const lifecycle = { armed: s.armed, running: s.running, paused: s.sequence?.paused,
+    blackout: s.masterBlackout, connected: connectedSig.value, voice: board.voice };
+  useEffect(() => {
+    if (matrixShouldRelease(previous.current, lifecycle)) controls.clear();
+    previous.current = lifecycle;
+  }, [lifecycle.armed, lifecycle.running, lifecycle.paused, lifecycle.blackout, lifecycle.connected, lifecycle.voice]);
 
   const gate = useSafetyGate();
-  // A rapid mode asks first, as the strobe pad does; the next press holds.
-  const hold = (id, colour) => {
+  const hold = (id, key, colour) => {
     if (matrixAsks(mode, gate.acknowledged)) { gate.guard(`Matrix ${mode}`, () => {}); return false; }
-    holds.press(id, colour);
-    setDown((d) => ({ ...d, [id]: colour }));
+    controls.press(id, key, colour);
     return true;
   };
-  const letGo = (id) => {
-    holds.release(id);
-    lift(id);
-  };
-  const press = (e, colour) => {
+  const letGo = (id) => controls.release(id);
+  const press = (e, key, colour) => {
     e.preventDefault();
-    if (hold(e.pointerId, colour)) e.currentTarget.setPointerCapture?.(e.pointerId);
+    if (hold(e.pointerId, key, colour)) e.currentTarget.setPointerCapture?.(e.pointerId);
   };
   const release = (e) => letGo(e.pointerId);
-  const held = new Set([...playing, ...Object.values(down)]);
-  const chooseMode = (next) => api('/api/matrix', { method: 'PUT', body: JSON.stringify({ mode: next }) });
+  const chooseMode = (next) => {
+    const apply = () => api('/api/matrix', { method: 'PUT', body: JSON.stringify({ mode: next }) });
+    if (selection.cells.length && matrixAsks(next, gate.acknowledged)) gate.guard(`Matrix ${next}`, apply);
+    else apply();
+  };
+  const choosePalette = (next) => {
+    controls.clear();
+    setPaletteId(next.id);
+    setRoll((n) => n + 1);
+    try { localStorage.setItem('lightshow.matrix.palette', next.id); } catch { /* private mode */ }
+  };
 
   return (
     <section class="matrix-view" aria-label="Matrix board">
       <div class="matrix-now" aria-live="polite">
-        {playing.length ? `Playing ${playing.length} colour${playing.length > 1 ? 's' : ''} as ${mode}` : 'Hold colours to play them'}
+        {playing.length ? `Playing ${playing.length} colour${playing.length > 1 ? 's' : ''} as ${mode}`
+          : selection.locked ? 'Tap colours to lock or release them' : 'Hold colours to play them'}
+      </div>
+      <div class="palette-tools matrix-palette-tools">
+        <label>Matrix palette <select aria-label="Matrix palette" value={palette.id} onChange={(e) => {
+          const next = palettes.find((p) => p.id === e.currentTarget.value);
+          if (next) choosePalette(next);
+        }}>
+          {(palettes.length ? palettes : [palette]).map((p) => <option key={p.id} value={p.id}>{paletteName(p)}</option>)}
+        </select></label>
+        <button type="button" class="btn sm" aria-pressed={selection.locked} onClick={() => controls.setLocked(!selection.locked)}>Lock colours</button>
       </div>
       <div class="matrix-modes" role="radiogroup" aria-label="Board mode" onKeyDown={(event) => matrixModeKey(event, chooseMode)}>
         {MATRIX_MODES.map((m) => (
@@ -174,23 +183,29 @@ export function Matrix() {
       </div>
       {gate.dialog}
       <div class="matrix-grid" style={{ touchAction: 'none' }}>
-        {MATRIX_COLOURS.map((colour) => (
+        {colours.map((colour, index) => (
           <button
-            key={colour}
+            key={index}
             type="button"
-            class={`matrix-cell${held.has(colour) ? ' held' : ''}`}
+            class={`matrix-cell${selection.cells.includes(index) || playing.includes(colour) ? ' held' : ''}`}
             aria-label={`Colour ${colour}`}
-            aria-pressed={held.has(colour)}
-            style={{ background: colour }}
-            onPointerDown={(e) => press(e, colour)}
+            aria-pressed={selection.cells.includes(index) || playing.includes(colour)}
+            style={{ background: colorToCss(parseHex(colour)) }}
+            onPointerDown={(e) => press(e, index, colour)}
             onPointerUp={release}
-            onPointerCancel={release}
+            onPointerCancel={() => controls.clear()}
             onLostPointerCapture={release}
             onContextMenu={(e) => e.preventDefault()}
-            {...matrixCellKeys(colour, hold, letGo)}
+            {...matrixCellKeys(String(index), (id) => hold(id, index, colour), letGo)}
           />
         ))}
       </div>
+      <div class="palette-tools">
+        <button type="button" class="btn sm" onClick={() => choosePalette(shuffledMatrixPalette(palettes, palette.id) || palette)}>Shuffle palette</button>
+        <button type="button" class="btn sm" onClick={() => choosePalette(palette)}>Reroll colours</button>
+        <button type="button" class="btn sm" onClick={() => controls.clear()}>Release colours</button>
+      </div>
+      {selection.locked && <p class="muted">Locked colours release when this page loses focus or closes.</p>}
     </section>
   );
 }
