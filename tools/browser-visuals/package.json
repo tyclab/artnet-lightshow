@@ -1,9 +1,9 @@
 {
-  "name": "lightshow-obs-pixel-stream",
+  "name": "lightshow-browser-visuals",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Scene-only OBS capture for transient authenticated Lightshow pixel input",
+  "description": "Dedicated Music Assistant browser display and optional leased curtain pixels",
   "engines": {
     "node": ">=22.18"
   },

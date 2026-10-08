@@ -55,10 +55,10 @@ test('target conflicts back off and never capture; success resets retries', asyn
   h.setTime(3000); h.transport.request = async event => event.endsWith('claim') ? claim() : { ok: true };
   await h.pump.step(); assert.equal(h.pump.frames, 1); assert.equal(h.pump.failures, 0);
 });
-test('OBS failure and server lease loss release once without replaying a cached image', async () => {
+test('browser capture failure and server lease loss release once without replaying a cached image', async () => {
   const h = setup(); await h.pump.step();
   h.setTime(100);
-  h.pump.capture = async () => { throw new Error('OBS gone'); }; await h.pump.step();
+  h.pump.capture = async () => { throw new Error('Browser gone'); }; await h.pump.step();
   assert.equal(h.pump.lease, null); assert.equal(h.calls.filter(x => x.event.endsWith('frame')).length, 1);
   const lost = setup(); lost.transport.request = async event => event.endsWith('claim') ? claim() : { ok: false, code: 'NO_LEASE' };
   await lost.pump.step(); assert.equal(lost.pump.lease, null); assert.equal(lost.pump.frames, 0);
