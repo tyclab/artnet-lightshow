@@ -719,7 +719,7 @@ then place or symlink the module inside the configured Developer modules folder.
 Add an ArtNet Lightshow connection with host, port and access token.
 
 Presets cover busking palettes, energy holds, transport, cues, pads, strobe
-bursts, generated-show controls and fixture controls. Hold buttons renew until
+bursts, generated-show controls, sequence transport and fixture controls. Hold buttons renew until
 release; once and loop pads launch once per press. Server catalogs populate
 actions and feedback. The module uses Socket.IO protocol 2. See
 [installation](companion-module/INSTALL.md) and

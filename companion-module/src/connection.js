@@ -121,6 +121,11 @@ export class LightshowConnection {
 		return this.post(`/api/strobe/burst/${Math.round(ms)}`, {})
 	}
 
+	sequenceTransport(mode) {
+		if (!['play', 'pause', 'stop', 'blackout'].includes(mode)) return Promise.resolve({ ok: false, error: 'Unknown sequence control' })
+		return this.post(`/api/sequence/${mode === 'blackout' ? 'stop' : mode}`, { blackout: mode === 'blackout' })
+	}
+
 	#releaseAllPads() {
 		for (const timer of this.#pads.values()) clearInterval(timer)
 		this.#pads.clear()

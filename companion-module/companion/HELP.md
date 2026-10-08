@@ -48,6 +48,7 @@ The **Busk** preset page has what a set played by hand needs:
 | Set Strobe Function / Speed       | Choose the strobe program and its speed                                              |
 | Recall Cue                        | Put a saved cue on stage                                                             |
 | Auto Show Start / Stop            | Start, stop or toggle the auto show                                                  |
+| Sequence transport               | Play/resume the loaded sequence, pause, stop holding its last picture, or stop with a black sequence base |
 | Auto Show Intensity               | Set it, or adjust it by ± amount                                                     |
 | Auto Show Source                  | What the auto show follows: auto-detect, Spotify, PRO DJ LINK, the live input, …     |
 | Nudge Auto Show Sync              | Run the lights earlier (+) or later (−) against the music                             |
@@ -67,6 +68,7 @@ The **Busk** preset page has what a set played by hand needs:
 | Colour A/B/C/D selected        | That colour slot matches                                   |
 | Master blackout active         | Blackout is on                                             |
 | Show is playing                | Show is playing                                            |
+| Sequence transport state       | The loaded sequence is playing, paused or stopped          |
 | Outputs are armed              | Frames are going out to the rig                            |
 | Auto show is running           | The auto show is on                                        |
 | Auto show follows this source  | The auto show is following that source now                 |
@@ -79,4 +81,8 @@ The **Busk** preset page has what a set played by hand needs:
 
 ## Presets
 
-Besides **Busk**: every pattern (the whole-rig ones and the pixel effects apart), the bars' and the panels' own pictures and the pixel map; all four colour slots; transport (the outputs' arming switch, play/stop, blackout, tap tempo, BPM, beat divisions); a blackout for each fixture in the patch; and latched energy effects.
+Besides **Busk**: every pattern (the whole-rig ones and the pixel effects apart), the bars' and the panels' own pictures and the pixel map; all four colour slots; transport (the outputs' arming switch, play/stop, blackout, tap tempo, BPM, beat divisions); **Sequence** transport and tempo; a blackout for each fixture in the patch; and latched energy effects.
+
+Load or edit the sequence in the lightshow's Sequence page first. **Sequence: Play / Resume** starts after a stop and resumes after a pause. Pause freezes the transport while its clips keep running; Stop holds the last picture. The optional stop-with-black action blacks only the sequence base, so live voices can still appear above it. These controls never arm outputs. Server refusals, including no loaded sequence or a missing photosensitivity acknowledgement, appear in the connection log.
+
+The Sequence presets reuse the existing BPM display and ±5 actions. Set BPM and Adjust BPM change the shared tempo and end sequence tempo automation; later authored tempo commands can change it again. Pausing and resuming preserves the sequence position and does not reapply its initial tempo.
