@@ -28,7 +28,7 @@ function createIdleDisarm({ now, armed, playing, minutes, disarm }: IdleDisarmDe
       idleSince ??= at;
       if (at - idleSince < limit * 60_000) return;
       disarm(limit);
-      idleSince = Infinity;   // once per idle period, only a reset above starts the next; a disarm that throws runs again
+      idleSince = at;   // the next period starts here, so an arm made before the next tick gets a full one; a disarm that throws runs again
     },
   };
 }

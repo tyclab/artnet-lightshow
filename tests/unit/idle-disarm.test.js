@@ -14,7 +14,7 @@ import { SettingsStore } from '../../src/server/settings.ts';
 const TICK = 10_000;
 const MIN = 60_000;
 
-/** Armed at 0 on a fake clock with nothing playing. Its disarm only records: the arm is the test's to drop. */
+/** Armed at 0 on a fake clock with nothing playing. Its disarm drops the arm, as main.ts's does. */
 function rig(minutes = 15) {
   const r = { at: 0, armed: true, playing: false, minutes, fails: 0, disarms: [] };
   const idle = createIdleDisarm({
@@ -25,6 +25,7 @@ function rig(minutes = 15) {
     disarm: (m) => {
       if (r.fails-- > 0) throw new Error('save failed');
       r.disarms.push({ at: r.at, minutes: m });
+      r.armed = false;
     },
   });
   idle.tick();
@@ -38,15 +39,17 @@ test('armed with nothing playing: disarmed exactly once, at the limit; arming ag
   assert.deepEqual(r.disarms, []);
   r.wait(TICK);
   assert.deepEqual(r.disarms, [{ at: 15 * MIN, minutes: 15 }]);
-  r.wait(60 * MIN);
-  assert.equal(r.disarms.length, 1, 'once per idle period, even with the arm still standing');
-  r.armed = false;
+  r.armed = true;
+  r.wait(15 * MIN - TICK);
+  assert.equal(r.disarms.length, 1, 're-armed before the next tick saw it disarmed: a full period from the disarm');
+  r.wait(TICK);
+  assert.deepEqual(r.disarms.at(-1), { at: 30 * MIN, minutes: 15 });
   r.wait(TICK);
   r.armed = true;
   r.wait(15 * MIN);
-  assert.equal(r.disarms.length, 1, 'armed again: 15 fresh minutes from the tick that saw it (75:20)');
+  assert.equal(r.disarms.length, 2, 'armed again: 15 fresh minutes from the tick that saw it (30:20)');
   r.wait(TICK);
-  assert.deepEqual(r.disarms.at(-1), { at: 90 * MIN + 2 * TICK, minutes: 15 });
+  assert.deepEqual(r.disarms.at(-1), { at: 45 * MIN + 2 * TICK, minutes: 15 });
 });
 
 test('anything playing starts the idle period over', () => {
