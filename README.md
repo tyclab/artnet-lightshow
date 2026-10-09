@@ -846,9 +846,9 @@ from POST/PUT/DELETE actions.
 Disarm when releasing the rig to the house. Blackout alone does not release
 Hue Entertainment, WLED realtime control or OpenRGB ownership. Every restart
 is disarmed; an integration must deliberately re-arm. An arm left with no
-patterns running, no voice, no sequence playing, no auto show and no pixel
-input is disarmed after `outputs.idleDisarmMin` minutes (15), as
-`/api/outputs/disarm` would. Surface a 409 safety refusal to the operator
+patterns running, no voice, no sequence playing (a paused one counts as
+stopped), no auto show and no pixel input is disarmed after
+`outputs.idleDisarmMin` minutes (15), as `/api/outputs/disarm` would. Surface a 409 safety refusal to the operator
 instead of retrying it as an acknowledgement.
 
 ## REST API
