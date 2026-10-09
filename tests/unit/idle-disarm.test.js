@@ -16,13 +16,16 @@ const MIN = 60_000;
 
 /** Armed at 0 on a fake clock with nothing playing. Its disarm only records: the arm is the test's to drop. */
 function rig(minutes = 15) {
-  const r = { at: 0, armed: true, playing: false, minutes, disarms: [] };
+  const r = { at: 0, armed: true, playing: false, minutes, fails: 0, disarms: [] };
   const idle = createIdleDisarm({
     now: () => r.at,
     armed: () => r.armed,
     playing: () => r.playing,
     minutes: () => r.minutes,
-    disarm: (m) => r.disarms.push({ at: r.at, minutes: m }),
+    disarm: (m) => {
+      if (r.fails-- > 0) throw new Error('save failed');
+      r.disarms.push({ at: r.at, minutes: m });
+    },
   });
   idle.tick();
   r.wait = (ms) => { for (const end = r.at + ms; r.at < end;) { r.at += TICK; idle.tick(); } };
@@ -56,6 +59,15 @@ test('anything playing starts the idle period over', () => {
   assert.deepEqual(r.disarms, [], 'never while it plays, and a full period after it stopped');
   r.wait(TICK);
   assert.deepEqual(r.disarms, [{ at: 89 * MIN + TICK, minutes: 15 }]);
+});
+
+test('a disarm that throws runs again on the next tick', () => {
+  const r = rig();
+  r.fails = 1;
+  r.wait(15 * MIN - TICK);
+  assert.throws(() => r.wait(TICK), /save failed/);
+  r.wait(TICK);
+  assert.deepEqual(r.disarms, [{ at: 15 * MIN + TICK, minutes: 15 }]);
 });
 
 test('a manual disarm cancels the period', () => {

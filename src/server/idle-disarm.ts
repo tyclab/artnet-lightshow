@@ -27,8 +27,8 @@ function createIdleDisarm({ now, armed, playing, minutes, disarm }: IdleDisarmDe
       const at = now();
       idleSince ??= at;
       if (at - idleSince < limit * 60_000) return;
-      idleSince = Infinity;   // once per idle period: only a reset above starts the next
       disarm(limit);
+      idleSince = Infinity;   // once per idle period, only a reset above starts the next; a disarm that throws runs again
     },
   };
 }
