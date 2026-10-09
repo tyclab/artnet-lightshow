@@ -1,5 +1,6 @@
 // Outputs left armed with nothing playing disarm themselves after
 // outputs.idleDisarmMin (src/server/idle-disarm.ts), ticked every 10 s as in main.ts.
+// Which sources count as playing is main.ts's predicate, which no test imports: here it is one flag.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,15 +13,14 @@ import { SettingsStore } from '../../src/server/settings.ts';
 
 const TICK = 10_000;
 const MIN = 60_000;
-const QUIET = { running: false, voices: 0, sequencePlaying: false, autoShow: false, pixelInputs: 0 };
 
 /** Armed at 0 on a fake clock with nothing playing. Its disarm only records: the arm is the test's to drop. */
 function rig(minutes = 15) {
-  const r = { at: 0, armed: true, minutes, ...QUIET, disarms: [] };
+  const r = { at: 0, armed: true, playing: false, minutes, disarms: [] };
   const idle = createIdleDisarm({
     now: () => r.at,
     armed: () => r.armed,
-    playing: () => r.running || r.voices > 0 || r.sequencePlaying || r.autoShow || r.pixelInputs > 0,
+    playing: () => r.playing,
     minutes: () => r.minutes,
     disarm: (m) => r.disarms.push({ at: r.at, minutes: m }),
   });
@@ -46,21 +46,16 @@ test('armed with nothing playing: disarmed exactly once, at the limit; arming ag
   assert.deepEqual(r.disarms.at(-1), { at: 90 * MIN + 2 * TICK, minutes: 15 });
 });
 
-test('anything playing starts the idle period over', async (t) => {
-  for (const [what, playing] of Object.entries({ 'the patterns run': { running: true }, 'a voice plays': { voices: 1 },
-    'a sequence plays': { sequencePlaying: true }, 'the auto show runs': { autoShow: true }, 'a pixel input streams': { pixelInputs: 1 } })) {
-    await t.test(what, () => {
-      const r = rig();
-      r.wait(14 * MIN);
-      Object.assign(r, playing);
-      r.wait(60 * MIN);
-      Object.assign(r, QUIET);
-      r.wait(15 * MIN);
-      assert.deepEqual(r.disarms, [], 'never while it plays, and a full period after it stopped');
-      r.wait(TICK);
-      assert.deepEqual(r.disarms, [{ at: 89 * MIN + TICK, minutes: 15 }]);
-    });
-  }
+test('anything playing starts the idle period over', () => {
+  const r = rig();
+  r.wait(14 * MIN);
+  r.playing = true;
+  r.wait(60 * MIN);
+  r.playing = false;
+  r.wait(15 * MIN);
+  assert.deepEqual(r.disarms, [], 'never while it plays, and a full period after it stopped');
+  r.wait(TICK);
+  assert.deepEqual(r.disarms, [{ at: 89 * MIN + TICK, minutes: 15 }]);
 });
 
 test('a manual disarm cancels the period', () => {
