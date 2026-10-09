@@ -113,6 +113,7 @@ const DEFAULTS: Settings = {
   },
   outputs: {
     armed: false,
+    idleDisarmMin: 15,
   },
   setup: {
     completed: false,
@@ -278,6 +279,7 @@ const schema = z.object({
   }).strict(),
   outputs: z.object({
     armed: z.boolean(),
+    idleDisarmMin: z.number().int().min(0).max(1440),
   }).strict(),
   setup: z.object({
     completed: z.boolean(),

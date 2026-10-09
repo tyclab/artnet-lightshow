@@ -19,7 +19,7 @@ import * as deezer from './deezer.ts';
 import AutoShow from './auto-show.ts';
 import { AnalysisCache } from './analysis-cache.ts';
 
-import { state } from './server/state.ts';
+import { state, voices } from './server/state.ts';
 import { startEngine, stopEngine, setFrameHook, setPulseSource } from './server/engine.ts';
 import { artnetDiscovery } from './server/output.ts';
 import { conductor } from './server/conductor.ts';
@@ -34,6 +34,9 @@ import { settings, CONFIG_FILE, warnAboutLegacyEnv } from './server/settings.ts'
 import { cacheDir, dataDir } from './server/config-dir.ts';
 import { openBrowser, shouldOpenBrowser } from './server/open-browser.ts';
 import { createApplier } from './server/apply.ts';
+import { createIdleDisarm } from './server/idle-disarm.ts';
+import { isArmed } from './server/armed.ts';
+import { pixelInputs } from './server/pixel-input-live.ts';
 import { midiMap } from './server/midi-map.ts';
 import { cues } from './server/cues.ts';
 import { showStore, SHOW_FILE } from './server/show-store.ts';
@@ -195,6 +198,21 @@ if (savedLook?.auto?.running) resumeAutoShow(savedLook.auto).catch((err) => cons
 
 setInterval(() => lookStore.save(currentLook(autoShow, integrations.resolveAutoSource())), 2000).unref();
 artnetDiscovery.start();
+
+// The same steps as POST /api/outputs/disarm; a paused sequence counts as nothing playing.
+const idleDisarm = createIdleDisarm({
+  now: () => performance.now(),
+  armed: isArmed,
+  playing: () => state.running || voices.size > 0 || integrations.sequence.sequencer.status().playing
+    || autoShow.running || pixelInputs.status().length > 0,
+  minutes: () => settings.get('outputs.idleDisarmMin'),
+  disarm: (minutes) => {
+    applier.applyChanged(settings.update({ outputs: { armed: false } }));
+    applier.disarmed();
+    console.log(`[outputs] disarmed: armed with nothing playing for ${minutes} min`);
+  },
+});
+setInterval(() => idleDisarm.tick(), 10_000).unref();
 
 // Do not await Spotify sign-in because network failures must not prevent the rig from starting.
 function restoreSpotifySession() {

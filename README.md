@@ -215,7 +215,7 @@ keys; `PUT /api/settings` changes selected fields.
 | `artnet` | `enabled: true`, `host: '2.255.255.255'`, `port: 6454`, `universe: 0`, `discovery: true`, `sync: false` |
 | `sacn` | `enabled: false`, `host: ''` for multicast, `priority: 100`, `sourceName: 'ArtNet Lightshow'`, `universeOffset: 1`, `interface: ''`; stable generated `cid` |
 | `hue` | `bridges: []`, `latencyMs: 0`, `strobe: 'flash'`; each paired bridge has an id, address, enabled flag, area and write-only credentials |
-| `outputs` | `armed: false`; always reset to false at startup |
+| `outputs` | `armed: false`; always reset to false at startup. `idleDisarmMin: 15`: minutes armed with nothing playing before the outputs disarm themselves; `0` never |
 | `sources` | `prolink: false`, `smtc: true` |
 | `spotify` | Client id, secret, server-written refresh token; optional `proxyBase`; `allowUnverifiedState: false` |
 | `deezer` | Optional `arl` cookie |
@@ -845,8 +845,12 @@ from POST/PUT/DELETE actions.
 
 Disarm when releasing the rig to the house. Blackout alone does not release
 Hue Entertainment, WLED realtime control or OpenRGB ownership. Every restart
-is disarmed; an integration must deliberately re-arm. Surface a 409 safety
-refusal to the operator instead of retrying it as an acknowledgement.
+is disarmed; an integration must deliberately re-arm. An arm with no patterns
+running (they run from start), no voice, no sequence playing (a paused one
+counts as stopped), no auto show and no pixel input at every 10 s check for
+`outputs.idleDisarmMin` minutes (15) is disarmed as `/api/outputs/disarm`
+would. Surface a 409 safety refusal to the operator instead of retrying it as
+an acknowledgement.
 
 ## REST API
 
