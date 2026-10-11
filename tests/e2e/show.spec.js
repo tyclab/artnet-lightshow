@@ -69,7 +69,7 @@ test('rehearsing on the Stage view: the planned show at any moment, whatever the
   await expect(page.getByRole('img', { name: /The rig in 3D/ })).toHaveAttribute('aria-label', /rehearsing the track at 1:00/);
   await expect.poll(() => litShare(page), { message: 'the show is planned to be lit here' }).toBeGreaterThan(0.01);
 
-  await page.getByRole('button', { name: 'Play' }).click();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect(page.locator('.stage3d-time')).not.toHaveText('1:00 / 4:07');
   await page.getByRole('button', { name: 'Pause' }).click();
   await page.getByRole('button', { name: 'Back to live' }).click();

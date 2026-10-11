@@ -98,6 +98,8 @@ test('playlist rows start, jump and stop through pointer or keyboard', async ({ 
   await page.locator('.seq-block').nth(2).focus();
   await page.keyboard.press('Enter');
   await until(request, (s) => s.sequence.playing && s.sequence.lanes[0].clip === 'third');
+  // The page hears of the change up to 100 ms after the server (broadcastSoon): click once it shows the row playing.
+  await expect(page.locator('.seq-block').nth(2)).toHaveAttribute('aria-label', /^Stop /);
   await page.locator('.seq-block').nth(2).click();
   await until(request, (s) => s.sequence.stopped === 'hold');
 });
