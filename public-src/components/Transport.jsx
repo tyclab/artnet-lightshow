@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { api, pick, send } from '../state.js';
 import { beatsPerBar, positionText, presetNameOf } from '../preview-inputs.js';
-import { chooseDriver, driverOf, transportButtons } from '../transport-model.js';
+import { chooseDriver, driverOf, transportButtons, transportState } from '../transport-model.js';
 import { confirmSequenceReplacement } from '../sequence-workspace.js';
 
 export { beatsPerBar, positionText };
@@ -54,6 +54,7 @@ export function Transport({ initial, compact = false, prefer = null } = {}) {
   const perBar = beatsPerBar(sequence?.timeSignature);
   const lanes = driver === 'sequence' ? laneRows(status, sequence, presetNameOf(s.effects)) : [];
   const buttons = transportButtons(driver, s);
+  const state = transportState(driver, s);
   const value = driver === 'sequence' ? `sequence:${loadedId}` : driver;
   const change = async (select) => {
     const next = select.value;
@@ -73,6 +74,7 @@ export function Transport({ initial, compact = false, prefer = null } = {}) {
           </optgroup>
         </select>
         {driver === 'sequence' && <span class="transport-position" aria-label="Position, bars and beats">{loadedId ? positionText(status, perBar, 4 / (sequence?.timeSignature?.unit || 4)) : '–'}</span>}
+        {state && <span class="transport-state" role="status">{state}</span>}
       </div>}
       <div class="transport-buttons">
         {buttons.filter((b) => !compact || ['play', 'pause', 'stop', 'cancel'].includes(b.id)).map((b) => (

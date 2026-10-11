@@ -103,7 +103,7 @@ test('the Perform view has blackout, the bank, the strobe, tap and stop all', ()
   assert.deepStrictEqual(names, ['Blackout', 'Tap', 'Stop all voices']);
   assert.deepStrictEqual(padLabels(html), ['Kill', 'Blinder', 'Strobe', 'Colour strobe', 'UV', 'Glow', 'Domino', 'Empty']);
   assert.match(html, /class="strobe-hold"/);
-  assert.strictEqual(count(html, 'aria-pressed="true"'), 2, 'the Override destination and Off are pressed');
+  assert.strictEqual(count(html, 'aria-pressed="true"'), 3, 'the Override destination, Off and Play look are pressed');
   assert.match(html, /aria-pressed="true" data-override="off"/, 'no palette override: Off is pressed');
   assert.match(html, /aria-label="Palette destination"/);
   assert.match(html, />Base<.*>Override</);
@@ -134,6 +134,18 @@ test('unacknowledged strobe notices follow server safety state', () => {
   for (const html of views()) assert.doesNotMatch(html, /Strobes off/);
   given({});
   for (const html of views()) assert.doesNotMatch(html, /Strobes off/);
+});
+
+test('the header flags a frozen look only while the look is what plays', () => {
+  given({ running: false });
+  assert.match(ui.html(ui.h(ui.Header, {})),
+    /class="stat-pill energy frozen" title="[^"]*frozen[^"]*Play look[^"]*"><span class="label">Look<\/span><span>Frozen<\/span>/);
+  given({ running: true });
+  assert.doesNotMatch(ui.html(ui.h(ui.Header, {})), /Frozen/);
+  given({ running: false, sequence: { loaded: { id: 'set', name: 'Set' }, playing: true, lanes: [] } });
+  assert.doesNotMatch(ui.html(ui.h(ui.Header, {})), /Frozen/);
+  given({ running: false, showOn: true });
+  assert.doesNotMatch(ui.html(ui.h(ui.Header, {})), /Frozen/);
 });
 
 test('blackout and a running voice\'s pad show as pressed', () => {

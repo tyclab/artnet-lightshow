@@ -189,7 +189,9 @@ to effects; pad banks launch effects or patterns over the look.
 Hashes open a view directly, such as `/#perform` or `/#rig/outputs`.
 Perform opens by default. Old `#manual`, `#timeline` and `#matrix` bookmarks redirect
 to Effects, Auto Show → Timeline and Perform → Matrix. The shared transport names
-the look, Auto Show or sequence it controls.
+the look, Auto Show or sequence it controls; its Play, Freeze or Pause and Stop
+buttons stay pressed while that state holds, and a status line names it (a
+frozen look holds its last picture while pads still play).
 The view strip scrolls with its arrow buttons; keyboard arrows, Home and End
 work while a view tab is focused.
 
@@ -845,7 +847,9 @@ from POST/PUT/DELETE actions.
 
 Disarm when releasing the rig to the house. Blackout alone does not release
 Hue Entertainment, WLED realtime control or OpenRGB ownership. Every restart
-is disarmed; an integration must deliberately re-arm. An arm with no patterns
+is disarmed; an integration must deliberately re-arm. A disarm also freezes the
+look and arming leaves it frozen: the header shows Look · Frozen until Play
+look (or `POST /api/play`). An arm with no patterns
 running (they run from start), no voice, no sequence playing (a paused one
 counts as stopped), no auto show and no pixel input at every 10 s check for
 `outputs.idleDisarmMin` minutes (15) is disarmed as `/api/outputs/disarm`

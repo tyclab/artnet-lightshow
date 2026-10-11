@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chooseDriver, driverOf, playlistRowRequests, startShow, transportButtons } from '../../public-src/transport-model.js';
+import { chooseDriver, driverOf, playlistRowRequests, startShow, transportButtons, transportState } from '../../public-src/transport-model.js';
 import { resolveRoute, VIEWS, viewShortcut } from '../../public-src/views.js';
 
 test('legacy bookmarks retain their instrument', () => {
@@ -21,10 +21,39 @@ test('digit shortcuts follow the nine views and leave typing alone', () => {
   }
 });
 
-test('the shared transport plays and freezes a look without a sequence', () => {
+test('the look transport is a pressed play/freeze pair, with no second stop', () => {
   assert.equal(driverOf({ running: false }), 'look');
-  assert.deepEqual(transportButtons('look', { running: false })[0].request, { set: { running: true } });
-  assert.deepEqual(transportButtons('look', { running: true })[0].request, { set: { running: false } });
+  const frozen = transportButtons('look', { running: false });
+  assert.deepEqual(frozen.map((b) => [b.id, b.label, b.enabled, b.pressed]),
+    [['play', 'Play look', true, false], ['pause', 'Freeze look', true, true]]);
+  assert.deepEqual(frozen[0].request, { set: { running: true } });
+  assert.deepEqual(frozen[1].request, { set: { running: false } });
+  assert.deepEqual(transportButtons('look', { running: true }).map((b) => [b.id, b.pressed]), [['play', true], ['pause', false]]);
+});
+
+test('the sequence transport presses the button of the state it is in', () => {
+  const loaded = { loaded: { id: 'set' }, lanes: [] };
+  const ids = (s) => transportButtons('sequence', s).filter((b) => b.pressed).map((b) => b.id);
+  assert.deepEqual(ids({ sequence: { ...loaded, playing: true } }), ['play']);
+  assert.deepEqual(ids({ sequence: { ...loaded, playing: true, paused: true } }), ['pause']);
+  assert.deepEqual(ids({ sequence: { ...loaded, stopped: 'hold' } }), ['stop']);
+  assert.deepEqual(ids({ sequence: { ...loaded, stopped: 'black' } }), ['stop']);
+  assert.deepEqual(ids({ sequence: loaded }), []);
+  assert.deepEqual(transportButtons('sequence', { sequence: { ...loaded, playing: true } }).slice(0, 3).map((b) => b.id), ['play', 'pause', 'stop']);
+});
+
+test('the transport names the state the look or sequence is in', () => {
+  assert.equal(transportState('look', { running: true }), 'Look · playing');
+  assert.equal(transportState('look', { running: false }), 'Look · frozen — holding the last picture; pads still play');
+  const seq = (flags) => transportState('sequence', { sequence: { loaded: { id: 'set', name: 'Set one' }, ...flags } });
+  assert.equal(seq({ playing: true }), 'Sequence · playing');
+  assert.equal(seq({ playing: true, paused: true }), 'Sequence · paused — clips keep looping');
+  assert.equal(seq({ stopped: 'hold' }), 'Sequence · stopped — holding the last picture');
+  assert.equal(seq({ stopped: 'black' }), 'Sequence · stopped — black');
+  assert.equal(seq({ ended: true }), 'Sequence · ended');
+  assert.equal(seq({}), 'Sequence · loaded');
+  assert.equal(transportState('sequence', { sequence: { loaded: null } }), null);
+  assert.equal(transportState('auto', {}), null);
 });
 
 test('sequence selection preserves the generated show underneath it', () => {
@@ -58,7 +87,7 @@ test('busy shows expose cancellation and cannot start twice', () => {
 
 test('sequence looping keeps its saved bounds', () => {
   const buttons = transportButtons('sequence', { sequence: { loaded: { id: 'set' }, playing: true, loop: { on: true, startBeat: 4, endBeat: 12 } } });
-  assert.equal(buttons[0].id, 'pause');
+  assert.equal(buttons.find((b) => b.id === 'play').pressed, true);
   assert.deepEqual(buttons.find((b) => b.id === 'loop').request.body, { on: false, startBeat: 4, endBeat: 12 });
   assert.ok(transportButtons('sequence', {}).every((b) => !b.enabled));
 });

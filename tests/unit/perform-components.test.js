@@ -445,6 +445,22 @@ test('with no sequence loaded the transport controls the look', () => {
   assert.doesNotMatch(html, /transport-position/);
 });
 
+test('a frozen look is a pressed Freeze with its state named, and no second stop', () => {
+  const look = { ...STATUS, loaded: null, playing: false, lanes: [] };
+  given({ running: false, sequence: look });
+  let html = ui.html(ui.h(ui.Transport, { initial: { sequence: null } }));
+  assert.match(html, /aria-label="Freeze look" aria-pressed="true"/);
+  assert.match(html, /aria-label="Play look" aria-pressed="false"/);
+  assert.doesNotMatch(html, /Stop look/);
+  assert.match(html, /class="transport-state"[^>]*>Look · frozen — holding the last picture; pads still play</);
+  given({ running: true, sequence: look });
+  html = ui.html(ui.h(ui.Transport, { initial: { sequence: null } }));
+  assert.match(html, /aria-label="Play look" aria-pressed="true"/);
+  assert.match(html, /class="transport-state"[^>]*>Look · playing</);
+  assert.doesNotMatch(html, /frozen/);
+  assert.doesNotMatch(ui.html(ui.h(ui.Transport, { compact: true })), /transport-state/);
+});
+
 const FEED = {
   t: 1, party: { full: 0.8, bass: 0.5, mid: 0.25, high: 0 },
   disco: { gate: [1, 0, 1], level: [0.9, 0.1, 0.6], hit: [true, false, false] },

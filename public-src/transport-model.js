@@ -1,3 +1,5 @@
+import { sequenceMode } from './now-playing.js';
+
 const post = (path, body) => ({ path, method: 'POST', ...(body ? { body } : {}) });
 
 export function showActive(s) {
@@ -33,12 +35,15 @@ export function playlistRowRequests(clipId, playing) {
     : [post(`/api/sequence/jump/${encodeURIComponent(clipId)}`), post('/api/sequence/play')];
 }
 
+// Each button names a state and is pressed while the transport is in it, so
+// a held or frozen picture reads from the buttons, not from a flipped label.
 export function transportButtons(driver, s) {
   if (driver === 'sequence') {
-    const q = s.sequence, loaded = !!q?.loaded, playing = !!(q?.playing && !q.paused), loop = q?.loop;
+    const q = s.sequence, loaded = !!q?.loaded, loop = q?.loop, mode = loaded ? sequenceMode(q) : null;
     return [
-      { id: playing ? 'pause' : 'play', label: playing ? 'Pause' : 'Play', enabled: loaded },
-      { id: 'stop', label: 'Stop', enabled: loaded },
+      { id: 'play', label: 'Play', enabled: loaded, pressed: mode === 'playing' },
+      { id: 'pause', label: 'Pause', enabled: loaded, pressed: mode === 'paused' },
+      { id: 'stop', label: 'Stop', enabled: loaded, pressed: mode === 'hold' || mode === 'black' },
       { id: 'prev', label: 'Previous', enabled: loaded },
       { id: 'next', label: 'Next', enabled: loaded },
       { id: 'shuffle', label: 'Shuffle', enabled: loaded },
@@ -54,8 +59,21 @@ export function transportButtons(driver, s) {
       ...(busy ? [{ id: 'cancel', label: 'Cancel analysis', enabled: true, request: post('/api/auto/cancel') }] : []),
     ];
   }
+  const running = s.running !== false;
   return [
-    { id: s.running ? 'pause' : 'play', label: s.running ? 'Freeze look' : 'Play look', enabled: true, request: { set: { running: !s.running } } },
-    { id: 'stop', label: 'Stop look', enabled: !!s.running, request: { set: { running: false } } },
+    { id: 'play', label: 'Play look', enabled: true, pressed: running, request: { set: { running: true } } },
+    { id: 'pause', label: 'Freeze look', enabled: true, pressed: !running, request: { set: { running: false } } },
   ];
+}
+
+const SEQUENCE_WORDS = {
+  playing: 'playing', paused: 'paused — clips keep looping', hold: 'stopped — holding the last picture',
+  black: 'stopped — black', ended: 'ended', loaded: 'loaded',
+};
+
+/** One line naming the state the driver is in; null where the buttons already say it (auto) or nothing is loaded. */
+export function transportState(driver, s) {
+  if (driver === 'look') return `Look · ${s.running !== false ? 'playing' : 'frozen — holding the last picture; pads still play'}`;
+  if (driver !== 'sequence' || !s.sequence?.loaded) return null;
+  return `Sequence · ${SEQUENCE_WORDS[sequenceMode(s.sequence)]}`;
 }

@@ -19,11 +19,16 @@ export function padLabel(pad, s = {}) {
   return effectName(content.id, s);
 }
 
+/** Where a loaded sequence's transport stands: playing, paused, hold, black, ended or loaded. */
+export function sequenceMode(seq) {
+  return seq.paused ? 'paused' : seq.playing ? 'playing' : seq.stopped || (seq.ended ? 'ended' : 'loaded');
+}
+
 export function playingState(s) {
   const seq = s.sequence;
   const sequence = seq?.loaded ? {
     ...seq.loaded,
-    mode: seq.paused ? 'paused' : seq.playing ? 'playing' : seq.stopped || (seq.ended ? 'ended' : 'loaded'),
+    mode: sequenceMode(seq),
     beat: seq.beat, bar: seq.bar, beatsPerBar: seq.beatsPerBar || 4, beatSize: seq.beatSize || 1,
     activeClips: seq.activeClips || [],
   } : null;
