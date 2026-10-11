@@ -14,7 +14,7 @@ export interface MidiAction {
 const ACTIONS: MidiAction[] = [
   { id: 'tap',                 label: 'Tap tempo',                   input: 'button' },
   { id: 'toggleTempoMode',     label: 'Automatic tempo match on / off', input: 'button' },
-  { id: 'togglePlay',          label: 'Play / stop',                 input: 'button' },
+  { id: 'togglePlay',          label: 'Play / freeze look',          input: 'button' },
   { id: 'toggleBlackout',      label: 'Master blackout',             input: 'button' },
   { id: 'setPattern',          label: 'Select pattern',              input: 'button', param: { key: 'value', kind: 'pattern', label: 'Pattern' } },
   { id: 'setColorA',           label: 'Set colour slot A',           input: 'button', param: { key: 'value', kind: 'color', label: 'Colour' } },

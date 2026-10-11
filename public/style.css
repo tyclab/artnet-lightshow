@@ -638,7 +638,7 @@ button.cb-bpm-num:focus-visible { outline: 2px solid var(--accent); outline-offs
 }
 @media (max-width: 560px) {
   /* The Perform view carries tempo and master: the header keeps what is alarming. */
-  .header-stats .stat-pill:not(.alert):not(.conn):not(.gate) { display: none; }
+  .header-stats .stat-pill:not(.alert):not(.conn):not(.gate):not(.frozen) { display: none; }
   /* And room for this device's tools: the name shortens, the theme picker narrows. */
   .app-header h1 span { display: none; }
   .header-theme { max-width: 104px; }
@@ -2520,11 +2520,6 @@ input[type=range]::-moz-range-thumb {
 }
 .transport-btn:hover:not(:disabled) { filter: brightness(1.1); }
 .transport-btn:disabled { opacity: .55; cursor: default; }
-.transport-btn.running {
-  background: rgba(239, 68, 68, .18);
-  border-color: rgba(239, 68, 68, .6);
-  color: var(--text-red);
-}
 .transport-glyph { font-size: 12px; line-height: 1; }
 .transport-cancel { min-height: 36px; }
 
@@ -4006,6 +4001,7 @@ input[type=range]::-moz-range-thumb {
 .transport-btn svg { vertical-align: middle; }
 .transport-btn[aria-pressed="true"] { background: var(--accent-fill); border-color: var(--accent); color: #fff; }
 .transport-btn:disabled { opacity: 1; color: var(--muted); border-color: var(--border); }
+.transport-state { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .transport-lanes { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
 .transport-lanes .lane-name { color: var(--muted); }
 .transport-error { margin: 0; color: #f87171; font-size: 13px; }

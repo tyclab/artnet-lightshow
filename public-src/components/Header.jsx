@@ -1,6 +1,7 @@
 import { NowPlaying } from './NowPlaying.jsx';
 import { connectedSig, pick } from '../state.js';
 import { formatBpm, clockSource } from '../utils.js';
+import { driverOf } from '../transport-model.js';
 import { useState } from 'preact/hooks';
 import { awakeSig, fullscreenSig, setAwake, toggleFullscreen, canFullscreen } from '../device.js';
 import { StrobesOff } from './Photosensitivity.jsx';
@@ -78,8 +79,10 @@ function BpmPill({ bpm, running, source }) {
 
 export function Header() {
   const connected = connectedSig.value;
-  const s = pick(['bpm', 'clock', 'running', 'masterDimmer', 'masterBlackout', 'energyOverride', 'flashLimit', 'autoShow', 'armed']);
+  const s = pick(['bpm', 'clock', 'running', 'masterDimmer', 'masterBlackout', 'energyOverride', 'flashLimit', 'autoShow', 'armed', 'sequence', 'showOn']);
   const blackout = !!s.masterBlackout;
+  // Only while the look is what plays: under a sequence or a show the frozen base is not the picture.
+  const frozen = s.running === false && driverOf(s) === 'look';
   const energy = s.energyOverride;
   const auto = s.autoShow && s.autoShow.status;
 
@@ -93,6 +96,13 @@ export function Header() {
             title={s.armed ? 'Outputs armed: frames go out to the rig' : 'Outputs disarmed: nothing goes out to the rig — arm them in Perform or Settings → Show'}>
             <span class="label">Outputs</span>
             <span>{s.armed ? 'Armed' : 'Disarmed'}</span>
+          </div>
+        )}
+        {frozen && (
+          <div class="stat-pill energy frozen"
+            title="The look is frozen and holds its last picture (a disarm freezes it too) — press Play look in Perform to run it again">
+            <span class="label">Look</span>
+            <span>Frozen</span>
           </div>
         )}
         {s.bpm != null && <BpmPill bpm={s.bpm} running={!!s.running} source={s.clock && s.clock.source} />}

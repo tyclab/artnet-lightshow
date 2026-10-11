@@ -67,6 +67,13 @@ test('a new browser opens Perform and can restart a frozen look', async ({ page,
   await request.post('/api/set', { data: { running: false } });
   await page.goto('/');
   await expect(page.locator('#panel-perform')).toBeVisible();
-  await page.getByRole('button', { name: 'Play look', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Freeze look', exact: true })).toBeVisible();
+  const play = page.getByRole('button', { name: 'Play look', exact: true });
+  const freeze = page.getByRole('button', { name: 'Freeze look', exact: true });
+  await expect(freeze).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('Look · frozen', { exact: false })).toBeVisible();
+  await expect(page.getByTitle(/The look is frozen/)).toBeVisible();
+  await play.click();
+  await expect(play).toHaveAttribute('aria-pressed', 'true');
+  await expect(freeze).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByTitle(/The look is frozen/)).toHaveCount(0);
 });

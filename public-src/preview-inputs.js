@@ -48,7 +48,7 @@ export function liveVoiceEvents(voices) {
 
 export function nowPlaying(s, perBar = s.sequence?.beatsPerBar || 4) {
   const playing = playingState(s);
-  const parts = [`Base: ${playing.base.name}${playing.base.running ? '' : ' (stopped)'}`];
+  const parts = [`Base: ${playing.base.name}${playing.base.running ? '' : ' (frozen)'}`];
   parts.push(...playing.layers.map((layer) => `${layer.target}: ${layer.name}`));
   const seq = playing.sequence;
   if (seq) {

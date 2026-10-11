@@ -77,3 +77,8 @@ for (const kind of ['pattern', 'sequencePattern']) {
     assert.equal(padLabel({ label: '', content: { kind, id: 'p1' } }, { sequencePatterns }), 'Closing phrase');
   });
 }
+
+test('a frozen base reads as frozen, the word its transport button uses', () => {
+  assert.match(nowPlaying({ pattern: 'chase', running: false }), /^Base: [^·]* \(frozen\)/);
+  assert.doesNotMatch(nowPlaying({ pattern: 'chase', running: true }), /frozen|stopped/);
+});
