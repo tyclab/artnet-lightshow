@@ -44,7 +44,7 @@ test("matrix envelopes follow whole-frame phases", () => {
   assert.strictEqual(l.read(0).bri, 0, 'fadeOut 0 → baseline at once');
   const f = new LdjLamps(1);
   f.set(0, RED, 1, { kind: 'matrix', fadeIn: 0, peak: 10, fadeOut: 0, baseline: 0.05 });
-  assert.strictEqual(f.read(0).bri, 1, 'peak 10 → one frame, as the app floors to at least one');
+  assert.strictEqual(f.read(0).bri, 1, 'peak 10 → one frame: the peak floors to at least one');
   f.advance(LDJ_FRAME_MS, 120);
   assert.ok(Math.abs(f.read(0).bri - 0.05) < 1e-8, 'then the baseline');
 });

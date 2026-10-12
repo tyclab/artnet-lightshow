@@ -631,7 +631,7 @@ export function Inspector({ id, onSelect, onPlay, onClose, inline = null, onAppl
         {preset.source === 'user' && <button type="button" class="btn sm" disabled={!dirty || paletteInvalid} onClick={saveInPlace}>Save</button>}
         {!naming && <button type="button" class="btn sm" onClick={() => { setNaming(true); setCopyName(`${draft.name} copy`); }}>Save as…</button>}
         {dirty && <button type="button" class="btn sm" onClick={() => { freshPalette(); setEdits({ key: null, draft: null }); }}>Revert</button>}
-        {def && def.defaults && <button type="button" class="btn sm" title="The family's recommended settings, as the app ships them" onClick={() => applyRecommended()}>Apply recommended</button>}
+        {def && def.defaults && <button type="button" class="btn sm" title="The family's recommended settings, as shipped" onClick={() => applyRecommended()}>Apply recommended</button>}
         {preset.source === 'user' && <button type="button" class="btn sm danger" onClick={remove}>Delete</button>}
       </div>
       {auditionUnavailable && <p class="effect-inspector-desc" role="status">{auditionUnavailable}</p>}

@@ -96,7 +96,7 @@ test("band edges must ascend within 0..11025 Hz", () => {
   for (const floorDb of [[1, -60, -70], [-121, -60, -70], [-60, -70]]) assert.throws(() => validateSpec(withBands({ floorDb })), JSON.stringify(floorDb));
 });
 
-test('the schema rejects what the app cannot play', () => {
+test('the schema rejects what Disco cannot play', () => {
   const bad = [
     { style: 'strobe' }, { channels: channels().slice(0, 4) }, { channels: channels({ 0: { minHue: 20000, maxHue: 10000 } }) },
     { channels: channels({ 1: { maxHue: 65536 } }) }, { channels: channels({ 2: { fadeBrightness: 255 } }) },
@@ -398,7 +398,7 @@ test("neural readings drive channel 4 colour and brightness", () => {
   check(reading(10, 0.5, 0.5), C(144, 127, 255), L(127), 'middle');
   check(reading(20, 0, 1), C(0, 255, 67), 1, 'minHue: 136°');
   check(reading(30, 1, 1), C(255, 0, 4), 1, 'maxHue: 359°');
-  // The app multiplies in 32-bit floats: these differ from double arithmetic.
+  // Neural multiplies in 32-bit floats: these differ from double arithmetic.
   check(reading(40, 1414 / 40734, 1), C(0, 255, 101), 1, 'hue 26214, not 26213');
   check(reading(50, 0, 0.003937007874015747), C(253, 255, 254), L(1), 'bri 1, not 0');
   // Out-of-range and non-finite readings clamp.
@@ -622,7 +622,7 @@ test('the eleven genre presets carry the catalogue values', () => {
     for (const i of [3, 4]) assert.deepEqual(p.channels[i], { ...DISCO_DEFAULTS.channels[i], ...levels }, `${id} ${i}`);
     const edges = [bass, voice, treble].map(([lo, hi]) => [lo, hi]);
     assert.deepEqual([p.bands.bass, p.bands.voice, p.bands.treble], edges, id);
-    // Each band's per-bin floors add up to the app's total floor of 2 / 200000.
+    // Each band's per-bin floors add up to the total floor of 2 / 200000.
     edges.forEach(([lo, hi], i) => assert.ok(Math.abs(10 ** (p.bands.floorDb[i] / 10) * bandBins(lo, hi).count / 1e-5 - 1) < 1e-12, `${id} ${i}`));
     const spec = validateSpec({ kind: 'hd.disco', params: p });
     assert.deepEqual(spec.params, p, id);

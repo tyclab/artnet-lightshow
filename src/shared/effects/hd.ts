@@ -254,7 +254,7 @@ interface KernelSample { strength: number; palettePos: number }
 const raisedCosine = (phase: number) => (Math.cos(frac(phase) * Math.PI * 2) + 1) / 2;
 
 // Index and progress have already been reversed by the event sampler. Only
-// Breathing Fade uses raw progress: it has no direction control in the app.
+// Breathing Fade uses raw progress: it has no direction control.
 function kernel(kind: HdKind, p: HdParams, room: Room, slot: number, index: number, progress: number,
   rawProgress: number, duration: number, event: number, seed: Seed): KernelSample {
   const position = index / Math.max(1, room.n - 1);

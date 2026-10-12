@@ -45,7 +45,7 @@ export interface DiscoParams {
 }
 
 const BANDS: readonly DiscoBand[] = ['bass', 'voice', 'treble'];
-// The app's timing on the entertainment stream.
+// Admission and idle timing on the entertainment stream.
 const ADMIT_MS = 100;
 const IDLE_MS = 2000;
 const SPECTRUM_RELEASE_DELAY_MS = 32;
@@ -58,13 +58,13 @@ const FLASH_FALL_MS = 200;
 const FLASH_FLOOR = 40;
 const FULL = 254;
 const HUE_PER_DEGREE = 182.04;
-// The app's detector floor is minimumThreshold / 200000 in total over a band's bins.
+// The detector floor is minimumThreshold / 200000 in total over a band's bins.
 const FLOOR_PER_THRESHOLD = 1 / 200000;
 // Hash key base for the Disco's draws: one stream per channel, one for strobe colours.
 const DRAW_KEY = 0xd15c0;
 const STROBE_STREAM = 5;
 
-// Neural reproduces the app's single-precision products, which move some hues a degree.
+// Neural multiplies in single precision, which moves some hues a degree.
 const f32 = Math.fround;
 const clamp = (x: number, low: number, high: number) => Math.max(low, Math.min(high, x));
 // Audio features arrive as JSON; anything but a finite number reads as silence.
@@ -82,12 +82,12 @@ function hsvDegrees(degrees: number, saturation: number): Colour {
   const byte = (x: number) => Math.trunc(Math.max(x * 255, 0));
   return rgb(byte(r), byte(g), byte(b));
 }
-// Hue units clamp to 65534 as the app's converter does: 65535 is the same red.
+// Hue units clamp to 65534: 65535 is the same red.
 const toDegrees = (hue: number) => Math.trunc(clamp(Math.trunc(Number.isFinite(hue) ? hue : 0), 0, 65534) / HUE_PER_DEGREE);
 const hdColour = (degrees: number, saturation: number) =>
   hsvDegrees(degrees, clamp(Math.trunc(Number.isFinite(saturation) ? saturation : 0), 0, 254) / 254);
 
-/** A Hue colour (hue 0..65535, saturation 0..255) as the app streams it: whole degrees of hue / 182.04 at full value. */
+/** A Hue colour (hue 0..65535, saturation 0..255) as streamed: whole degrees of hue / 182.04 at full value. */
 export function hdHsbToColour(hue: number, saturation: number): Colour {
   return hdColour(toDegrees(hue), saturation);
 }
@@ -134,7 +134,7 @@ function channel(over: Partial<DiscoChannel>): DiscoChannel {
     sequenceLength: 8, useAmbience: false, palette: null, strobeOn: false, linkLights: false, modulateSaturation: false, ...over };
 }
 
-// Per-bin floors for this service's bins, so each band keeps the app's total floor.
+// Per-bin floors for this service's bins, so each band keeps its total floor.
 function floorsFor(bands: Pick<DiscoParams['bands'], DiscoBand>, minimumThreshold: number): [number, number, number] {
   const total = minimumThreshold * FLOOR_PER_THRESHOLD;
   return [perBinFloorDb(total, ...bands.bass), perBinFloorDb(total, ...bands.voice), perBinFloorDb(total, ...bands.treble)];
@@ -166,10 +166,10 @@ interface Recipe {
   id: string; name: string; decay: number; sensitivity: number; smoothness: number; relaxed: boolean; sequence: number; autoStrobe: boolean;
   rate: number; strobe: [hue: number, saturation: number][]; bands: [BandRecipe, BandRecipe, BandRecipe];
 }
-// The app's white: no saturation, so the hue does not matter.
+// White: no saturation, so the hue does not matter.
 const WHITE_HSB: [number, number] = [49000, 0];
-// The app's eleven genre presets. Dance, Drum and Bass, Trance and Ambient
-// reach 12–14 kHz there; this service hears up to 11 025 Hz, so their treble
+// The eleven genre presets. Dance, Drum and Bass, Trance and Ambient are
+// written to 12–14 kHz; this service hears up to 11 025 Hz, so their treble
 // ends at that edge and its floors are recounted over the bins it keeps.
 const RECIPES: Recipe[] = [
   { id: 'hd.disco.pop', name: 'Pop', decay: 24, sensitivity: 60, smoothness: 500, relaxed: false, sequence: 8, autoStrobe: false, rate: 2,
@@ -216,7 +216,7 @@ function fromRecipe(r: Recipe): DiscoParams {
 export const DISCO_PRESETS: { id: string; name: string; params: DiscoParams }[] =
   RECIPES.map((r) => ({ id: r.id, name: r.name, params: fromRecipe(r) }));
 
-// Hues, levels and saturations are the app's integer units. Unknown keys are
+// Hues, levels and saturations are integer Hue units. Unknown keys are
 // refused: a misspelt floor or band must not be dropped without a word.
 // Colours stay hex on the wire, as in every other kind's spec.
 const hex = z.string().regex(HEX_COLOUR, 'expected a hex colour');
@@ -250,8 +250,8 @@ export const discoSchema: ZodType<DiscoParams> = z.object({
 
 // A lamp is a linear fade of colour and level between two times. Plain data
 // throughout, so preview checkpoints clone it with the pending commands.
-// `commanded` marks a lamp the Disco has set at least once: the app starts
-// its stream from what the lamps already show, so until a hit, flash or idle
+// `commanded` marks a lamp the Disco has set at least once: the stream starts
+// from what the lamps already show, so until a hit, flash or idle
 // reaches a lamp the layer below stays visible through it.
 interface Lamp { from: Colour; fromLevel: number; to: Colour; toLevel: number; start: number; end: number; commanded: boolean }
 interface Command { due: number; slots: number[]; colour: Colour; level: number; duration: number }
@@ -344,7 +344,7 @@ function buildLayout(p: DiscoParams, ids: string[], groupsKey: string, coloursKe
 }
 
 // Edits and layout changes arrive on a live instance: rebuild what they
-// touch. A new lamp map drops queued releases, as the app does on reassigning.
+// touch. A new lamp map drops the queued releases.
 function refreshLayout(p: DiscoParams, s: DiscoState, room: Room, f: EffectFrame): void {
   const ids = slotIds(room.n, f.fixtureIds);
   const groupsKey = JSON.stringify([p.style, p.assign, p.channels.map((c) => c.enabled), p.maxLightsPerBatch, ids]);
@@ -356,7 +356,7 @@ function refreshLayout(p: DiscoParams, s: DiscoState, room: Room, f: EffectFrame
   while (s.lamps.length < room.n) s.lamps.push(dark(s.now));
   s.lamps.length = room.n;
   // A lamp that leaves every channel goes dark; one that moves between
-  // channels keeps the fade it is in, as the app's lamps do on reassignment.
+  // channels keeps the fade it is in.
   if (remapped) s.layout.grouped.forEach((inGroup, i) => { if (!inGroup) s.lamps[i] = dark(s.now); });
 }
 
@@ -410,7 +410,7 @@ function hitSpectrum(c: Context, ch: number, flash: Colour | null, interval: num
   const batch = pickBatch(c, ch, c.s.layout.groups[ch], c.s.layout.caps[ch]);
   if (flash) { for (const i of batch) flashLamp(c.s.lamps[i], flash, c.now); return; }
   const { hit, release } = hitColours(c, ch, cfg.fadeSaturation);
-  // The hit is instant; the release follows 32 ms later as the app's delayed command does.
+  // The hit is instant; the release is a delayed command, 32 ms later.
   for (const i of batch) setLamp(c.s.lamps[i], hit, 1, c.now, 0);
   // Without Fade the batch holds until a later hit or idle takes it.
   if (!cfg.fade) return;
@@ -489,7 +489,7 @@ function peak(c: Context, heard: AudioFrame | null): void {
 }
 
 // Every fresh reading sets every lamp at once; between readings they hold.
-// The app's arithmetic is 32-bit float, which moves some hues a degree.
+// The arithmetic is 32-bit float, which moves some hues a degree.
 function neural(c: Context, heard: AudioFrame | null): void {
   const cfg = c.p.channels[4], group = c.s.layout.groups[4];
   if (!cfg.enabled || !group.length) return;
@@ -534,7 +534,7 @@ function initDisco(p: DiscoParams, room: Room, f: EffectFrame): DiscoState {
 function renderDisco(p: DiscoParams, s: DiscoState, room: Room, f: EffectFrame, out: EffectSlot[]): void {
   const now = Number.isFinite(f.nowMs) ? f.nowMs : null;
   // Releases due by now land first, under the layout that queued them and
-  // before this render's hits, as in the app's loop.
+  // before this render's hits.
   if (now !== null) drain(s, now);
   refreshLayout(p, s, room, f);
   if (now !== null) {

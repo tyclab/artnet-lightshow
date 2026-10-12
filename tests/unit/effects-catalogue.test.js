@@ -91,7 +91,7 @@ const SIMPLE = {
     envelope: rgb(env(0.01, 0.03, 0.5, 0.18, 0.46, 1), env(0.01, 0.03, 0.32, 0, 0, 0.85), env(0.01, 0.03, 0.09, 0, 0, 0.65)) },
   'Rainbow Drop': { palette: ['#FF0000', '#00CC00', '#000099'], curve: 'easeInOut',
     envelope: rgb(env(0.02, 0.03, 0.24, 0.045, 0.08, 1), env(0.3, 0, 0.32, 0, 0, 0.8), env(0.65, 0, 0.25, 0.07, 0.1, 0.6)) },
-  // Not the family's single-colour recommendation: the app gives this preset
+  // Not the family's single-colour recommendation: this preset carries
   // its own staggered red, green and blue.
   'Simple ADSR': { palette: ['#0080FF'], curve: 'easeOut',
     envelope: rgb(env(0.04, 0.08, 0.2, 0, 0.68, 1), env(0.2, 0, 0.4, 0, 0.4, 0.8), env(0.4, 0, 0, 0.6, 0.6, 0.6)) },

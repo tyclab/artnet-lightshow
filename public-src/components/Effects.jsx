@@ -36,7 +36,7 @@ const LONG_PRESS_MS = 500;
 /** The preset the inspector is open on, or null: one editor for the page, so a pad elsewhere can open it too. */
 export const editingSig = signal(null);
 
-// Map pattern ids to a unicode glyph; a preset takes its app's.
+// Map pattern ids to a unicode glyph; a preset takes its group's.
 const PATTERN_ICONS = {
   solid: '●', chase: '→', 'chase-rev': '←', 'ping-pong': '⇄', strobe: '⚡', fade: '◐', 'color-cycle': '◌', rainbow: '✦',
   twinkle: '✶', split: '◧', sparkle: '✧', wave: '∿', 'stack-up': '⇡', 'random-flash': '⚹', runner: '➤', pairs: '⋮⋮', hit: '✖',
@@ -208,7 +208,7 @@ function EditButton({ row, onEdit }) {
   );
 }
 
-/** A deck pad: the name large, the app under it, the one on stage marked. */
+/** A deck pad: the name large, the group under it, the one on stage marked. */
 function Pad({ row, active, favourite, onTap, onEdit, onToggleFavourite }) {
   const press = usePress(() => onTap(row), () => onEdit(row.id));
   return (

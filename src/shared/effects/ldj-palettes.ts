@@ -41,6 +41,6 @@ const rows: [string, PaletteEntry[]][] = [
   ['rainbow', ['#FF0000', '#FF9900', '#FFFF00', '#00FF00', '#00BFFF', '#2A00FF', '#AA00FF', '#FF0095']],
 ];
 
-/** Northern Lights is defined in the app but never seeded, so it is not here. */
+/** Northern Lights is a known id but never seeded, so it is not here. */
 export const LDJ_PALETTES: readonly BuiltinPalette[] = Object.freeze(rows.map(([id, colours]) =>
   Object.freeze({ id, app: 'ldj' as const, colours: Object.freeze(colours) })));

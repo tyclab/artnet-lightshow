@@ -165,7 +165,7 @@ function spike(c: Ctx): void {
 function reassert(c: Ctx): void {
   const { s, p, f, room } = c;
   if (p.mellow === 'none') {
-    // The app plays none as a black background, so a later swirl or wave draws afresh.
+    // None is played as a black background, so a later swirl or wave draws afresh.
     s.mellow.cache = { mode: 'none', list: '', index: 0 };
     configureBackground(s.bed, 'none', BLACK);
     return;
