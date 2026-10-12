@@ -278,9 +278,9 @@ test("once voices default to the preset or kind lifetime", () => {
   assert.equal(lengthBeatsOf(spec({ kind: 'hd.positionChase', params: { loopLength: 8 } })), 8);
   const measure = spec({ kind: 'hd.positionChase', scope: 'measure' });
   assert.equal(lengthBeatsOf(measure), scopedLoopLength(measure, measure.params));
-  assert.equal(lengthBeatsOf(spec({ kind: 'ldj.Swirl' })), 32, 'a Light DJ kind\'s beats');
+  assert.equal(lengthBeatsOf(spec({ kind: 'ldj.Swirl' })), 32, 'an entertainment kind\'s beats');
   assert.equal(lengthBeatsOf(spec({ kind: 'ldj.Swirl', params: { beats: 6 } })), 6);
-  assert.equal(lengthBeatsOf(spec(FADE)), 32, 'Light DJ\'s iteration kinds count 32 beats');
+  assert.equal(lengthBeatsOf(spec(FADE)), 32, 'the iteration kinds count 32 beats');
   assert.equal(lengthBeatsOf(spec({ kind: 'macro', params: { steps: [{ effect: BLINDER, beats: 6 }], loopBeats: 6 } })), 6);
   assert.equal(lengthBeatsOf(spec({ kind: 'energy.glow' })), 4, 'no length of its own: a bar');
   assert.equal(lengthBeatsOf(spec({ kind: 'energy.glow', scope: 'singleBeat' })), 1);

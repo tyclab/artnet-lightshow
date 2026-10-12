@@ -156,7 +156,7 @@ test("clips own their fixture strobe channel", () => {
   assert.equal(withClip[11], without[11], 'the look strobes the rest');
 });
 
-test('Hue Dynamics\' flash limit covers a clip\'s own kind as it covers the base\'s', () => {
+test('the party flash limit covers a clip\'s own kind as it covers the base\'s', () => {
   const twinkle = validateSpec({ kind: 'hd.twinkle', palette: ['#FFFFFF'], brightness: 1,
     params: { probability: 1, attack: 0, hold: 0.0625, release: 0, loopLength: 0.125 } });
   const t = table(1, [lane('a')], [tclip('tw', 'a', 0, 64, twinkle, { fixtureIds: [10] })]);

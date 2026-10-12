@@ -18,17 +18,17 @@ test('audio response applies changed fields, preserves concurrent settings, and 
     await expect(editor.getByRole('status')).toHaveText('Audio response saved.');
     let audio = await (await request.get('/api/audio')).json();
     expect(audio.master).toEqual({ ...before.master, sensitivity: 0.73, attackMs: 180, releaseMs: 777 });
-    await editor.getByLabel('Light DJ trigger (%)').fill('42');
+    await editor.getByLabel('Entertainment trigger (%)').fill('42');
     await page.route('**/api/audio', async (route) => route.request().method() === 'PUT'
       ? route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'Save refused for test' }) })
       : route.continue());
     await editor.getByRole('button', { name: 'Apply audio response' }).click();
     await expect(editor.getByRole('status')).toHaveText('Save refused for test');
-    await expect(editor.getByLabel('Light DJ trigger (%)')).toHaveValue('42');
+    await expect(editor.getByLabel('Entertainment trigger (%)')).toHaveValue('42');
     audio = await (await request.get('/api/audio')).json();
     expect(audio.ldjTrigger).toBe(before.ldjTrigger);
     await editor.getByRole('button', { name: 'Discard edits' }).click();
-    await expect(editor.getByLabel('Light DJ trigger (%)')).toHaveValue(String(Math.round(before.ldjTrigger * 100)));
+    await expect(editor.getByLabel('Entertainment trigger (%)')).toHaveValue(String(Math.round(before.ldjTrigger * 100)));
   } finally {
     await request.put('/api/audio', { data: { master: before.master, ldjTrigger: before.ldjTrigger, mode: before.mode } });
   }

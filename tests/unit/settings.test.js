@@ -331,7 +331,7 @@ test('tempo mode validates and persists across reloads', () => {
   assert.strictEqual(older.load().get('clock.tempoMode'), 'auto', 'a file from before the switch follows the music');
 });
 
-// The party effects' safety and Hue settings: Hue Dynamics' 350 ms limit, the
+// The party effects' safety and Hue settings: the 350 ms flash limit, the
 // photosensitivity acknowledgement nobody has given yet, the latched strobe's
 // minute, and Hue lamps flashed rather than pulsed.
 test('effect safety and Hue settings validate and persist', () => {
@@ -367,7 +367,7 @@ test('effect safety and Hue settings validate and persist', () => {
 
 // The manual strobe's settings, which a cue keeps beside its look: two
 // flashes a second on the beat clock, the look between them, 100 ms on and
-// 100 ms black as Hue Dynamics flashes, in white. Its colours are a palette of
+// 100 ms black, in white. Its colours are a palette of
 // their own, never a parameter of the kind.
 test('strobe settings enforce flash-rate and palette bounds', () => {
   assert.deepStrictEqual(DEFAULTS.strobe, {

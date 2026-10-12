@@ -12,14 +12,14 @@ import { Photosensitivity as PhotosensitivityConfirm, acknowledgeThen } from './
  * The Effects view: an instrument first, an editor second. At the top a deck
  * of big pads — the favourites, the presets saved here and the party looks —
  * with the one on stage marked; under a sticky search and the filter chips,
- * the whole catalogue by app and family (Hue Dynamics, Light DJ, the fork's
- * own, the upstream patterns), each group folded until opened. A plain tap
+ * the whole catalogue by scope and family (Party & Disco, Entertainment, the
+ * fork's own, the upstream patterns), each group folded until opened. A plain tap
  * puts a row on stage and nothing else; its pencil, or a long press, opens
  * the inspector for it, in a sheet over the page.
  */
 
-const APP_NAMES = { hd: 'Hue Dynamics', ldj: 'Light DJ', own: 'Own', upstream: 'Classic effects' };
-const APP_BADGES = { hd: 'Hue Dynamics', ldj: 'Light DJ', own: 'Own', upstream: 'Classic' };
+const APP_NAMES = { hd: 'Party & Disco', ldj: 'Entertainment', own: 'Own', upstream: 'Classic effects' };
+const APP_BADGES = { hd: 'Party & Disco', ldj: 'Entertainment', own: 'Own', upstream: 'Classic' };
 const APP_ORDER = ['hd', 'ldj', 'own', 'upstream'];
 const APP_ICONS = { hd: '◆', ldj: '♪', own: '◉', upstream: '·' };
 const FLAG_CHIPS = [
@@ -82,7 +82,7 @@ export function appOf(row) {
   return row.party ? 'own' : 'upstream';
 }
 
-/** Hue Dynamics' Library filter: Single and Multi by scope, Custom the presets saved here, All everything. */
+/** The Library filter: Single and Multi by scope, Custom the presets saved here, All everything. */
 export function filterByLibrary(rows, mode) {
   switch (mode) {
     case 'single': return rows.filter((r) => r.scope === 'singleBeat');

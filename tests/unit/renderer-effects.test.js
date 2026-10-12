@@ -1,6 +1,6 @@
 // The renderer plays effects: a base effect in place of the look's pattern,
 // voices over it by tier and launch, the energy burst as a voice of its own,
-// and Hue Dynamics' flash limit on its own kinds. Driven as the engine drives
+// and the party flash limit on the hd.* kinds. Driven as the engine drives
 // it, one frame at a time into a universe store.
 
 import test from 'node:test';
@@ -177,7 +177,7 @@ test("compatibility energy voices render legacy bursts", () => {
   assert.deepStrictEqual(rig().at(100, { energy: HOLD_STROBE, voices: [] })[PAR.id].dim, 255, 'the look, no strobe');
 });
 
-test('the HD guard zeroes a second bright rise inside 350 ms on an hd.* kind only', () => {
+test('the hd.* guard zeroes a second bright rise inside 350 ms on an hd.* kind only', () => {
   // Sixteen events a second, each lit 31.25 ms: every 44 Hz frame sees each one.
   const risesOf = (effect, hdFlashIntervalMs, { acknowledged = false, seconds = 1, master = 255, trim = 255 } = {}) => {
     const fix = { ...PAR, maxBrightness: trim };
@@ -197,7 +197,7 @@ test('the HD guard zeroes a second bright rise inside 350 ms on an hd.* kind onl
   assert.ok(guarded.length <= 3, `${guarded.length} rises in a second`);
   for (let i = 1; i < guarded.length; i++) assert.ok(guarded[i] - guarded[i - 1] >= 350 - 1e-9, `rises ${guarded[i - 1]} → ${guarded[i]}`);
   assert.ok(risesOf(WHITE_TWINKLE, 0).length >= 12, 'interval 0: every event');
-  // Light DJ's TrueStrobe runs at its own rate under the same setting.
+  // TrueStrobe runs at its own rate under the same setting.
   const trueStrobe = risesOf(spec({ kind: 'ldj.TrueStrobe', palette: ['#FFFFFF'] }), 350, { acknowledged: true });
   assert.ok(trueStrobe.length >= 10, `TrueStrobe ${trueStrobe.length} a second`);
 });
@@ -372,7 +372,7 @@ test("effects receive the actual elapsed frame time", () => {
   const r = rig(PARS);
   captureState(r, probe(), 0);
   const s = captureState(r, probe(), 1000);
-  assert.strictEqual(s.frames[1].frame.dtMs, 1000, 'a whole second, which a Light DJ fade must replay');
+  assert.strictEqual(s.frames[1].frame.dtMs, 1000, 'a whole second, which an entertainment fade must replay');
   captureState(r, probe(), 900);
   assert.strictEqual(s.frames[2].frame.dtMs, 0, 'never negative');
 });
@@ -492,7 +492,7 @@ test("effect frames carry fixture, Hue and audio context", () => {
 
 test("placed layers retain their room frame", () => {
   // The look, the base effect and the voices all read the plan; a room built
-  // afresh each frame would lose what is kept with it (Light DJ's channels).
+  // afresh each frame would lose what is kept with it (the channel assignment).
   const placed = [...PARS, { ...LAMP, address: 60 }].map((f, i) => ({ ...f, position: { x: 10 + 20 * i, y: 30 + 10 * i } }));
   const roomsOf = (patch) => {
     const r = rig(placed);
@@ -636,7 +636,7 @@ test("compatibility bursts alone retain implicit legacy admission", () => {
   assert.strictEqual(white({ energy: 'blinder', safety: { hdFlashIntervalMs: 350, acknowledged: false } }).g, 255);
 });
 
-// ── Hue Dynamics' flash limit: its own kinds, the winner's kind, the output ──
+// ── The party flash limit: the hd.* kinds, the winner's kind, the output ────
 
 /** Frame times at which the par rises to bright (≥ 55 % after the masters), over `seconds`, each frame given `patch(k)`. */
 function brightRises(fixtures, patch, { seconds = 1, from = 0 } = {}) {
@@ -655,7 +655,7 @@ function brightRises(fixtures, patch, { seconds = 1, from = 0 } = {}) {
 }
 const SAFETY = (hdFlashIntervalMs = 350, acknowledged = true) => ({ safety: { hdFlashIntervalMs, acknowledged } });
 
-test("Disco reactive flashes bypass the HD guard", () => {
+test("Disco reactive flashes bypass the hd.* guard", () => {
   // A bass hit every 100 ms of stream time, each a new hop.
   const hop = (t) => ({ t, generation: 1, rms: 0.2, power: 1, dominantHz: 80, party: { full: 0.8, bass: 0.9, mid: 0.2, high: 0.1 },
     disco: { hit: [true, false, false], gate: [0, 0, 0], level: [1, 0, 0], peakHit: false, neural: { mainFrequency: 0, amplitude: 0 } },
@@ -671,13 +671,13 @@ test("flash guards inspect the winning slot kind", () => {
   const twinkleMacro = spec({ kind: 'macro', params: { steps: [{ effect: WHITE_TWINKLE, beats: 4 }], loopBeats: 4 } });
   const macro = brightRises([PAR], () => ({ pattern: 'look', effect: twinkleMacro, ...SAFETY() }));
   assert.ok(macro.length <= 3, `a macro step of twinkle: ${macro.length} rises`);
-  // An LDJ base under a Hue Dynamics voice that draws nothing (an empty target list): the LDJ base is not held.
+  // An ldj.* base under an hd.* voice that draws nothing (an empty target list): the ldj.* base is not held.
   const trueStrobe = spec({ kind: 'ldj.TrueStrobe', palette: ['#FFFFFF'] });
   const quietVoice = voice('pad', WHITE_TWINKLE, { targets: [] });
   assert.ok(brightRises([PAR], () => ({ pattern: 'look', effect: trueStrobe, voices: [quietVoice], ...SAFETY() })).length >= 10);
-  // An LDJ voice over a Hue Dynamics base: the LDJ voice wins the lamp and is not held.
+  // An ldj.* voice over an hd.* base: the ldj.* voice wins the lamp and is not held.
   assert.ok(brightRises([PAR], () => ({ pattern: 'look', effect: WHITE_TWINKLE, voices: [voice('pad', trueStrobe)], ...SAFETY() })).length >= 10);
-  // A Hue Dynamics voice over a dark base is held; where it is transparent the base (not Hue Dynamics) shows, unheld.
+  // An hd.* voice over a dark base is held; where it is transparent the base (not hd.*) shows, unheld.
   assert.ok(brightRises([PAR], () => ({ pattern: 'look', effect: preset('energy.kill'), voices: [voice('pad', WHITE_TWINKLE)], ...SAFETY() })).length <= 3);
   // Kill over the twinkle owns the lamp black and spends nothing: the twinkle rises at once when the kill lets go.
   const kill = voice('pad', preset('energy.kill'), { startedAtMs: 0, untilMs: 200 });

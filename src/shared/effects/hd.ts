@@ -1,5 +1,5 @@
 import { HEX_COLOUR } from '../palette-model.ts';
-// Hue Dynamics Party's ten families share timing and colours, while each keeps
+// The ten Party families share timing and colours, while each keeps
 // its own spatial kernel, recommended controls and audio response. All times
 // here are beats, so the worker and the rehearsal preview use the same clock.
 

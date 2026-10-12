@@ -74,8 +74,8 @@ function assertPulsed(frames) {
 const FLASHING = [
   ['strobe voice', { voices: [voice('strobe', spec({ kind: 'strobe' }), { tier: 'strobe' })], ...SAFETY }],
   ['Palette Strobe', { energy: HOLD_STROBE, ...SAFETY }],
-  ['LDJ TrueStrobe base', { pattern: 'look', effect: spec({ kind: 'ldj.TrueStrobe', palette: ['#FFFFFF'] }), ...SAFETY }],
-  ['LDJ PaletteTrueStrobe voice', { voices: [voice('pad', spec({ kind: 'ldj.PaletteTrueStrobe', palette: ['#FF0000', '#00FFFF'] }))], ...SAFETY }],
+  ['ldj.TrueStrobe base', { pattern: 'look', effect: spec({ kind: 'ldj.TrueStrobe', palette: ['#FFFFFF'] }), ...SAFETY }],
+  ['ldj.PaletteTrueStrobe voice', { voices: [voice('pad', spec({ kind: 'ldj.PaletteTrueStrobe', palette: ['#FF0000', '#00FFFF'] }))], ...SAFETY }],
   ['Ring Strobe', { pattern: 'ring-strobe' }],
   ['Ring Backlit', { pattern: 'ring-backlit' }],
   ['Flashes', { pattern: 'flashes', beatDivision: 4 }],

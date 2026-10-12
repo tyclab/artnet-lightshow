@@ -1,4 +1,4 @@
-// The 26 palettes Light DJ seeds on first start, in its order. One table for
+// The 26 built-in entertainment palettes, in their order. One table for
 // the Visualizer's automatic colours and the catalogue's built-ins, so the two
 // can never drift. Browser-safe static data; nothing here is mutable.
 
@@ -9,9 +9,9 @@ export interface BuiltinPalette extends GradientSettings { id: string; name?: st
 
 const RANDOM = Object.freeze({ random: true as const });
 
-// The app builds its named hues from degrees and its themed palettes from
-// decimal hue/saturation/brightness truncated to whole units; the hex below is
-// the result of that construction through Light DJ's colour conversion.
+// The named hues are built from degrees and the themed palettes from decimal
+// hue/saturation/brightness truncated to whole units; the hex below is the
+// result of that construction through the entertainment colour conversion.
 const rows: [string, PaletteEntry[]][] = [
   ['redCyan', ['#FF0000', '#00BFFF']],
   ['orangeBlue', ['#FF9900', '#2A00FF']],

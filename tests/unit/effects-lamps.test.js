@@ -89,7 +89,7 @@ test('whole-lamp effects spread one result over every curtain cell', () => {
   }
 });
 
-test('ordered HD effects retain a moving picture inside a strip', () => {
+test('ordered hd.* effects retain a moving picture inside a strip', () => {
   for (const kind of ['hd.positionChase', 'hd.bouncingScan', 'hd.streak']) {
     const p = player(16, { kind, params: { order: 'track' } });
     let varied = false;

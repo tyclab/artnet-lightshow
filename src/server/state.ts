@@ -50,7 +50,7 @@ export interface ShowState {
   /** The energy effect playing over the latch, or null: the energy hold's, a pad's or the API's (energy-hold.ts over()). */
   heldEnergy: string | null;
   palette: string | null;
-  /** Colours every effect plays instead of its own and the slots (Light DJ's active palette), or null. */
+  /** Colours every effect plays instead of its own and the slots (the active palette override), or null. */
   paletteOverride: Colour[] | null;
   paletteOverrideId: string | null;
   basePalette: PaletteBody | null;

@@ -1,4 +1,4 @@
-// Light DJ's lamp transitions run at 22 Hz. The faster renderer samples their
+// The entertainment lamp transitions run at 22 Hz. The faster renderer samples their
 // latest output; fractional frame time and pending changes belong to the instance.
 
 import { z } from 'zod';
@@ -272,20 +272,20 @@ export interface StepClock { iter: number; phase: number; stepBeats: number; ste
 
 function clockIteration(steps: number): number {
   const iter = Math.floor(steps);
-  if (!Number.isSafeInteger(iter)) throw new RangeError('Light DJ clock iteration must be a finite safe integer');
+  if (!Number.isSafeInteger(iter)) throw new RangeError('Entertainment clock iteration must be a finite safe integer');
   return iter;
 }
 
 export function stepClock(pos: number, cadenceBeats: number, bpm: number, lastIter: number | null): StepClock {
-  if (!Number.isFinite(cadenceBeats) || cadenceBeats < MIN_CADENCE) throw new RangeError('Light DJ cadence must be at least one eighth of a beat');
+  if (!Number.isFinite(cadenceBeats) || cadenceBeats < MIN_CADENCE) throw new RangeError('Entertainment cadence must be at least one eighth of a beat');
   const steps = pos / cadenceBeats, iter = clockIteration(steps);
   const stepMs = cadenceBeats * 60000 / tempoOf(bpm);
-  if (!Number.isFinite(stepMs)) throw new RangeError('Light DJ clock period must be finite');
+  if (!Number.isFinite(stepMs)) throw new RangeError('Entertainment clock period must be finite');
   return { iter, phase: steps - iter, stepBeats: cadenceBeats, stepMs, changed: iter !== lastIter };
 }
 
 export function wallClock(nowMs: number, periodMs: number, lastIter: number | null): StepClock {
-  if (!Number.isFinite(periodMs) || periodMs <= 0) throw new RangeError('Light DJ wall period must be finite and positive');
+  if (!Number.isFinite(periodMs) || periodMs <= 0) throw new RangeError('Entertainment wall period must be finite and positive');
   const steps = nowMs / periodMs, iter = clockIteration(steps);
   return { iter, phase: steps - iter, stepBeats: 0, stepMs: periodMs, changed: iter !== lastIter };
 }
@@ -309,7 +309,7 @@ const ANCHORS: Record<number, [number, number][]> = {
 const channelMemo = new WeakMap<Room, Map<string, readonly number[]>>();
 const ringMemo = new WeakMap<Room, readonly number[]>();
 
-/** LDJ keeps its own corner indices; the legacy looks retain their established geometry. */
+/** The entertainment rows keep their own corner indices; the legacy looks retain their established geometry. */
 export function ldjChannels(room: Room, selector: LdjChannels, paletteCount = 1): number[] {
   let memo = channelMemo.get(room);
   if (!memo) { memo = new Map(); channelMemo.set(room, memo); }
@@ -399,11 +399,11 @@ export function makeLdjKind(name: string, row: LdjRow): EffectKindDef<LdjParams,
     rapidFlashWhen: (params) => row.cadence === 'wall:50' || (!row.nextDelayMs && params.cadence <= .25),
     init: (_params, room) => ({ lamps: new LdjLamps(room.n), lastIter: null, lastPick: null, recent: [], perm: null, roll: 0, scratch: {} }),
     render(params, state, room, frame, out) {
-      if (!Number.isFinite(frame.nowMs)) throw new RangeError('Light DJ clock time must be finite');
+      if (!Number.isFinite(frame.nowMs)) throw new RangeError('Entertainment clock time must be finite');
       if (frame.paletteAccess) state.lamps.resolveColours(frame.paletteAccess);
       if (state.lastIter !== null) clockIteration(state.lastIter);
       if (params.iterations !== undefined && !(Number.isSafeInteger(params.iterations) && params.iterations > 0)) {
-        throw new RangeError('Light DJ iterations must be a positive safe integer');
+        throw new RangeError('Entertainment iterations must be a positive safe integer');
       }
       const limit = params.iterations ?? Infinity, finite = limit !== Infinity;
       const first = !state.timing;
@@ -451,9 +451,9 @@ export function makeLdjKind(name: string, row: LdjRow): EffectKindDef<LdjParams,
         while (timing.nextIter < limit && timing.nextDueMs <= frame.nowMs) {
           emit(timing.nextIter, timing.nextDueMs);
           const delay = row.nextDelayMs(ctx);
-          if (!Number.isFinite(delay) || delay <= 0) throw new RangeError('Light DJ row delay must be finite and positive');
+          if (!Number.isFinite(delay) || delay <= 0) throw new RangeError('Entertainment row delay must be finite and positive');
           const next = timing.nextDueMs + delay;
-          if (!Number.isFinite(next) || next <= timing.nextDueMs) throw new RangeError('Light DJ row deadline must advance');
+          if (!Number.isFinite(next) || next <= timing.nextDueMs) throw new RangeError('Entertainment row deadline must advance');
           timing.nextDueMs = next;
           timing.nextIter++;
         }

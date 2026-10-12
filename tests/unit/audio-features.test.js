@@ -1,5 +1,5 @@
-// What the party effects hear: Hue Dynamics Party's band levels, its Disco hit
-// detection and Light DJ's loudness classes, worked out on the main thread from
+// What the party effects hear: the Party band levels, the Disco hit
+// detection and the entertainment loudness classes, worked out on the main thread from
 // the live input's hops, one frame per hop.
 
 import test from 'node:test';
@@ -327,7 +327,7 @@ test('Neural smoothers share the circular history cursor', () => {
   assert.strictEqual(at(1, bins), 1);
 });
 
-// ── Light DJ's classes ───────────────────────────────────────────────────────
+// ── The loudness classes ──────────────────────────────────────────────────────
 
 // The RMS whose SPL level is `L`: dB = 20·log10(rms·32768 / 2e-6) − 80 and
 // level = trunc(dB) − 55, taken half way through the level.

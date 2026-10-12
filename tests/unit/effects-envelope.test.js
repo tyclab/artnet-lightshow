@@ -8,7 +8,7 @@ const hd = (over = {}) => ({ curve: 'easeInOut', attack: 0.125, hold: 0.25, rele
   probability: 1, repetitions: 1, trail: 0.5, spatial: { x: .5, y: .5, z: .5, radius: .5, angle: 0 },
   trigger: { mode: 'timeline', band: 'full', beatInterval: 1, threshold: .2, reactiveDepth: 1 }, loopLength: 4, ...over });
 
-test('curves match Hue Dynamics, Cut included', () => {
+test('curves match the party envelope table, Cut included', () => {
   assert.strictEqual(curveApply(0.5, 'linear'), 0.5);
   assert.strictEqual(curveApply(0.5, 'easeIn'), 0.25);
   assert.strictEqual(curveApply(0.5, 'easeOut'), 0.75);
@@ -60,7 +60,7 @@ test("event direction determines reversal", () => {
   assert.strictEqual(isReversed('reverse', 0, s), true);
   assert.strictEqual(isReversed('alternate', 1, s), true);
   assert.strictEqual(isReversed('alternate', 2, s), false);
-  assert.strictEqual(isReversed('alternate', -1, s), true, '|event % 2| == 1 as HD writes it');
+  assert.strictEqual(isReversed('alternate', -1, s), true, '|event % 2| == 1 as the envelope writes it');
 });
 
 test("stagger offsets follow the direction", () => {

@@ -316,7 +316,7 @@ export class VoiceManager {
     const bpm = Number.isFinite(rawBpm) && rawBpm > 0 ? rawBpm : 120;
     let startedAtMs = now;
     let anchorBeat = Number.isFinite(beatPos) ? beatPos : 0;
-    // Primed (nothing playing), a launch starts at once, as Hue Dynamics' pads do.
+    // Primed (nothing playing), a launch starts at once, as the pads do.
     // A voice already past its end is not playing, whether or not its timer has run.
     const primed = !this._liveAt(now) && !this._anyRunning();
     if (!primed && quantise > 0 && Number.isFinite(beatPos)) {

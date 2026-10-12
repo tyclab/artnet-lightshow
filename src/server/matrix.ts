@@ -10,7 +10,7 @@ import type { StartVoice, Voice } from './voices.ts';
 import type { EffectSpec } from '../shared/effects/types.ts';
 
 /**
- * Light DJ's matrix board: every held cell's colour, in the order pressed,
+ * The matrix board: every held cell's colour, in the order pressed,
  * forms one list, and the board plays it in one mode as one hold voice
  * keyed `matrix`. Any change to the list or the mode starts a fresh
  * instance; the last cell let go ends it. Each cell is a lease renewed by

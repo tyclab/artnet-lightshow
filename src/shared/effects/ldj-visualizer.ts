@@ -303,8 +303,8 @@ registerKind<VisualizerParams, VisualizerState>({
     };
   },
   render(params, s, room, f, out: EffectSlot[]) {
-    if (!Number.isFinite(f.nowMs)) throw new RangeError('Light DJ clock time must be finite');
-    if (!Number.isFinite(f.beatPos)) throw new RangeError('Light DJ beat position must be finite');
+    if (!Number.isFinite(f.nowMs)) throw new RangeError('Entertainment clock time must be finite');
+    if (!Number.isFinite(f.beatPos)) throw new RangeError('Entertainment beat position must be finite');
     const now = f.nowMs, beat = f.beatPos, bpm = tempoOf(f.bpm), a = s.auto, m = s.mellow;
     const first = s.cursorMs === null;
     if (first) { s.cursorMs = s.bed.lastMs; s.cursorBeat = beat - Math.max(0, now - s.bed.lastMs) * bpm / 60000; }

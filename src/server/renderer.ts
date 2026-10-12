@@ -1006,7 +1006,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     return rigNow;
   }
 
-  // Check HD rises after masters and trim so levels below the bright threshold do not spend a permit.
+  // Check hd.* rises after masters and trim so levels below the bright threshold do not spend a permit.
   function limitHdRises(input: FrameInput, rigNow: Rig<RenderFixture>, all: LightValue[][], nowMs: number): void {
     for (let i = 0; i < input.fixtures.length; i++) {
       const { start } = rigNow.ranges[i];

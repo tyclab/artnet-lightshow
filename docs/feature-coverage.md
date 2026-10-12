@@ -1,27 +1,27 @@
-# Port coverage and remaining workflows
+# Feature coverage and remaining workflows
 
-This application combines the lighting workflows of Hue Dynamics 2.1.13 and
-Light DJ 5.2.4. It is not a complete replacement for both source applications.
-The October 8, 2026 source audit compared their supplied decompiled definitions
-and reachable workflows against `ec558e5`, whose runtime behaviour matched the
-deployed `2b539dc` release. Later fixes must be validated separately.
+This application combines two effect scopes: Party & Disco (the `hd.*` kinds)
+and Entertainment (the `ldj.*` kinds). The October 8, 2026 audit compared the
+catalogue and the reachable workflows against `ec558e5`, whose runtime
+behaviour matched the deployed `2b539dc` release. Later fixes must be validated
+separately.
 
 ## What the catalogue establishes
 
-The inventory accounts for all 172 Light DJ effect enum values: 132 ordinary
+The inventory accounts for all 172 Entertainment effect ordinals: 132 ordinary
 effects, eight macros, five commands, eight internal entries and 19 excluded
 entries. The ordinary effects and macros plus 22 bitmap patterns yield 162
-playable Light DJ presets. Hue Dynamics contributes all 16 named Party presets,
-ten Party families and 11 Disco presets.
+playable Entertainment presets. Party & Disco contributes 16 named Party
+presets, ten Party families and 11 Disco presets.
 
-These are inventory counts, not a percentage of application parity or evidence
-that every original runtime branch has been replayed. Engine regressions cover
+These are inventory counts, not a percentage of feature parity or evidence
+that every runtime branch has been replayed. Engine regressions cover
 the implemented contracts; browser tests separately cover reachable controls.
 Physical optical timing and device limits need hardware acceptance.
 
 ## Show workflows
 
-The source show workflows map onto these controls:
+The show workflows map onto these controls:
 
 | Workflow | Where |
 |----------|-------|
@@ -42,18 +42,17 @@ and Breathing Fade presets with full-channel palettes.
 
 ## Deliberate scope and behaviour differences
 
-The original design excluded home ambiences, experiences/DLC, sound effects,
+The design excludes home ambiences, experiences/DLC, sound effects,
 sensor/switch programming, whole-home backup imports, proprietary cloud/account
 services, non-entertainment device modes and platform-specific app lifecycle.
 Nanoleaf/LIFX-specific and dormant video/voxel features are also outside that
-scope. Supporting a fixture protocol does not recreate those application modes.
+scope. Supporting a fixture protocol does not add such modes.
 
 The consolidated engine has its own ownership, safety and transport contract.
 Stop can retain a frozen picture; Unload returns ownership to the base look.
-Independent voices replace source-controller mutual exclusion. Sequence `goto`
+Independent voices replace controller mutual exclusion. Sequence `goto`
 targets a beat rather than switching to another saved playlist. Random palette
-overrides have explicit application semantics. These are documented adaptations,
-not exact source behaviour.
+overrides have explicit semantics. These are documented decisions.
 
 ## Physical identity and Stage
 

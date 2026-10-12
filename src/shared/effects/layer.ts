@@ -94,7 +94,7 @@ export function voiceOrder(a: VoiceRank, b: VoiceRank): number {
     || Number(b.targets !== null) - Number(a.targets !== null) || b.startedAtMs - a.startedAtMs;
 }
 
-// Disco paces its own strobes, so the HD Party guard excludes it.
+// Disco paces its own strobes, so the hd.* Party guard excludes it.
 const HD_GUARDED = new Set(['hd.simpleAdsr', 'hd.positionChase', 'hd.radialPulse', 'hd.spatialWash', 'hd.bouncingScan',
   'hd.streak', 'hd.twinkle', 'hd.breathingFade', 'hd.volumeGateWash', 'hd.frequencyBurst']);
 

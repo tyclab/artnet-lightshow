@@ -146,8 +146,9 @@ Rig positions still control spatial effects.
 To run reactive effects, configure and enable live input in Sources, select
 Reactive in Perform's Audio panel, and choose a Disco or Visualizer preset in
 Effects. Check the meters and preview before arming. Expand Audio response to
-adjust Party sensitivity, threshold, envelope and brightness, or the Light DJ
-trigger threshold. These settings apply globally and are saved by Apply.
+adjust Party sensitivity, threshold, envelope and brightness, or the
+Entertainment trigger threshold. These settings apply globally and are saved by
+Apply.
 
 For a reusable sequence, create it in Sequence, open Edit, add lanes and clips,
 then Save it to the shelf. Playing or editing a loaded sequence does not save
@@ -164,11 +165,10 @@ Perform also offers tempo capture from live audio, half and double tempo, live
 tempo and brightness automation, and colour controls for a running Visualizer.
 Fire and Ice are slow, strobe-free Party looks.
 
-The effect catalogue and show workflows cover the supported Hue Dynamics
-Party/Disco and Light DJ Entertainment scope. The detailed fields below describe
-the data contract as well as the browser controls. See
-[port coverage](docs/feature-coverage.md) for deliberate scope differences and
-the upstream adoption policy.
+The effect catalogue and show workflows cover the Party & Disco and the
+Entertainment scope. The detailed fields below describe the data contract as
+well as the browser controls. See [feature coverage](docs/feature-coverage.md)
+for deliberate scope decisions and the upstream adoption policy.
 
 An **effect** draws the lights. A **look** combines the base effect, colours and fixture
 settings. A **pattern** is a reusable sequence of clips. Favourites are quick access
@@ -224,7 +224,7 @@ keys; `PUT /api/settings` changes selected fields.
 | `live` | `enabled: false`, `source: 'loopback'`, `device: ''`, `latencyMs: 0`, `autoSync: true`, `director: true` |
 | `auto` | `syncOffsetMs: 0`, `setMemory: true` |
 | `clock` | `tempoMode: 'auto'` or `'manual'` |
-| `audio` | `mode: 'tempo'`, Hue Dynamics master controls, `ldjTrigger: 0.3` |
+| `audio` | `mode: 'tempo'`, the party master controls, `ldjTrigger: 0.3` |
 | `safety` | `photosensitivityAcknowledged: false`, `strobeMaxLatchSec: 60`, `hdFlashIntervalMs: 350`, `flashLimit: false` |
 | `strobe` | Palette, rate, clock, background behaviour and brightness; see [Strobe](#strobe) |
 | `midi` | `input: ''`, `output: ''`, `clockOutput: ''`, `controlFeedback: true` |
@@ -452,7 +452,7 @@ to choose their presentation within those limits:
 - `flash` retains hard cuts and the effect's own background glow.
 - `pulse` falls over 200 ms to a floor of 40/255, or the effect's own glow.
 
-Authored Hue Dynamics attack/release envelopes are preserved in either mode.
+Authored Party attack/release envelopes are preserved in either mode.
 Disco's automatic strobe retains its 200 ms fall on every lamp. The setting
 does not rewrite these envelopes. Fixed-output energy effects also remain
 exempt from palette override: White Strobe, Blinder, UV Wash and Kill keep
@@ -602,10 +602,10 @@ applying it previews the mapping onto the show's track lanes, or the patch order
 without track lanes, and refuses unmapped slots. Missing pad content is listed
 and only left empty after it is explicitly allowed.
 
-Starter playlists and generator offers Universal and Bonus Light DJ sets, the
-rig-compatible library, the whole library or an empty playlist. Rapid-flash
-effects are omitted unless included; self-paced strobes and classic looks are
-always omitted and listed with the reason.
+Starter playlists and generator offers the Universal and Bonus Entertainment
+sets, the rig-compatible library, the whole library or an empty playlist.
+Rapid-flash effects are omitted unless included; self-paced strobes and classic
+looks are always omitted and listed with the reason.
 
 | Field | Meaning |
 |-------|---------|
@@ -666,7 +666,7 @@ available. The Header and Perform acknowledgement indicator opens the warning.
 | Control | Scope |
 |---------|-------|
 | `safety.strobeMaxLatchSec`, default 60 | Maximum manual strobe-kind latch lifetime, regardless of launch route |
-| `safety.hdFlashIntervalMs`, default 350 | Per-lamp bright-rise interval for Hue Dynamics Party effects; not Disco or every effect family |
+| `safety.hdFlashIntervalMs`, default 350 | Per-lamp bright-rise interval for the Party effects (`hd.*`); not Disco or every effect family |
 | `safety.flashLimit`, default false | Limit large-area flashing to three flashes per second |
 | Master blackout | Darken the show while retaining output ownership |
 | Disarm | Darken/release output streams, stop the base and clear voices |

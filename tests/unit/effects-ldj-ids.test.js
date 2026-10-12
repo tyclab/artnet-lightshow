@@ -1,5 +1,5 @@
 // tests/unit/effects-ldj-ids.test.js
-// Light DJ's effect-type list classified, its catalogue rows and the built-in palettes.
+// The entertainment effect-type list classified, its catalogue rows and the built-in palettes.
 import test from 'node:test';
 import assert from 'node:assert';
 import { execFileSync } from 'node:child_process';
@@ -18,7 +18,7 @@ import { HD_MASTER_DEFAULTS } from '../../src/shared/effects/types.ts';
 import { buildRoom } from '../../src/shared/room.ts';
 import { PATTERN_IDS } from '../../src/server/presets.ts';
 
-test("Light DJ ordinals classify into registered presets", () => {
+test("entertainment ordinals classify into registered presets", () => {
   for (let id = 0; id <= 171; id++) {
     const row = LDJ_IDS[id];
     assert.ok(row, `ordinal ${id} unclassified`);
@@ -56,7 +56,7 @@ test('BigRoomMix is a macro of QuickFlash and BigRoomWave over sixteen beats', (
   assert.strictEqual(m.params.steps[0].effect.kind, 'ldj.QuickFlash');
 });
 
-test('26 Light DJ palettes, Random entries kept, rocketPop in, northernLights out', () => {
+test('26 entertainment palettes, Random entries kept, rocketPop in, northernLights out', () => {
   const ldj = BUILTIN_PALETTES.filter((p) => p.app === 'ldj');
   assert.strictEqual(ldj.length, 26);
   assert.ok(ldj.find((p) => p.id === 'randomRandom').colours.every((c) => c.random === true));
@@ -65,14 +65,14 @@ test('26 Light DJ palettes, Random entries kept, rocketPop in, northernLights ou
   assert.strictEqual(ldj.find((p) => p.id === 'northernLights'), undefined);
 });
 
-test('every Light DJ preset in the catalogue validates', () => {
+test('every entertainment preset in the catalogue validates', () => {
   for (const p of CATALOGUE.filter((c) => c.app === 'ldj')) assert.doesNotThrow(() => validateSpec(p.spec), p.id);
 });
 
 test('the catalogue builds whichever effect module a host loads first', () => {
   // The macro kind renders its steps; loading the whole registry from inside it
   // once built the catalogue before the macro kind existed.
-  // The catalogue also reads the Hue Dynamics, Disco and energy modules' own tables.
+  // The catalogue also reads the Party, Disco and energy modules' own tables.
   for (const first of ['macro.ts', 'render.ts', 'catalogue.ts', 'ldj-ids.ts', 'ldj-channel.ts', 'registry.ts', 'hd.ts', 'disco.ts', 'energy.ts', 'layer.ts', 'sequence.ts']) {
     const dir = new URL('../../src/shared/effects/', import.meta.url).href;
     const script = `await import('${dir}${first}'); const m = await import('${dir}index.ts'); console.log(m.CATALOGUE.length);`;
@@ -134,7 +134,7 @@ const CLASSES = {
 };
 const classOf = (row) => row.kind === 'preset' ? `preset:${row.engine}` : row.kind === 'outOfScope' ? `outOfScope:${row.reason}` : row.kind;
 
-test("Light DJ classification covers each ordinal once", () => {
+test("entertainment classification covers each ordinal once", () => {
   assert.deepStrictEqual(Object.keys(LDJ_IDS).map(Number), span(0, 171));
   assert.strictEqual(NAMES.length, 172);
   const found = {};
@@ -165,7 +165,7 @@ test("non-effect ordinals never become presets", () => {
 
 const ldjRows = () => CATALOGUE.filter((p) => p.app === 'ldj');
 
-test("Light DJ catalogue has 162 distinct preset rows", () => {
+test("entertainment catalogue has 162 distinct preset rows", () => {
   const rows = ldjRows();
   assert.strictEqual(rows.length, 162);
   assert.strictEqual(new Set(rows.map((p) => p.id)).size, 162);
@@ -236,7 +236,7 @@ test("preset lifetime metadata leaves kernel timing unchanged", () => {
 
 const RANDOM_RANDOM = [{ random: true }, { random: true }];
 
-test("Light DJ palette defaults match their effect roles", () => {
+test("entertainment palette defaults match their effect roles", () => {
   for (const p of ldjRows()) {
     if (p.id === 'ldj.America' || p.id === 'ldj.Blackout') continue;
     assert.deepStrictEqual(p.spec.palette, RANDOM_RANDOM, p.id);
@@ -247,7 +247,7 @@ test("Light DJ palette defaults match their effect roles", () => {
   assert.deepStrictEqual(blackout.params.steps.map((s) => [s.effect.kind, s.effect.palette, s.effect.brightness, s.beats]), [['ldj.MatrixSolid', ['#000000'], 0, 32]]);
 });
 
-test("Light DJ names follow the app labels", () => {
+test("entertainment names follow the catalogue labels", () => {
   const name = (id) => presetById(id).name;
   assert.strictEqual(name('ldj.StrobeCycle'), 'Strobe Cycle');
   assert.strictEqual(name('ldj.BLStrobeCycle'), 'Backlit Strobe Cycle');
@@ -281,7 +281,7 @@ test("unknown preset ids return null", () => {
   assert.strictEqual(presetById(''), null);
 });
 
-test("Light DJ presets do not take legacy pattern ids", () => {
+test("entertainment presets do not take legacy pattern ids", () => {
   for (const id of PATTERN_IDS) assert.notStrictEqual(presetById(id)?.app, 'ldj', id);
 });
 
@@ -329,11 +329,11 @@ test("built-in palettes preserve app order and colours", () => {
     ['rainbow', 'ldj', ['#FF0000', '#FF9900', '#FFFF00', '#00FF00', '#00BFFF', '#2A00FF', '#AA00FF', '#FF0095']],
     ['hdDefault', 'hd', ['#A855F7', '#22D3EE', '#F472B6']], ['hdStrobe', 'hd', ['#FFFFFF']],
   ]);
-  // One source: the catalogue's Light DJ palettes are the Visualizer's own records.
+  // One source: the catalogue's entertainment palettes are the Visualizer's own records.
   BUILTIN_PALETTES.filter((p) => p.app === 'ldj').forEach((p, i) => assert.strictEqual(p, LDJ_PALETTES[i]));
 });
 
-test('families group every Light DJ row and kind, as plain data', () => {
+test('families group every entertainment row and kind, as plain data', () => {
   const ldjFamilies = FAMILIES.filter((f) => f.app === 'ldj');
   const ids = ldjFamilies.map((f) => f.id);
   assert.deepStrictEqual(ids, ['ldj.channel', 'ldj.iteration', 'ldj.rotation', 'ldj.wave', 'ldj.matrix', 'ldj.studio', 'ldj.visualizer', 'ldj.bitmap', 'ldj.macro']);
@@ -341,7 +341,7 @@ test('families group every Light DJ row and kind, as plain data', () => {
     const family = FAMILIES.find((f) => f.id === p.family);
     assert.ok(family?.kinds.some((k) => k.kind === p.spec.kind), p.id);
   }
-  // Every registered Light DJ kind belongs to exactly one engine family; the
+  // Every registered ldj.* kind belongs to exactly one engine family; the
   // Scene Maker family holds the macro kind and the renderer Fireworks plays.
   const ldjKinds = [...KINDS.values()].filter((def) => def.app === 'ldj').map((def) => def.kind).sort();
   const listed = ldjFamilies.filter((f) => f.id !== 'ldj.macro').flatMap((f) => f.kinds.map((k) => k.kind)).sort();
@@ -409,7 +409,7 @@ function hits(frames) {
 }
 const withPalette = (id, palette) => ({ ...presetById(id).spec, palette });
 
-test("Light DJ presets render finite single-lamp output", () => {
+test("entertainment presets render finite single-lamp output", () => {
   for (const p of ldjRows()) {
     let brightest = 0;
     for (const f of play(withPalette(p.id, ['#00FF00']), 4)) {
@@ -429,7 +429,7 @@ test("genre scores trigger only at scored hits", () => {
     Dubstep: [[0, 'p'], [0.5, 'p'], [1, 's'], [2, 'p'], [2.5, 'p'], [3, 's']],
   };
   for (const [name, want] of Object.entries(expected)) {
-    // Secondary first, primary second, as Light DJ orders a palette's roles.
+    // Secondary first, primary second: the order of a palette's roles.
     const got = hits(play(withPalette(`ldj.${name}`, ['#FF0000', '#0000FF']), 7.9));
     const lap = want.map(([beat, role]) => [beat, role === 'p' ? BLUE : RED]);
     assert.deepStrictEqual(got, [...lap, ...lap.map(([beat, colour]) => [beat + 4, colour])], name);
@@ -457,7 +457,7 @@ test("Blackout owns every lamp dark through its loop", () => {
 });
 
 test("held Fireworks preserves ongoing fades past beat 32", () => {
-  // Light DJ re-runs the row on the firework renderer that is still running,
+  // A held row re-runs on the firework renderer that is still running,
   // so the fireworks of one lap fade out into the next.
   const frames = play(presetById('ldj.Fireworks').spec, 34, { r: square() });
   let fading = 0;

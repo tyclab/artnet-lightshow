@@ -45,7 +45,7 @@ export function deepFreeze<T>(value: T): T {
 const plain = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 const RANDOM_RANDOM: readonly PaletteEntry[] = LDJ_PALETTES.find((p) => p.id === 'randomRandom')!.colours;
-// A 32-beat default exceeds every Light DJ preset's minimum once length.
+// A 32-beat default exceeds every entertainment preset's minimum once length.
 const LDJ_LENGTH_BEATS = 32;
 
 const LABELS: Record<string, string> = {
@@ -75,15 +75,15 @@ function ldjName(name: string): string {
 }
 
 const FAMILY: Record<LdjEngine | 'macro', { name: string; desc: string }> = {
-  channel: { name: 'Channel', desc: 'Light DJ: the room in groups that change together on the beat' },
-  iteration: { name: 'Iteration', desc: 'Light DJ: lamps lit in turn on the beat' },
-  rotation: { name: 'Rotation', desc: 'Light DJ: colours turning round the room' },
-  wave: { name: 'Wave', desc: 'Light DJ: colour travelling across the room' },
-  matrix: { name: 'Matrix', desc: 'Light DJ: random lamps flashing on a clock of their own' },
-  studio: { name: 'Studio', desc: 'Light DJ Studio: notes and backgrounds over a dim baseline' },
-  visualizer: { name: 'Visualizer', desc: 'Light DJ Visualizer: spikes on loud beats over a calm background' },
-  bitmap: { name: 'Bitmap', desc: 'Light DJ: a picture scrolling across the room at tempo' },
-  macro: { name: 'Scene Maker', desc: 'Light DJ Scene Maker' },
+  channel: { name: 'Channel', desc: 'The room in groups that change together on the beat' },
+  iteration: { name: 'Iteration', desc: 'Lamps lit in turn on the beat' },
+  rotation: { name: 'Rotation', desc: 'Colours turning round the room' },
+  wave: { name: 'Wave', desc: 'Colour travelling across the room' },
+  matrix: { name: 'Matrix', desc: 'Random lamps flashing on a clock of their own' },
+  studio: { name: 'Studio', desc: 'Studio: notes and backgrounds over a dim baseline' },
+  visualizer: { name: 'Visualizer', desc: 'Visualizer: spikes on loud beats over a calm background' },
+  bitmap: { name: 'Bitmap', desc: 'A picture scrolling across the room at tempo' },
+  macro: { name: 'Scene Maker', desc: 'Scene Maker: a looping score of rows' },
 };
 
 // Primary maps to palette entry 1 and secondary to entry 0; singleton palettes serve both.
@@ -217,7 +217,7 @@ const HD_FAMILY_PRESETS: [id: string, name: string, kind: HdKind, palette: strin
 ];
 
 function hdRow(id: string, name: string, kind: HdKind, palette: string[], desc: string, params?: { curve: Curve; rgbEnvelope: RgbEnvelope }): CataloguePreset {
-  return { id, name, desc: `Hue Dynamics: ${desc}`, app: 'hd', family: kind,
+  return { id, name, desc: `Party: ${desc}`, app: 'hd', family: kind,
     spec: validateSpec({ kind, params, palette, scope: kind === 'hd.simpleAdsr' ? 'singleBeat' : 'measure' }) };
 }
 const HD_PRESETS: CataloguePreset[] = [
@@ -228,7 +228,7 @@ const HD_PRESETS: CataloguePreset[] = [
 // Disco asks for acknowledgement when its automatic strobe fires, not when its preset starts.
 const DISCO_ROWS: CataloguePreset[] = DISCO_PRESETS.map(({ id, name, params }) => ({
   id, name, app: 'hd', family: 'hd.disco', spec: validateSpec({ kind: 'hd.disco', params }),
-  desc: `Hue Dynamics Disco: the lamps answer the bass, the voice and the treble in hues tuned for ${name}${params.allowStrobe ? ', with the automatic strobe' : ''}`,
+  desc: `Disco: the lamps answer the bass, the voice and the treble in hues tuned for ${name}${params.allowStrobe ? ', with the automatic strobe' : ''}`,
 }));
 
 

@@ -52,7 +52,7 @@ test("guard reset clears lamp histories", () => {
 });
 
 // The renderer keeps one guard while the setting changes and while other
-// layers win a lamp between two of Hue Dynamics' rises.
+// layers win a lamp between two party rises.
 test('a new interval applies from the next rise and keeps every lamp\'s history', () => {
   const g = new HdFlashGuard(350);
   g.apply(0, 1, 0); g.apply(0, 0, 50);

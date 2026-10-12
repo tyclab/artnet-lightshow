@@ -1,5 +1,5 @@
 // tests/unit/effects-strobe-kind.test.js
-// The strobe kind (Hue Dynamics' manual strobe) and the six energy kinds.
+// The strobe kind (the manual strobe) and the six energy kinds.
 import test from 'node:test';
 import assert from 'node:assert';
 import { STROBE_DEFAULTS, STROBE_FRAME_MS, hdAutoStrobeFlash } from '../../src/shared/effects/strobe.ts';

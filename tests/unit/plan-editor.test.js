@@ -94,8 +94,8 @@ test('plot coordinates map top-left lamps to front-left room positions', () => {
   assert.ok(room.u[a] < 0 && room.u[b] > 0, 'plot left is the room\'s left (Hue u −1), plot right its right');
   assert.ok(room.v[a] > 0 && room.v[b] < 0, 'plot top is the room\'s front (Hue v +1), the audience edge its back');
   assert.ok(room.z[a] > 0.7 && room.z[b] === -1, 'height 90 is near the ceiling, 0 the floor');
-  assert.equal(room.halves('depth')[a], 1, 'Light DJ\'s depth half: the top-left lamp is in the front half');
-  assert.equal(room.halves('width')[a], 0, 'Light DJ\'s width half: the top-left lamp is in the left half');
+  assert.equal(room.halves('depth')[a], 1, 'the depth half: the top-left lamp is in the front half');
+  assert.equal(room.halves('width')[a], 0, 'the width half: the top-left lamp is in the left half');
   assert.ok(room.turn[a] > 0.75 && room.turn[a] < 1, 'clockwise from the front: front-left is the last quarter turn');
 });
 

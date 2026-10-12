@@ -174,7 +174,7 @@ test('all recommended values are separate family settings, with nested capabilit
   assert.notStrictEqual(HD_DEFAULTS['hd.streak'].params.spatial, HD_DEFAULTS['hd.bouncingScan'].params.spatial);
 });
 
-test("HD schemas reject invalid controls", () => {
+test("hd.* schemas reject invalid controls", () => {
   for (const params of [{ attack: -1 }, { hold: Infinity }, { curve: 'wrong' }, { repetitions: 1.5 }, { repetitions: 0 },
     { probability: 1.01 }, { trail: -1 }, { loopLength: 0 }, { spatial: { x: -0.1 } }, { spatial: { radius: 1.1 } },
     { spatial: { angle: NaN } }, { trigger: { threshold: -0.1 } }, { trigger: { beatInterval: 0 } },
@@ -183,7 +183,7 @@ test("HD schemas reject invalid controls", () => {
   }
 });
 
-test("HD schemas fill partial nested defaults", () => {
+test("hd.* schemas fill partial nested defaults", () => {
   const spec = validateSpec({ kind: 'hd.radialPulse', params: { spatial: { angle: 45 }, trigger: { threshold: 0.995 } } });
   assert.strictEqual(spec.params.spatial.radius, 1);
   assert.strictEqual(spec.params.trigger.band, 'bass');
@@ -191,14 +191,14 @@ test("HD schemas fill partial nested defaults", () => {
   assert.deepStrictEqual(validateSpec(spec), spec);
 });
 
-test("HD schemas preserve custom wire envelopes", () => {
+test("hd.* schemas preserve custom wire envelopes", () => {
   const custom = validateSpec({ kind: 'hd.simpleAdsr', params: { rgbEnvelope: { r: { attack: 0.8, hold: 0.8, peak: 0.2, sustain: 0.9 } } } });
   assert.strictEqual(custom.params.rgbEnvelope.r.attack, 0.8);
   assert.strictEqual(custom.params.rgbEnvelope.r.sustain, 0.9);
   assert.deepStrictEqual(validateSpec(custom), custom);
 });
 
-test("HD families retain their level and palette formulas", () => {
+test("hd.* families retain their level and palette formulas", () => {
   const room = room4();
   const seed = seedFrom('hd');
   const progress = 0.25;

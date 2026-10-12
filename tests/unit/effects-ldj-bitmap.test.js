@@ -206,7 +206,7 @@ test("bitmap sampling wraps floored coordinates by height", () => {
   assert.equal(value('SmoothLoop', 1, 0, Number.MAX_SAFE_INTEGER), 35, 'wrap the safe scroll before adding the spatial offset');
 });
 
-test('the picture scrolls BPM/50.7 px per LDJ frame', () => {
+test('the picture scrolls BPM/50.7 px per entertainment frame', () => {
   const h = harness('ldj.bitmap', row(1), { params: { pattern: 'SmoothLoop' }, ...redBlue });
   const image = buildBitmap('SmoothLoop', [RED, BLUE]);
   // The centre lamp reads column 20 of the picture, moved by whole pixels; these columns all differ.
@@ -216,7 +216,7 @@ test('the picture scrolls BPM/50.7 px per LDJ frame', () => {
     assert.equal(bitmapScroll(frame * LDJ_FRAME_MS, 0, 120, 1, 'SmoothLoop'), scroll, `frame ${frame}`);
     assert.equal(pack(h.draw(at(frame))[0].colour), image.rows[20][20 + scroll], `frame ${frame}`);
   });
-  // Current tempo times the whole frame count, as Light DJ does: a tap to 128 jumps at once.
+  // Current tempo times the whole frame count, so a tap to 128 jumps at once.
   assert.equal(bitmapScroll(22 * LDJ_FRAME_MS, 0, 128, 1, 'SmoothLoop'), 55);
   assert.equal(pack(h.draw(at(22, 128))[0].colour), image.rows[20][75]);
 });

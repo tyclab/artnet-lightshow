@@ -669,7 +669,7 @@ test("preview energy bursts follow voice lifetime", () => {
   assert.ok(preview[at1000].some((c) => c.r + c.g + c.b > 0));
 });
 
-// ── Safety, Hue lamps and Hue Dynamics' limit ───────────────────────────────
+// ── Safety, Hue lamps and the party flash limit ─────────────────────────────
 
 test("preview rapid effects respect safety admission", () => {
   const times = frames(0, 600);
@@ -788,7 +788,7 @@ test("preview history resets only when timeline inputs change", () => {
     { timeMs: 0, action: 'patch', data: { pattern: 'fade-look', ...LOOK } },
     { timeMs: 0, action: 'voice', data: { id: 'count', effect: OWN.probe, targets: [PARS[3].id], tier: 'voice', launchSeq: 1 } },
   ];
-  // Light DJ's fade cycle in the look's own colours, so the colour table shows.
+  // The fade cycle in the look's own colours, so the colour table shows.
   const specs = { 'fade-look': validateSpec({ kind: 'ldj.FadeCycle', params: { cadence: 1 }, palette: null }) };
   const resolver = (id) => specs[id] ?? resolveEffect(id);
   const sample = createPreviewSampler(events, GRID, { resolveEffect: resolver });

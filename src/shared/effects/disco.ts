@@ -1,8 +1,8 @@
 import { HEX_COLOUR } from '../palette-model.ts';
-// Hue Dynamics' Disco: lamps answer the hits in three bands (Spectrum), the
-// loudest peaks (Peak) or a running reading of pitch and level (Neural), with
-// idle washes between hits and an automatic strobe. The app streams to its
-// lamps on a wall clock, so every time here is in milliseconds, not beats.
+// Disco: lamps answer the hits in three bands (Spectrum), the loudest peaks
+// (Peak) or a running reading of pitch and level (Neural), with idle washes
+// between hits and an automatic strobe. Disco streams to its lamps on a wall
+// clock, so every time here is in milliseconds, not beats.
 
 import { z } from 'zod';
 import type { ZodType } from 'zod';
@@ -72,8 +72,8 @@ const unit = (x: unknown) => typeof x === 'number' && Number.isFinite(x) ? clamp
 const rgb = (r: number, g: number, b: number): Colour => ({ r, g, b, w: 0, a: 0, uv: 0 });
 const solid = (c: Colour): Colour => ({ r: c.r, g: c.g, b: c.b, w: c.w ?? 0, a: c.a ?? 0, uv: c.uv ?? 0 });
 
-// The app's own HSV at full value: double precision, bytes truncated, not the
-// rounded 32-bit converter Light DJ uses.
+// Disco's own HSV at full value: double precision, bytes truncated, not the
+// rounded 32-bit converter the entertainment palettes use.
 function hsvDegrees(degrees: number, saturation: number): Colour {
   if (saturation === 0) return rgb(255, 255, 255);
   const sector = degrees / 60, i = Math.floor(sector), f = sector - i;

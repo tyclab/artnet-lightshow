@@ -255,7 +255,7 @@ test('Effects groups presets by source and family', () => {
   givenLibrary({});
   const html = ui.html(ui.h(ui.Effects, {}));
   const groups = [...html.matchAll(/class="effects-group-title">([^<]+)</g)].map((m) => m[1]);
-  assert.deepStrictEqual(groups, ['Hue Dynamics', 'Light DJ', 'Own', 'Classic effects']);
+  assert.deepStrictEqual(groups, ['Party &amp; Disco', 'Entertainment', 'Own', 'Classic effects']);
   // A family heads its presets.
   assert.match(html, /Position Chase<\/[^>]+>(?:(?!effects-family-title).)*data-id="hd\.neonDomino"/s);
   assert.match(html, /effects-family-title">Disco<\/[^>]+>(?:(?!effects-family-title).)*data-id="hd\.disco\.pop"/s);
@@ -336,7 +336,7 @@ test("Simple ADSR inspector exposes its envelope", () => {
   assert.match(html, /default 1 beat</, 'a single-beat preset loops once a beat');
 });
 
-test("Light DJ strobe inspector offers its backlit variant", () => {
+test("the entertainment strobe inspector offers its backlit variant", () => {
   givenLibrary({});
   const html = ui.html(ui.h(ui.Inspector, { id: 'ldj.StrobeCycle' }));
   assert.match(html, />Cadence</);
@@ -344,7 +344,7 @@ test("Light DJ strobe inspector offers its backlit variant", () => {
   assert.match(html, />Backlit</);
 });
 
-test("Light DJ Swirl inspector omits a backlit variant", () => {
+test("the entertainment Swirl inspector omits a backlit variant", () => {
   givenLibrary({});
   const html = ui.html(ui.h(ui.Inspector, { id: 'ldj.Swirl' }));
   assert.doesNotMatch(html, />Backlit</);
@@ -432,7 +432,7 @@ test("palette editor marks invalid colours and offers saved palettes", () => {
   assert.doesNotMatch(html, /aria-label="Colour 1"[^>]*aria-invalid/);
   assert.match(html, /aria-label="Colour 2"[^>]*aria-invalid="true"/);
   assert.match(html, /class="palette-random"[^>]*>Random</);
-  assert.match(html, /<optgroup label="Light DJ">(?:(?!<\/optgroup>).)*>Red Cyan</s);
+  assert.match(html, /<optgroup label="Entertainment">(?:(?!<\/optgroup>).)*>Red Cyan</s);
   assert.match(html, /<optgroup label="Your palettes">(?:(?!<\/optgroup>).)*>Mine</s);
   assert.match(html, /Save as palette…/);
 });
@@ -499,8 +499,8 @@ test('the deck marks the base among saved and party presets', () => {
   const deck = deckOf(html);
   assert.deepStrictEqual(deck.slice(0, 2), ['u1', 'position-chase'], 'the saved preset, then the party looks in catalogue order');
   assert.ok(deck.includes('swirl') && !deck.includes('hd.neonDomino') && !deck.includes('chase'), 'party looks only, no built-in or upstream row');
-  // The badge names the app; a preset saved here carries its kind's app and says it is yours.
-  assert.match(html, /data-id="u1">(?:(?!<\/div>).)*effect-pad-app">Hue Dynamics<span class="effect-pad-yours"> · Yours</s);
+  // The badge names the scope; a preset saved here carries its kind's app and says it is yours.
+  assert.match(html, /data-id="u1">(?:(?!<\/div>).)*effect-pad-app">Party &amp; Disco<span class="effect-pad-yours"> · Yours</s);
   assert.match(html, /data-id="position-chase"[^>]*>(?:(?!<\/div>).)*effect-pad-app">Own</s);
   assert.match(html, /<div class="effect-pad active" data-id="position-chase" data-layer="base">/);
   assert.strictEqual(count(html, 'class="effect-pad-now"'), 1);

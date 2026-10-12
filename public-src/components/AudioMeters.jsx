@@ -3,9 +3,9 @@ import { api, audioFeedSig, pick, wantAudio } from '../state.js';
 import { AudioMaster } from './AudioMaster.jsx';
 
 /**
- * What the room hears: the audio mode (off, tempo, reactive), Hue Dynamics'
- * party meters (full, bass, mid, high), the Disco band gates, Light DJ's
- * loudness class and the live input's latency. The 30 Hz `audio` feed is
+ * What the room hears: the audio mode (off, tempo, reactive), the
+ * party meters (full, bass, mid, high), the Disco band gates, the entertainment
+ * rows' loudness class and the live input's latency. The 30 Hz `audio` feed is
  * subscribed only while this panel is on screen and the page is visible;
  * without it the once-a-second levels in the live `audio` key stand in.
  */
@@ -76,7 +76,7 @@ export function AudioMeters({ latencyMs } = {}) {
         <select class="audio-mode" aria-label="Audio mode" value={audio.mode || 'tempo'} onChange={(e) => setMode(e.target.value)}>
           {MODES.map(([value, label]) => <option key={value} value={value} selected={(audio.mode || 'tempo') === value}>{label}</option>)}
         </select>
-        {chip && <span class={`spl-chip ${chip}`} title="Light DJ's loudness class">{chip}</span>}
+        {chip && <span class={`spl-chip ${chip}`} title="Loudness class of the entertainment rows">{chip}</span>}
         <span class="audio-latency" title="Live input latency">Latency {latencyText(latency)}</span>
       </div>
       <div class="audio-meters">

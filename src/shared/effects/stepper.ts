@@ -33,7 +33,7 @@ const tableValues = new WeakMap<ConstantTable, Float64Array>();
  * A table of numbers fixed when it is made: its values sit where no caller
  * can reach them and no method writes them, and the instance is frozen. A
  * kind's state may hold one, and a checkpoint shares it instead of copying it
- * (Light DJ's noise field is 301 × 301 numbers, too many to copy per sample).
+ * (the entertainment noise field is 301 × 301 numbers, too many to copy per sample).
  */
 export class ConstantTable {
   readonly rows: number;

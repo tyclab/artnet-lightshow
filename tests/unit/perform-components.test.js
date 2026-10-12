@@ -296,7 +296,7 @@ test('palette override strip orders and selects palettes', () => {
   given({ paletteOverride: null, userPalettes: USER });
   let html = ui.html(ui.h(ui.PaletteStrip));
   const names = [...html.matchAll(/class="override-name">([^<]+)</g)].map((m) => m[1]);
-  assert.deepStrictEqual(names, ['Off', 'Ldj Fire', 'Hue Dynamics default', 'Mine']);
+  assert.deepStrictEqual(names, ['Off', 'Ldj Fire', 'Party default', 'Mine']);
   assert.match(html, /aria-pressed="true"[^>]*data-override="off"/);
   given({ paletteOverride: ['#123456'], userPalettes: USER });
   html = ui.html(ui.h(ui.PaletteStrip));

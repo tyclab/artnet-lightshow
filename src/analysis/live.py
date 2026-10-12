@@ -24,7 +24,7 @@ the line is written: the reader maps it onto its own clock. `beat` is the
 analyser's continuous beat position at stream time `t`.
 
 With `--bands lo-hi,...` (Hz) each state also carries the newest frame's
-`spectrum` for the party effects, on Hue Dynamics' scale — `|X|²` per bin of
+`spectrum` for the party effects, on the party engine's scale — `|X|²` per bin of
 a Hamming-windowed 1024-point FFT of the float samples less their mean (a DC
 offset is not sound), unnormalised:
 
