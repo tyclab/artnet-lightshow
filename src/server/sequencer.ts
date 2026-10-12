@@ -24,9 +24,9 @@ import type { AudioMode, EffectSpec, Seed } from '../shared/effects/types.ts';
 import type { PlayingClip, SequenceLane, SequenceLoop, SequenceTable, SequenceTransport, TableClip } from '../shared/effects/sequence.ts';
 
 /**
- * The sequencer: lanes of effect clips on a beat timeline, as Hue Dynamics
- * arranges its Party shows, and Light DJ's playlists of rows as the special
- * case of one lane played row by row. This holds the model and its rules and
+ * The sequencer: lanes of effect clips on a beat timeline arranging the Party
+ * shows, and the entertainment playlists of rows as the special case of one
+ * lane played row by row. This holds the model and its rules and
  * the sequence loaded for the transport; it resolves that sequence into the
  * clip table the renderer plays (shared/effects/sequence.ts picks which clip
  * plays where). Loading a sequence plays nothing: its transport starts it.
@@ -53,7 +53,7 @@ export interface Clip {
   mute: boolean;
 }
 
-/** Light DJ's command rows: at a beat, a palette, a tempo, a master level, or a jump to a beat. */
+/** The command rows: at a beat, a palette, a tempo, a master level, or a jump to a beat. */
 export type Command =
   | { id: string; atBeat: number; type: 'palette'; value: string }
   | { id: string; atBeat: number; type: 'tempo'; value: number }
@@ -61,7 +61,7 @@ export type Command =
   | { id: string; atBeat: number; type: 'goto'; value: number };
 
 /**
- * Light DJ's timed changes of the tempo or the master. `period` counts beats
+ * Timed changes of the tempo or the master. `period` counts beats
  * for brightness and seconds for tempo; `target` is where target mode goes.
  */
 export interface Automation {
@@ -90,9 +90,9 @@ export interface Sequence {
   commands: Command[];
   automation: { tempo: Automation | null; brightness: Automation | null };
   /**
-   * Light DJ's playlist options. `autoplay` moves a playing playlist on to
-   * the next row at a row's end (off, the row loops until next), on by
-   * default as in the app; it never starts a sequence, which only play does.
+   * The playlist options. `autoplay` moves a playing playlist on to the next
+   * row at a row's end (off, the row loops until next), on by default; it
+   * never starts a sequence, which only play does.
    */
   options: { autoplay: boolean; shuffle: boolean; randomPaletteOnLoop: boolean; initialPalette: string | null; randomizeInitialPalette?: boolean };
 }
@@ -131,8 +131,8 @@ export interface SequenceStatus {
   recording?: RecordingStatus;
 }
 
-// Hue Dynamics' cap: three shared lanes over the per-fixture tracks. Its cap
-// of ten lights is its own bridge's, not this rig's, and is not kept.
+// The party cap: three shared lanes over the per-fixture tracks. A ten-light
+// cap belongs to a single bridge, not this rig, and is not kept.
 export const MAX_SHARED_LANES = 3;
 
 // Every lap is a fresh instance, so the strobe in a clip would restart its
@@ -212,7 +212,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ id: idSchema, atBeat: beatSchema, type: z.literal('goto'), value: beatSchema }).strict(),
 ]);
 
-/** One automation, in the units of what it moves: tempo 20–300, the master 0–255. Light DJ's period runs 1 to 512. */
+/** One automation, in the units of what it moves: tempo 20–300, the master 0–255. The period runs 1 to 512. */
 function automationSchema({ min, max }: { min: number; max: number }) {
   const value = z.number().min(min).max(max);
   return z.object({
@@ -228,7 +228,7 @@ function automationSchema({ min, max }: { min: number; max: number }) {
   }).nullable().default(null);
 }
 
-// Hue Dynamics' time signatures: 1 to 32 beats a bar, of a power of two from a whole note to a 32nd.
+// Time signatures: 1 to 32 beats a bar, of a power of two from a whole note to a 32nd.
 const timeSignatureSchema = z.object({
   beats: z.number().int().min(1).max(32),
   unit: z.number().int().refine((u) => [1, 2, 4, 8, 16, 32].includes(u), 'a power of two from 1 to 32'),
@@ -295,7 +295,7 @@ export const sequenceSchema = z.object({
     if (!lanes.has(clip.laneId)) ctx.addIssue({ code: 'custom', path: ['clips', i, 'laneId'], message: `no lane ${clip.laneId}` });
   });
   if (seq.mode === 'playlist') {
-    // Light DJ's playlist: one lane of rows, each after the last. A sequence
+    // A playlist: one lane of rows, each after the last. A sequence
     // that is not one stays as it is; nothing is dropped to make it fit.
     if (seq.lanes.length !== 1 || seq.lanes[0].kind !== 'shared') {
       ctx.addIssue({ code: 'custom', path: ['mode'], message: 'a playlist plays one shared lane' });
@@ -315,7 +315,7 @@ export function validateSequence(raw: unknown): Sequence {
 }
 
 /**
- * Hue Dynamics' pattern: lanes of clips to drop into a sequence at a beat.
+ * A pattern: lanes of clips to drop into a sequence at a beat.
  * A shared lane names its place among the shared lanes, a track the place
  * of its fixture in the patch, so a pattern fits any rig it is dropped on.
  */
@@ -503,7 +503,7 @@ export function buildTable(seq: Sequence, resolve: EffectResolver, revision: num
 // ── Automation ──────────────────────────────────────────────────────────────
 
 /**
- * Light DJ's timer: where an automation stands `elapsed` into it (beats for
+ * The automation timer: where an automation stands `elapsed` into it (beats for
  * the master, seconds for the tempo), having started from `from`, the value
  * there when it began. Null for none.
  *
@@ -937,7 +937,7 @@ export class Sequencer {
   }
 
   // ── The transport's controls ──────────────────────────────────────────────
-  // Each takes effect at the next frame, on that frame's beat (Light DJ's
+  // Each takes effect at the next frame, on that frame's beat (the playlist
   // player waits for its next tick too); play, pause and stop are answered at
   // once, so a second press finds the first already taken.
 
@@ -1029,7 +1029,7 @@ export class Sequencer {
     this._move(() => target.startBeat);
   }
 
-  /** Hue Dynamics' resync: the nearest beat of the time signature, or the bar's start, is now. */
+  /** Resync: the nearest beat of the time signature, or the bar's start, is now. */
   resync(boundary: 'beat' | 'bar'): void {
     this._requireLoaded();
     if (boundary !== 'beat' && boundary !== 'bar') throw new HttpError(400, 'resync: beat or bar');

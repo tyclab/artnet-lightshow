@@ -1,5 +1,5 @@
-// The party effects: after the Party families of Hue Dynamics and the room
-// effects of Light DJ, travelling the room by where the lamps stand on the
+// The party effects: the Party families and the entertainment room effects,
+// travelling the room by where the lamps stand on the
 // stage plot. Every one is a function of the plan and of where the music is,
 // so each is pinned here at a clock position and a set of positions.
 
@@ -97,7 +97,7 @@ test('an unplaced rig is a row in stage order', () => {
   assert.deepStrictEqual(r.v, [0, 0, 0, 0]);
 });
 
-// ── Hue Dynamics' Party families ─────────────────────────────────────────────
+// ── The Party families ────────────────────────────────────────────────────
 
 test('position chase follows a heading that rotates each run', () => {
   // Three steps a run on four lamps half a step apart, each lamp's attack an
@@ -207,7 +207,7 @@ test('confetti: three lamps in four pop on the step and die away, or follow the 
   assert.ok(fast(7 * 62.5).some(Boolean) && fast(7 * 62.5).some((on, i) => on !== fast(0)[i]), 'a fresh pop on the seventh');
 });
 
-// ── Light DJ's room effects ──────────────────────────────────────────────────
+// ── The entertainment room effects ────────────────────────────────────────────────
 
 test('anchor fill adds corners in sequence over the previous colour', () => {
   const fill = (step) => colours(draw('anchor-fill', { plan: CORNERS, colors: QUAD, ...at(step * 500) }));
@@ -228,7 +228,7 @@ test('anchor fill adds corners in sequence over the previous colour', () => {
 
 test('halves alternate front/back and left/right partitions', () => {
   const half = (step, groups) => colours(draw('halves', { plan: groups ? plan([FL, FR, BR, BL], groups) : CORNERS, ...at(step * 500) }));
-  // The front half is the plot top, and it keeps colour A though the room numbers it 1, after Light DJ.
+  // The front half is the plot top, and it keeps colour A though the room numbers it 1.
   assert.deepStrictEqual(half(0), [RED, RED, BLUE, BLUE], 'front A, back B');
   assert.deepStrictEqual(half(1), [RED, BLUE, BLUE, RED], 'left A, right B');
   assert.deepStrictEqual(half(2), [BLUE, BLUE, RED, RED], 'front B, back A');

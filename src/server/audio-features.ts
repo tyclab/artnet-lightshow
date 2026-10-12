@@ -58,7 +58,7 @@ function variance32(ring: Float32Array): number {
 }
 const varianceCoefficient = (ring: Float32Array) => -0.0025714 * variance32(ring) + 1.5142857;
 
-// Keep Neural’s source history indexing so long smoothers retain the app’s zero-filled remainder.
+// Keep Neural’s source history indexing so long smoothers retain their zero-filled remainder.
 interface Smoother { length: number; values: Float32Array }
 const smootherLength = (n: number) => Math.min(Number.MAX_SAFE_INTEGER, n);
 function smoother(length: number): Smoother { return { length, values: new Float32Array(Math.min(length, HISTORY)) }; }

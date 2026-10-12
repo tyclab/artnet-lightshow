@@ -72,7 +72,7 @@ Models accept up to 128 room polygons, 1,500 objects and 4,096 bindings, with up
 to 128 vertices per polygon, 8,192 total source references and a 1 MB JSON
 request limit. External asset URLs, scripts and unrecognised fields are rejected. Keep the original floor-plan
 source and measurements separately; this is a rendering format, not an archive
-of the source application.
+of the floor-plan source.
 
 ## API and concurrent changes
 

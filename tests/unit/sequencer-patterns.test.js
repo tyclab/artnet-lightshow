@@ -1,4 +1,4 @@
-// Hue Dynamics' patterns (a bundle of lanes dropped into the loaded sequence
+// Patterns (a bundle of lanes dropped into the loaded sequence
 // at a beat) and punch recording (pad hits written into it as clips).
 
 import test from 'node:test';

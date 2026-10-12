@@ -55,7 +55,7 @@ export function AudioMaster({ audio }) {
             );
           })}
           <label>
-            <span>Light DJ trigger (%)</span>
+            <span>Entertainment trigger (%)</span>
             <input type="number" min="0" max="100" step="1" required
               value={draft.ldjTrigger === '' ? '' : Math.round(Number(draft.ldjTrigger ?? audio.ldjTrigger ?? 0.3) * 100)}
               onInput={(event) => change('ldjTrigger', event.currentTarget.value === '' ? '' : Number(event.currentTarget.value) / 100)} />

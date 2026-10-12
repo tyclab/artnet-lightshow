@@ -14,8 +14,8 @@ import { requiresAcknowledgement } from '../../src/shared/effects/registry.ts';
  * The preset picked in the Effects list, with every setting its family can
  * use. A built-in is read-only until "Save as…" copies it to a preset of your
  * own; a preset of your own saves in place. Settings are what the shared
- * effect schemas take (src/shared/effects): Hue Dynamics' times in beats, with
- * the app's ticks read beside them.
+ * effect schemas take (src/shared/effects): the party times in beats, with
+ * their 960-per-beat ticks read beside them.
  */
 
 const TICKS_PER_BEAT = 960;
@@ -42,7 +42,7 @@ const DISCO_GLOBALS = [
 ];
 const AHDSR = [['attack', 'A'], ['hold', 'H'], ['decay', 'D'], ['sustain', 'S'], ['release', 'R'], ['peak', 'Peak']];
 
-// Hue Dynamics asks once whether a family change takes the family's
+// A family change asks once whether it takes the family's
 // recommendation; the answer may be kept, on this browser.
 const RECOMMENDED_KEY = 'lightshow.effects.recommended';
 const PREFERENCES = ['ask', 'apply', 'keep'];
@@ -95,7 +95,7 @@ export function kindDef(kind, families = []) {
   return null;
 }
 
-/** Hue Dynamics' loop for a preset that set none: a beat for a single-beat preset, else the bar or the envelope, whichever is longer. */
+/** The party loop for a preset that set none: a beat for a single-beat preset, else the bar or the envelope, whichever is longer. */
 export function scopedLoopLength(spec) {
   const p = spec.params || {};
   if (spec.scope === 'singleBeat') return 1;
@@ -112,7 +112,7 @@ export function withRecommended(spec, def) {
   return { ...spec, ...(spec.gradients || d.gradients ? gradientSettings(d) : {}), kind: def.kind, params: clone(d.params) || {}, ...carried };
 }
 
-// Light DJ's backlit rows are kinds of their own (BL…): a row with a twin gets
+// The entertainment backlit rows are kinds of their own (BL…): a row with a twin gets
 // the switch, whichever family each of the two sits in.
 function backlitTwin(kind, families) {
   const match = /^ldj\.(BL)?(.+)$/.exec(kind);
@@ -226,7 +226,7 @@ export function SingleColourField({ value = '#FFFFFF', onChange }) {
 
 // ── Families ────────────────────────────────────────────────────────────────
 
-/** Hue Dynamics Party: what the family's capabilities allow, nothing else. */
+/** Party: what the family's capabilities allow, nothing else. */
 function HdControls({ spec, caps, setParam }) {
   const p = spec.params || {};
   const sp = p.spatial || {}, tr = p.trigger || {};
@@ -314,7 +314,7 @@ export function showsCadence(spec, families) {
   return kindDef(spec.kind, families)?.wallClock !== true;
 }
 
-/** A Light DJ row: its step, its length, and Backlit where the row has a backlit twin. */
+/** An entertainment row: its step, its length, and Backlit where the row has a backlit twin. */
 function LdjControls({ spec, families, setParam, setKind }) {
   const p = spec.params || {};
   const twin = backlitTwin(spec.kind, families);
@@ -350,7 +350,7 @@ function BitmapControls({ spec, lib, setParam }) {
   );
 }
 
-/** Hue Dynamics Disco: the style, its five channels, the bands and globals, and a band per fixture. */
+/** Disco: the style, its five channels, the bands and globals, and a band per fixture. */
 function DiscoControls({ spec, fixtures, setParam }) {
   const p = spec.params || {};
   const bands = p.bands || {}, globals = p.globals || {}, assign = p.assign || {};
@@ -631,7 +631,7 @@ export function Inspector({ id, onSelect, onPlay, onClose, inline = null, onAppl
         {preset.source === 'user' && <button type="button" class="btn sm" disabled={!dirty || paletteInvalid} onClick={saveInPlace}>Save</button>}
         {!naming && <button type="button" class="btn sm" onClick={() => { setNaming(true); setCopyName(`${draft.name} copy`); }}>Save as…</button>}
         {dirty && <button type="button" class="btn sm" onClick={() => { freshPalette(); setEdits({ key: null, draft: null }); }}>Revert</button>}
-        {def && def.defaults && <button type="button" class="btn sm" title="The family's recommended settings, as the app ships them" onClick={() => applyRecommended()}>Apply recommended</button>}
+        {def && def.defaults && <button type="button" class="btn sm" title="The family's recommended settings, as shipped" onClick={() => applyRecommended()}>Apply recommended</button>}
         {preset.source === 'user' && <button type="button" class="btn sm danger" onClick={remove}>Delete</button>}
       </div>
       {auditionUnavailable && <p class="effect-inspector-desc" role="status">{auditionUnavailable}</p>}

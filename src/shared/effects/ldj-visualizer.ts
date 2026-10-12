@@ -165,7 +165,7 @@ function spike(c: Ctx): void {
 function reassert(c: Ctx): void {
   const { s, p, f, room } = c;
   if (p.mellow === 'none') {
-    // The app plays none as a black background, so a later swirl or wave draws afresh.
+    // None is played as a black background, so a later swirl or wave draws afresh.
     s.mellow.cache = { mode: 'none', list: '', index: 0 };
     configureBackground(s.bed, 'none', BLACK);
     return;
@@ -303,8 +303,8 @@ registerKind<VisualizerParams, VisualizerState>({
     };
   },
   render(params, s, room, f, out: EffectSlot[]) {
-    if (!Number.isFinite(f.nowMs)) throw new RangeError('Light DJ clock time must be finite');
-    if (!Number.isFinite(f.beatPos)) throw new RangeError('Light DJ beat position must be finite');
+    if (!Number.isFinite(f.nowMs)) throw new RangeError('Entertainment clock time must be finite');
+    if (!Number.isFinite(f.beatPos)) throw new RangeError('Entertainment beat position must be finite');
     const now = f.nowMs, beat = f.beatPos, bpm = tempoOf(f.bpm), a = s.auto, m = s.mellow;
     const first = s.cursorMs === null;
     if (first) { s.cursorMs = s.bed.lastMs; s.cursorBeat = beat - Math.max(0, now - s.bed.lastMs) * bpm / 60000; }

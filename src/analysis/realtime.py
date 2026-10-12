@@ -133,7 +133,7 @@ class StreamingAnalyzer:
 
     def last_power_spectrum(self):
         """
-        The newest frame's power spectrum on Hue Dynamics' scale, `|X|²` per
+        The newest frame's power spectrum on the party engine's scale, `|X|²` per
         bin of a Hamming-windowed rFFT with no normalisation, and the frame's
         raw Σx². `(None, 0.0)` before the first whole frame.
 

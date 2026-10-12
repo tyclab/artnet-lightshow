@@ -1,6 +1,6 @@
 import { ZodError } from 'zod';
 // tests/unit/effects-macro.test.js
-// The macro kind: Light DJ's composite Scene Maker rows as a looping score of effects.
+// The macro kind: the composite Scene Maker rows as a looping score of effects.
 import test from 'node:test';
 import assert from 'node:assert';
 import { z } from 'zod';
@@ -242,7 +242,7 @@ test("macro palette precedence resolves each child role", () => {
   colourAt(mapped([1, 0], { palette: [{ random: true }, '#0000FF'] }));
   const hues = LDJ_RANDOM_HUES.map((h) => hsbToColour(h / 360, 1, 1));
   assert.deepStrictEqual(log[0].palette[0], BLUE);
-  assert.ok(hues.some((c) => JSON.stringify(c) === JSON.stringify(log[0].palette[1])), 'a Light DJ random hue');
+  assert.ok(hues.some((c) => JSON.stringify(c) === JSON.stringify(log[0].palette[1])), 'a random hue from the built-in table');
   const spec = mapped([1, 0], { palette: [{ random: true }, '#0000FF'] });
   assert.deepStrictEqual(spec.params.steps[0], { effect: validateSpec({ kind: 'test.tinted' }), beats: 4, paletteIndices: [1, 0] }, 'the wire spec is untouched');
   assert.deepStrictEqual(spec.palette, [{ random: true }, '#0000FF']);

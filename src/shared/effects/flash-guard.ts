@@ -1,7 +1,7 @@
 import { HOLD_STROBE_MAX_HZ } from '../look-math.ts';
 import { GAP_FRAMES, WINDOW_FRAMES } from './strobe.ts';
 
-// Only bright rises spend the HD guard; held light must not consume another admission.
+// Only bright rises spend the hd.* guard; held light must not consume another admission.
 
 export class HdFlashGuard {
   private intervalMs: number;

@@ -30,7 +30,7 @@ export function sameColours(a, b) {
 }
 
 // The built-in palettes have ids, not names; the id reads as words.
-const PALETTE_NAMES = { hdDefault: 'Hue Dynamics default', hdStrobe: 'Hue Dynamics strobe', randomRandom: 'Random, Random' };
+const PALETTE_NAMES = { hdDefault: 'Party default', hdStrobe: 'Party strobe', randomRandom: 'Random, Random' };
 export function paletteName(palette) {
   if (palette.name) return palette.name;
   if (PALETTE_NAMES[palette.id]) return PALETTE_NAMES[palette.id];
@@ -105,7 +105,7 @@ export function PaletteEditor({ colours, onChange, body, onBodyChange, onInvalid
     if (res.ok) { setNaming(false); setName(''); }
   };
   const byApp = (app) => builtin.filter((p) => p.app === app);
-  const randomTitle = 'Light DJ\'s Random: a fresh colour each time the effect starts';
+  const randomTitle = 'Random: a fresh colour each time the effect starts';
 
   return (
     <div class="palette-editor" role="group" aria-label={label}>
@@ -150,10 +150,10 @@ export function PaletteEditor({ colours, onChange, body, onBodyChange, onInvalid
           <option value="">Pick a palette…</option>
           {!!byApp('look').length && <optgroup label="Stage palettes">{byApp('look').map((p) => <option key={p.id} value={p.id}>{paletteName(p)}</option>)}</optgroup>}
           {byApp('ldj').length > 0 && (
-            <optgroup label="Light DJ">{byApp('ldj').map((p) => <option key={p.id} value={p.id}>{paletteName(p)}</option>)}</optgroup>
+            <optgroup label="Entertainment">{byApp('ldj').map((p) => <option key={p.id} value={p.id}>{paletteName(p)}</option>)}</optgroup>
           )}
           {byApp('hd').length > 0 && (
-            <optgroup label="Hue Dynamics">{byApp('hd').map((p) => <option key={p.id} value={p.id}>{paletteName(p)}</option>)}</optgroup>
+            <optgroup label="Party & Disco">{byApp('hd').map((p) => <option key={p.id} value={p.id}>{paletteName(p)}</option>)}</optgroup>
           )}
           {user.length > 0 && (
             <optgroup label="Your palettes">{user.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</optgroup>

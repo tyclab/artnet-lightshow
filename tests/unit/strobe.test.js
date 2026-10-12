@@ -1,4 +1,4 @@
-// The manual strobe (src/server/strobe.ts): Hue Dynamics' hold strobe as one
+// The manual strobe (src/server/strobe.ts): the hold strobe as one
 // voice in the strobe tier — held from a pad or a page, latched with a cap,
 // or burst for a moment — with its settings in settings.strobe. First on a
 // manager with a clock of the test's own, then served: the routes, the live

@@ -44,7 +44,7 @@ test("matrix envelopes follow whole-frame phases", () => {
   assert.strictEqual(l.read(0).bri, 0, 'fadeOut 0 → baseline at once');
   const f = new LdjLamps(1);
   f.set(0, RED, 1, { kind: 'matrix', fadeIn: 0, peak: 10, fadeOut: 0, baseline: 0.05 });
-  assert.strictEqual(f.read(0).bri, 1, 'peak 10 → one frame, as the app floors to at least one');
+  assert.strictEqual(f.read(0).bri, 1, 'peak 10 → one frame: the peak floors to at least one');
   f.advance(LDJ_FRAME_MS, 120);
   assert.ok(Math.abs(f.read(0).bri - 0.05) < 1e-8, 'then the baseline');
 });
@@ -228,7 +228,7 @@ test("lamp off cancels pending changes", () => {
 const roomAt = (points) => buildRoom(points.length, (i) => points[i][0], (i) => points[i][1], (i) => points[i][2] ?? 0.5, null);
 const square = () => roomAt([[0, 0], [1, 0], [1, 1], [0, 1]]);
 
-test("LDJ channels follow their assigned geometry", () => {
+test("ldj.* channels follow their assigned geometry", () => {
   const room = square();
   assert.deepStrictEqual(ldjChannels(room, 4), [0, 2, 3, 1]);
   assert.deepStrictEqual(ldjChannels(room, 'width'), [0, 1, 1, 0]);
@@ -239,7 +239,7 @@ test("LDJ channels follow their assigned geometry", () => {
   assert.deepStrictEqual(ldjChannels(roomAt([[0.5, 0.5]]), 4), [0]);
 });
 
-test("LDJ assignment balances nearest channels with stable ties", () => {
+test("ldj.* assignment balances nearest channels with stable ties", () => {
   const ties = roomAt(Array.from({ length: 5 }, (_, i) => [0.5, 0.5, i / 4]));
   assert.deepStrictEqual(ldjChannels(ties, 2), [0, 1, 0, 1, 0]);
   const room = roomAt([[0, 0], [0.1, 0], [0.2, 0], [0.3, 0], [1, 1]]);

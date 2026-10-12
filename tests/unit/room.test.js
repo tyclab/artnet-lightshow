@@ -36,7 +36,7 @@ test('the ring runs clockwise from the front in whole degrees', () => {
   for (const d of r.ringDegrees) assert.strictEqual(d, Math.trunc(d));
 });
 
-test('halves follow Light DJ\'s channel index order; channels(4) are the corners', () => {
+test('halves follow the channel index order; channels(4) are the corners', () => {
   const r = square();
   assert.deepStrictEqual(r.halves('depth'), [1, 1, 0, 0], 'index 1 is the front');
   assert.deepStrictEqual(r.halves('width'), [0, 1, 1, 0]);
@@ -76,7 +76,7 @@ test('a fixture height changes the rig signature', () => {
 
 // The renderer's effect layers and a party look read one plan with Hue flags
 // of their own; a room rebuilt every frame would also lose what is kept with
-// it (Light DJ's channel assignment).
+// it (the channel assignment).
 test('room caches remain separate for different Hue memberships', () => {
   const plan = { x: [0.1, 0.4, 0.7, 0.9], y: [0.2, 0.2, 0.6, 0.6], z: [0.5, 0.5, 0.5, 0.5], group: [null, null, null, null] };
   const look = [false, false, false, true];

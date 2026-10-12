@@ -274,7 +274,7 @@ test("voice routes use preset or explicit beat lifetimes", async (t) => {
   const bpm = conductor.status().bpm;
   let res = await s.call('POST', '/api/voices', { preset: 'ldj.FadeCycle' });
   const fade = voices.get(res.body.id);
-  assert.ok(Math.abs(fade.untilMs - fade.startedAtMs - 32 * 60000 / bpm) < 1, 'Light DJ\'s 32 beats');
+  assert.ok(Math.abs(fade.untilMs - fade.startedAtMs - 32 * 60000 / bpm) < 1, 'the entertainment 32 beats');
   res = await s.call('POST', '/api/voices', { preset: 'ldj.StudioN1' });
   const studio = voices.get(res.body.id);
   assert.ok(Math.abs(studio.untilMs - studio.startedAtMs - 32 * 60000 / bpm) < 1, 'the preset\'s length, not its kind\'s');

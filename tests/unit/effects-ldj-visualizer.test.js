@@ -27,7 +27,7 @@ const slotOf = (h) => h.state().bed.ring[h.state().lastRank];
 const bedOnly = (s, slot) => { const lamp = readStudio(s.bed, slot); return { colour: { ...lamp.colour }, level: lamp.bri, strength: 1 }; };
 const close = (actual, expected, message) => assert.ok(Math.abs(actual - expected) < 1e-9, `${message ?? ''} ${actual} ≠ ${expected}`);
 const finite = (out) => out.every((slot) => Number.isFinite(slot.level) && KEYS.every((key) => Number.isFinite(slot.colour[key] ?? 0)));
-// Light DJ's rendered-colour blend, written out independently: bytes already
+// The rendered-colour blend, written out independently: bytes already
 // scaled by level, weighted by their brightest emitter in 32-bit floats, truncated.
 const bytes = (c, level) => Object.fromEntries(KEYS.map((key) => [key, Math.min(255, Math.floor(f32(f32((c[key] ?? 0) * level) + .5)))]));
 function expectedBlend(a, aLevel, b, bLevel) {
@@ -76,7 +76,7 @@ test("visualizer presets remain independent wire data", () => {
   assert.notEqual(VISUALIZER_PRESETS[0].params, VISUALIZER_PRESETS[5].params, 'presets share no objects');
 });
 
-test('the 26 seeded Light DJ palettes are one frozen table, random entries kept', () => {
+test('the 26 built-in entertainment palettes are one frozen table, random entries kept', () => {
   assert.equal(LDJ_PALETTES.length, 26);
   assert.equal(new Set(LDJ_PALETTES.map((p) => p.id)).size, 26);
   assert.ok(LDJ_PALETTES.every((p) => p.app === 'ldj' && Object.isFrozen(p) && Object.isFrozen(p.colours)));

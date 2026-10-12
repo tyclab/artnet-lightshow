@@ -30,7 +30,7 @@ import LiveInput, { bandsArg } from '../../src/live-input.ts';
 
 showStore.scheduleSave = () => {};   // never the real show file
 
-// The defaults' band list: Hue Dynamics Party's three, then Disco's bass and voice (its treble is the party high).
+// The defaults' band list: the Party three, then Disco's bass and voice (its treble is the party high).
 const BANDS = [[20, 250], [250, 3000], [3000, 9000], [0, 160], [750, 2000]];
 const KEY = BANDS.map(([lo, hi]) => `${lo}-${hi}`).join(',');
 
@@ -165,7 +165,7 @@ test('PUT /api/audio persists the mode used by the engine', async () => {
     assert.strictEqual(settings.get('audio.mode'), 'reactive');
     assert.strictEqual(renderInput().audioMode, 'reactive');
 
-    // The master by field: the rest of it stays. Hue Dynamics' release runs to five seconds.
+    // The master by field: the rest of it stays. The party release runs to five seconds.
     await s.call('PUT', '/api/audio', { master: { threshold: 0.2 }, ldjTrigger: 0.1 });
     assert.deepStrictEqual(settings.get('audio.master'), { ...HD_MASTER_DEFAULTS, threshold: 0.2 });
     assert.deepStrictEqual(renderInput().master, { ...HD_MASTER_DEFAULTS, threshold: 0.2 });

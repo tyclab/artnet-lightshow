@@ -39,7 +39,7 @@ export function hsbToColour(h01: number, s01: number, b01: number): Colour {
 
 export function samplePalette(pal: readonly Colour[], position: number): Colour {
   const n = pal.length;
-  // An empty palette is white in Hue Dynamics too; never an undefined colour mid-frame.
+  // An empty palette is white; never an undefined colour mid-frame.
   if (n === 0) return { ...WHITE };
   if (n === 1) return pal[0];
   const pos = Number.isFinite(position) ? position - Math.floor(position) : 0;

@@ -1,5 +1,5 @@
 // tests/unit/effects-catalogue.test.js
-// Hue Dynamics' presets, the Disco genres, the fork's own looks and controls,
+// The Party presets, the Disco genres, the fork's own looks and controls,
 // and the pattern list the pickers receive.
 import test from 'node:test';
 import assert from 'node:assert';
@@ -21,7 +21,7 @@ import { LOOKS } from '../../scripts/golden-party-looks.js';
 
 const by = (n) => CATALOGUE.find((p) => p.app === 'hd' && p.name === n).spec;
 
-test("Hue Dynamics presets retain their scoped settings", () => {
+test("Party presets retain their scoped settings", () => {
   for (const name of ['Ice Strike', 'Neon Pulse', 'Colour Pop', 'Velvet Bloom', 'Solar Flare', 'Rainbow Drop', 'Simple ADSR', 'Neon Domino', 'Bass Bloom', 'Aurora Drift', 'Prism Ricochet', 'Meteor Shower', 'Starlight Scatter', 'Velvet Breath', 'Afterglow Gate', 'Voltage Confetti']) {
     assert.ok(CATALOGUE.some((p) => p.app === 'hd' && p.name === name), name);
   }
@@ -71,7 +71,7 @@ test('ENERGY_EFFECTS keeps its seven ids', () => {
   assert.deepStrictEqual(ENERGY_EFFECTS.map((e) => e.id).sort(), ['blinder', 'color-strobe', 'glow', 'kill', 'palette-strobe', 'uv-wash', 'white-strobe']);
 });
 
-// ── Hue Dynamics' sixteen, exactly ──────────────────────────────────────────
+// ── The sixteen Party presets, exactly ────────────────────────────────────────
 
 // attack, hold, decay, sustain, release, peak
 const env = (attack, hold, decay, sustain, release, peak) => ({ attack, hold, decay, sustain, release, peak });
@@ -91,7 +91,7 @@ const SIMPLE = {
     envelope: rgb(env(0.01, 0.03, 0.5, 0.18, 0.46, 1), env(0.01, 0.03, 0.32, 0, 0, 0.85), env(0.01, 0.03, 0.09, 0, 0, 0.65)) },
   'Rainbow Drop': { palette: ['#FF0000', '#00CC00', '#000099'], curve: 'easeInOut',
     envelope: rgb(env(0.02, 0.03, 0.24, 0.045, 0.08, 1), env(0.3, 0, 0.32, 0, 0, 0.8), env(0.65, 0, 0.25, 0.07, 0.1, 0.6)) },
-  // Not the family's single-colour recommendation: the app gives this preset
+  // Not the family's single-colour recommendation: this preset carries
   // its own staggered red, green and blue.
   'Simple ADSR': { palette: ['#0080FF'], curve: 'easeOut',
     envelope: rgb(env(0.04, 0.08, 0.2, 0, 0.68, 1), env(0.2, 0, 0.4, 0, 0.4, 0.8), env(0.4, 0, 0, 0.6, 0.6, 0.6)) },
@@ -141,13 +141,13 @@ test("measure presets use family recommendations", () => {
   assert.strictEqual(hdParty().length, 16);
   assert.deepStrictEqual(hdParty().map((p) => p.name), [...Object.keys(SIMPLE), ...Object.keys(FAMILY_ROWS)]);
   assert.strictEqual(hdParty().filter((p) => p.spec.scope === 'singleBeat').length, 7);
-  // Stable ids from the preset names; Simple ADSR's is its kind's, as a Light DJ preset's is.
+  // Stable ids from the preset names; Simple ADSR's is its kind's, as an entertainment preset's is.
   assert.deepStrictEqual(hdParty().map((p) => p.id), ['hd.iceStrike', 'hd.neonPulse', 'hd.colourPop', 'hd.velvetBloom', 'hd.solarFlare',
     'hd.rainbowDrop', 'hd.simpleAdsr', 'hd.neonDomino', 'hd.bassBloom', 'hd.auroraDrift', 'hd.prismRicochet', 'hd.meteorShower',
     'hd.starlightScatter', 'hd.velvetBreath', 'hd.afterglowGate', 'hd.voltageConfetti']);
   for (const p of hdParty()) {
     assert.strictEqual(p.family, p.spec.kind, p.id);
-    assert.strictEqual(p.lengthBeats, undefined, `${p.id}: Hue Dynamics plays its scoped loop, not Light DJ's lifetime`);
+    assert.strictEqual(p.lengthBeats, undefined, `${p.id}: a Party preset plays its scoped loop, not an entertainment lifetime`);
     assert.strictEqual(typeof p.desc, 'string', p.id);
   }
   assert.strictEqual(presetById('hd.voltageConfetti').spec.rapidFlash, true);
@@ -238,7 +238,7 @@ test("Disco presets share their genre catalogue", () => {
 
 });
 
-// The own looks modelled on a Hue Dynamics preset, and the preset they offer beside them.
+// The own looks modelled on a Party preset, and the preset they offer beside them.
 const LINKS = {
   'position-chase': 'Neon Domino', 'radial-pulse': 'Bass Bloom', 'spatial-wash': 'Aurora Drift', 'bounce-scan': 'Prism Ricochet',
   streak: 'Meteor Shower', starlight: 'Starlight Scatter', breathe: 'Velvet Breath', 'volume-gate': 'Afterglow Gate', confetti: 'Voltage Confetti',
@@ -327,7 +327,7 @@ test('built-in specs validate twice to themselves', () => {
 
 // ── Families and the wire list ──────────────────────────────────────────────
 
-test("Hue Dynamics families expose independent recommendations", () => {
+test("Party families expose independent recommendations", () => {
   const hd = FAMILIES.filter((f) => f.app === 'hd');
   assert.deepStrictEqual(hd.map((f) => [f.id, f.name]), [
     ['hd.simpleAdsr', 'Simple ADSR'], ['hd.positionChase', 'Position Chase'], ['hd.radialPulse', 'Radial Pulse'], ['hd.spatialWash', 'Spatial Wash'],

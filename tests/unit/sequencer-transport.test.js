@@ -1,5 +1,5 @@
 // The sequencer's transport (src/server/sequencer.ts): playing, pausing,
-// stopping and moving a loaded sequence; Light DJ's command rows and its
+// stopping and moving a loaded sequence; the command rows and the
 // tempo and brightness automation; what the renderer then plays from the
 // transport each frame (src/shared/effects/sequence.ts).
 
@@ -629,7 +629,7 @@ test('frame traversal limits preserve the next unprocessed operation', () => {
 
 test('automation samples its configured clock', () => {
   const a = (mode, extra = {}) => ({ mode, period: 8, min: 0, max: 100, growing: true, ...extra });
-  // Light DJ's timer shapes, from the current value 25, rising.
+  // The automation timer shapes, from the current value 25, rising.
   const triangle = [0, 4, 8, 12].map((e) => automationValue(a('triangle'), 25, e));
   assert.deepEqual(triangle.map((v) => Math.round(v * 1e9) / 1e9), [25, 75, 75, 25]);
   const sine = [0, 2, 4, 6, 8].map((e) => automationValue(a('sine'), 25, e));
@@ -1045,7 +1045,7 @@ test('stopped pictures close fixture strobe channels', () => {
 // ── Resync, seek, epochs ────────────────────────────────────────────────────
 
 test('resync to the bar re-bases the transport', () => {
-  // Hue Dynamics' boundaries, in quarter-note beats.
+  // The resync boundaries, in quarter-note beats.
   assert.equal(resyncPosition(13.3, { beats: 4, unit: 4 }, 'bar'), 12);
   assert.equal(resyncPosition(13.6, { beats: 4, unit: 4 }, 'beat'), 14);
   assert.equal(resyncPosition(13.5, { beats: 4, unit: 4 }, 'beat'), 14, 'a tie goes away from zero');
@@ -1263,7 +1263,7 @@ test('worker snapshots pair transport with the matching sequence table', async (
     };
     w.postMessage({ type: 'snapshot', at: hrtimeMs(), input, reading: { beatPos: beat, bpm: 120, epoch: 0, moving: false }, outputs });
   };
-  // Light DJ's Blackout row on 10: dark there, the look elsewhere.
+  // The Blackout row on 10: dark there, the look elsewhere.
   const kill = validateSpec({ kind: 'energy.kill' });
   const r = rig();
   try {

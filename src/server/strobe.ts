@@ -10,7 +10,7 @@ import type { Voice, VoiceManager, VoiceMode, VoiceSummary, VoiceTargets } from 
 import type { EffectSpec } from '../shared/effects/types.ts';
 
 /**
- * The manual strobe: Hue Dynamics' hold strobe as one voice in the strobe
+ * The manual strobe: the hold strobe as one voice in the strobe
  * tier, held, latched under the cap (safety.strobeMaxLatchSec) or burst. A
  * hold over a latch keeps the latch hidden underneath until the hold is let
  * go; a stop ends both. Nothing starts before the acknowledgement.

@@ -22,7 +22,7 @@ import { getLiveState, setSequenceProvider } from '../../src/server/state.ts';
 const FADE = presetById('ldj.FadeCycle').spec;
 const GLOW = validateSpec({ kind: 'energy.glow', params: {} });
 const STROBE = presetById('palette-strobe').spec;
-// Hue Dynamics' Disco with its automatic strobe on (Drum and Bass), and Disco set by hand.
+// Disco with its automatic strobe on (Drum and Bass), and Disco set by hand.
 const DISCO_STROBING = presetById('hd.disco.drumAndBass').spec;
 function discoWith({ style, allowStrobe, strobeOnPeak }) {
   const params = structuredClone(presetById('hd.disco.pop').spec.params);
@@ -118,7 +118,7 @@ test('mute and solo', () => {
   // A solo narrows the sequence to the soloed lanes.
   const soloA = { ...base, lanes: [lane('a', { solo: true }), lane('b'), track('t10', 10)] };
   assert.deepEqual(winners(tableOf(sequence(soloA)), 1, ids), { 10: 'a1', 11: 'a1' });
-  // Hue Dynamics counts a solo before a mute: a muted solo lane plays nothing and still silences the rest.
+  // A solo counts before a mute: a muted solo lane plays nothing and still silences the rest.
   const mutedSolo = { ...base, lanes: [lane('a'), lane('b', { solo: true, mute: true }), track('t10', 10)] };
   assert.deepEqual(winners(tableOf(sequence(mutedSolo)), 1, ids), { 10: null, 11: null });
   // Two solos: both play, in their usual order.
@@ -222,7 +222,7 @@ test('sequence lanes obey shared and fixture ownership limits', () => {
   refused(() => validateSequence({ ...ok, lanes: [lane('a'), track('t', 3), track('u', 3)] }));
   refused(() => validateSequence({ ...ok, lanes: [lane('a'), { ...track('t', 3), fixtureId: undefined }] }));
   refused(() => validateSequence({ ...ok, lanes: [{ ...lane('a'), fixtureId: 3 }] }));
-  // No cap on lights: Hue Dynamics' ten-light limit is not this rig's.
+  // No cap on lights: a single bridge's ten-light limit is not this rig's.
   validateSequence({ ...ok, lanes: [lane('a'), ...Array.from({ length: 40 }, (_, i) => track(`t${i}`, i))] });
 
 });

@@ -17,7 +17,7 @@ import type { EffectResolver, SequencePattern } from './sequencer.ts';
 import type { PresetLookup, Voice, VoiceManager, VoiceMode, VoiceTargets } from './voices.ts';
 
 /**
- * Pads: Hue Dynamics' two banks of eight. Each pad plays a preset, a pattern
+ * Pads: two banks of eight. Each pad plays a preset, a pattern
  * (one voice of lanes and clips), the strobe, or drops a pattern into the
  * sequence; held, once or as a loop that a second press stops; on a grid of
  * its own (0 is now) and on the whole rig or some fixtures. The layout lives
@@ -29,7 +29,7 @@ import type { PresetLookup, Voice, VoiceManager, VoiceMode, VoiceTargets } from 
  *   loop   latched until the pad is pressed or toggled again
  */
 
-// Hue Dynamics' default: 240 of its 960 ticks to the beat.
+// The party default: 240 of the 960 ticks to the beat.
 export const DEFAULT_QUANTISE = 0.25;
 /** The token a REST press uses when it names none, so its bare release finds it. */
 export const REST_TOKEN = 'rest';
@@ -115,11 +115,11 @@ const fileSchema = z.object({ pads: layoutSchema, activeLayoutId: z.string().min
 const ordered = (pads: readonly PadEntry[]): PadEntry[] =>
   [...pads].sort((a, b) => (a.bank * PAD_SLOTS + a.slot) - (b.bank * PAD_SLOTS + b.slot));
 
-// A fresh install: the six energy effects and the strobe held, then Hue
-// Dynamics and Light DJ looks. None but the two energy strobes (and the
+// A fresh install: the six energy effects and the strobe held, then party
+// and entertainment looks. None but the two energy strobes (and the
 // strobe pad, the strobe's own) waits for the photosensitivity acknowledgement.
 // The energy effects and the strobe start on the press, as they always have;
-// the looks on Hue Dynamics' quarter beat.
+// the looks on the party quarter beat.
 const DEFAULTS: [content: PadContent, launch: PadLaunchMode, accent: string][] = [
   [{ kind: 'preset', id: 'energy.whiteStrobe' }, 'hold', '#FFFFFF'],
   [{ kind: 'preset', id: 'energy.colorStrobe' }, 'hold', '#F472B6'],

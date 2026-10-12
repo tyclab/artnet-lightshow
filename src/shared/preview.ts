@@ -811,7 +811,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       if (w.hardwareStrobeGuard.apply(String(fixtures[i]?.id ?? i), hardwareStrobe(flashes[u], e.hardware[i], t).previewLevel, t,
         { ...e.hardware[i], minTransitionMs: 0 }) === 0) dims[u] = 0;
     }
-    // Hue Dynamics' limit on its own kinds, on what each lamp puts out at its trim (the preview's master is full).
+    // The party flash limit on the hd.* kinds, on what each lamp puts out at its trim (the preview's master is full).
     if (guarded) {
       for (let u = 0; u < n; u++) {
         if (!hdGuarded(tops[u])) { w.guard.clear(u); continue; }

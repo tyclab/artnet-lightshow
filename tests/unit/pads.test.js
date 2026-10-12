@@ -106,11 +106,11 @@ test('the default layout has 16 entries', (t) => {
   assert.equal(PAD_COUNT, 16);
   assert.equal(layout.length, 16);
   assert.deepEqual(layout.map((p) => [p.bank, p.slot]), Array.from({ length: 16 }, (_, i) => [Math.floor(i / 8), i % 8]));
-  // Bank 0: the six energy effects under their canonical ids, the strobe, one Hue Dynamics preset.
+  // Bank 0: the six energy effects under their canonical ids, the strobe, one Party preset.
   assert.deepEqual(layout.slice(0, 6).map((p) => p.content),
     ['energy.whiteStrobe', 'energy.colorStrobe', 'energy.blinder', 'energy.uvWash', 'energy.kill', 'energy.glow'].map(preset));
   assert.deepEqual([layout[6].content, layout[6].launch], [{ kind: 'strobe', id: 'strobe' }, 'hold']);
-  // Then nine Hue Dynamics and Light DJ presets, both apps among them.
+  // Then nine Party and entertainment presets, both scopes among them.
   const nine = layout.slice(7).map((p) => presetById(p.content.id));
   assert.ok(nine.every((row) => row && !row.legacy && (row.app === 'hd' || row.app === 'ldj')));
   assert.equal(nine[0].app, 'hd');
@@ -121,7 +121,7 @@ test('the default layout has 16 entries', (t) => {
     if (p.content.kind === 'preset') assert.equal(p.label, presetById(p.content.id).name);
   }
   // The energy pads and the strobe start on the press, as the energy effects
-  // always have; the looks on Hue Dynamics' quarter beat.
+  // always have; the looks on the party quarter beat.
   assert.deepEqual(layout.map((p) => p.quantise), [0, 0, 0, 0, 0, 0, 0, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]);
   // A fresh install plays every pad but the two energy strobes before the
   // photosensitivity acknowledgement (the strobe pad is the strobe's own).
@@ -307,7 +307,7 @@ test('once ends after the preset\'s scoped loop length', async (t) => {
   assert.equal(m.get(short.id), null);
   assert.equal(after.untilMs - after.startedAtMs, 2500);
   assert.throws(() => pads.once(1, 0, -5), refusedWith(400));
-  // A Light DJ row plays its 32 beats, a hold pad played once included; a Studio row's kind would say a bar.
+  // An entertainment row plays its 32 beats, a hold pad played once included; a Studio row's kind would say a bar.
   put(1, 1, pad(preset('ldj.StudioN1')));
   const studio = pads.once(1, 1);
   assert.deepEqual([studio.mode, studio.untilMs - studio.startedAtMs], ['once', 16000]);
@@ -335,7 +335,7 @@ test('toggle on a loop pad starts, toggle again stops', (t) => {
   const v = pads.toggle(1, 2);
   assert.deepEqual([v.mode, v.untilMs, v.source, v.key], ['latched', null, 'pad', 'pad:1:2']);
   advance(10 * 60_000);
-  assert.ok(m.get(v.id), 'a loop plays until it is stopped, as Hue Dynamics\' loops do');
+  assert.ok(m.get(v.id), 'a loop plays until it is stopped, as the party loops do');
   assert.equal(pads.toggle(1, 2), null);
   assert.equal(m.get(v.id), null);
   assert.equal(pads.lit()[10], null);

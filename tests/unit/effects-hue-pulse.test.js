@@ -1,4 +1,4 @@
-// Hue lamps in pulse mode take Light DJ's hard flashes as the strobe's pulse:
+// Hue lamps in pulse mode take the entertainment hard flashes as the strobe's pulse:
 // full at the flash, falling to 40/255 over 200 ms and held, a long matrix
 // peak keeping its plateau and softening only its cut. Only the rows that
 // flash hard on dark lamps are marked; every authored fade, blend, background
@@ -57,7 +57,7 @@ test("Hue hard flashes decay to 148 then 40 after 100 and 200 ms", () => {
   const levels = [0, 50, 100, 200, 600].map((t) => h.draw(t));
   assert.deepStrictEqual(levels.map((out) => Math.round(255 * out[0].level)), [255, huePulseLevel(50), 148, 40, 40]);
   for (const out of levels) assert.deepStrictEqual([out[0].colour.r, out[0].colour.g, out[0].colour.b], [0, 255, 255], 'the flash\'s colour');
-  // The same lamp in flash mode is the hard flash Light DJ draws: on for 50 ms, then off.
+  // The same lamp in flash mode is the hard flash the row draws: on for 50 ms, then off.
   const hard = instance('ldj.TrueStrobe', row(1), { params: ONE_FLASH, palette: [CYAN] });
   assert.deepStrictEqual([0, 25, 50, 100].map((t) => hard.draw(t, 'flash')[0].level), [1, 1, 0, 0]);
 });
@@ -148,7 +148,7 @@ test("Tri-Pulse starts one tail when its final plateau ends", () => {
   close(out[950], FLOOR, 'at the floor, 40/255 of the peak above the rest\'s .1');
   close(out[1000], FLOOR, 'the next rest renews nothing');
   close(out[1250], FLOOR);
-  // Flash mode keeps Light DJ's own: the rest's .1 from 750.
+  // Flash mode keeps the row's own: the rest's .1 from 750.
   const hard = instance('ldj.TriPulse', row(1), { palette: [RED] });
   for (const t of times.slice(0, 5)) hard.draw(t, 'flash');
   close(hard.draw(750, 'flash')[0].level, Math.fround(0.1), 'flash mode: the authored rest');
