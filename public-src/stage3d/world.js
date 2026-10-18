@@ -20,6 +20,9 @@ export function planToWorld(p) {
 const isBulb = (fixture, profile) => fixture.group === 'room'
   || !!(profile && /hue/i.test(`${profile.manufacturer || ''} ${profile.id || ''}`));
 
+/** Haze shows only in a beam: a room of bulbs and strips has nothing for the slider to thicken. */
+export const hasBeams = (placed) => placed.lamps.some((lamp) => lamp.kind === 'par');
+
 function beamLength(from, aim) {
   if (aim.y < -1e-6) return Math.min(MAX_BEAM, from.y / -aim.y);
   if (aim.y > 1e-6) return Math.min(MAX_BEAM, (TRUSS_H + 2.5 - from.y) / aim.y);

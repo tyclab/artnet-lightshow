@@ -407,8 +407,27 @@ export interface LiveDevices {
   backend: string | null;
   outputs: string[];
   inputs: string[];
+  /** The backend's id beside each output and input (a PulseAudio sink's `auto_null`); empty when it has none. */
+  outputIds: string[];
+  inputIds: string[];
   defaultOutput: string | null;
   defaultInput: string | null;
+}
+
+/**
+ * The device the capture opens for `wanted`, or null — soundcard's own lookup
+ * in its order: the backend's id, then a substring of a name, then a name
+ * matched loosely (the characters of `wanted` in order, from its start). Case
+ * matters to the capture, so it matters here.
+ */
+function findLiveDevice(wanted: string, names: readonly string[], ids: readonly string[] = []): string | null {
+  const byId = ids.indexOf(wanted);
+  if (byId >= 0 && byId < names.length) return names[byId];
+  const within = names.find((name) => name.includes(wanted));
+  if (within !== undefined) return within;
+  const literal = (c: string) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const loose = new RegExp('^' + [...wanted].map(literal).join('.*'));
+  return names.find((name) => loose.test(name)) ?? null;
 }
 
 const LIST_TIMEOUT_MS = 20000;
@@ -440,6 +459,8 @@ function listLiveDevices({ spawner, scriptPath }: { spawner?: Spawner; scriptPat
             backend: msg.backend ?? null,
             outputs: Array.isArray(msg.outputs) ? msg.outputs.map(String) : [],
             inputs: Array.isArray(msg.inputs) ? msg.inputs.map(String) : [],
+            outputIds: Array.isArray(msg.outputIds) ? msg.outputIds.map(String) : [],
+            inputIds: Array.isArray(msg.inputIds) ? msg.inputIds.map(String) : [],
             defaultOutput: msg.defaultOutput ?? null,
             defaultInput: msg.defaultInput ?? null,
           });
@@ -451,5 +472,5 @@ function listLiveDevices({ spawner, scriptPath }: { spawner?: Spawner; scriptPat
   });
 }
 
-export { listLiveDevices };
+export { listLiveDevices, findLiveDevice };
 export default LiveInput;

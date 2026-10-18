@@ -7,6 +7,9 @@ import { spawn } from 'node:child_process';
 import { state, universeOf, wireUniverses, countUniverses } from './state.ts';
 import { getProfile } from './profiles.ts';
 import { fitIssue, footprintOf, overlaps, hasNoAddress } from '../shared/placement.ts';
+import { ddpRoutes } from './ddp-routes.ts';
+import { openrgbRoutes } from './openrgb-routes.ts';
+import type { Fixture } from '../types/rig.ts';
 import { MAX_UNIVERSES } from './universes.ts';
 import { settings } from './settings.ts';
 import type { Settings } from './settings.ts';
@@ -31,7 +34,7 @@ import * as pythonEnv from '../python-env.ts';
 import * as ytdlp from '../ytdlp.ts';
 import * as tools from '../tools.ts';
 import { codeOf, messageOf } from '../errors.ts';
-import { listLiveDevices } from '../live-input.ts';
+import { listLiveDevices, findLiveDevice } from '../live-input.ts';
 import { modelManager } from './model-manager.ts';
 import type { ModelManager, ModelRow } from './model-manager.ts';
 import type { LiveDevices } from '../live-input.ts';
@@ -144,7 +147,31 @@ function probeCommand(command: string, args: string[], timeoutMs = 5000): Promis
 
 // ── Individual checks ───────────────────────────────────────────────────────
 
-async function checkArtnet(): Promise<Check> {
+/** What the Art-Net check sends and listens with; the tests hand in stand-ins. */
+interface ArtnetProbes {
+  probe?: typeof probeSend;
+  discover?: typeof discoverNodes;
+  discovery?: Pick<typeof output.artnetDiscovery, 'active' | 'pollNow' | 'status'>;
+}
+
+/**
+ * What leaves as Art-Net: the wire universes no DDP or OpenRGB route carries
+ * (transmit.ts sends those to their device instead), and the fixtures on them.
+ * A rig of Hue lamps, WLED strips and PC devices has none, whatever the
+ * default universe is set to.
+ */
+function artnetLoad(): { universes: number[]; fixtures: Fixture[] } {
+  const own = new Set<number>();
+  for (const route of [...ddpRoutes(state.fixtures, getProfile, universeOf), ...openrgbRoutes(state.fixtures, getProfile, universeOf)]) {
+    for (const part of route.parts) own.add(part.universe);
+  }
+  const universes = wireUniverses().filter((u) => !own.has(u));
+  const fixtures = state.fixtures.filter((f) => !hasNoAddress(f)
+    && footprintOf(universeOf(f), f.address, getProfile(f)).some((part) => universes.includes(part.universe)));
+  return { universes, fixtures };
+}
+
+async function checkArtnet({ probe = probeSend, discover = discoverNodes, discovery = output.artnetDiscovery }: ArtnetProbes = {}): Promise<Check> {
   if (state.artnet.enabled === false) {
     return {
       id: 'artnet', label: 'Art-Net output', status: INFO,
@@ -153,7 +180,23 @@ async function checkArtnet(): Promise<Check> {
   }
 
   const target = { host: state.artnet.host, port: state.artnet.port, universe: state.artnet.universe };
-  const send = await probeSend(target);
+  const load = artnetLoad();
+  if (!load.fixtures.length) {
+    // Nothing on the rig listens for Art-Net, so no node answering is no news.
+    const by = (protocol: string) => state.fixtures.filter((f) => f.output?.protocol === protocol).length;
+    const carried = [[by('hue'), 'Hue'], [by('ddp'), 'DDP'], [by('openrgb'), 'OpenRGB']] as const;
+    const ways = carried.filter(([n]) => n > 0).map(([n, way]) => `${n} on ${way}`).join(', ');
+    const u = load.universes;
+    const leaving = u.length
+      ? `Only ${u.length === 1 ? 'universe' : 'universes'} ${u.join(', ')}, with no fixture on ${u.length === 1 ? 'it' : 'them'}, `
+        + `${u.length === 1 ? 'goes' : 'go'} to ${target.host}:${target.port}.`
+      : `No universe goes to ${target.host}:${target.port}.`;
+    return {
+      id: 'artnet', label: 'Art-Net output', status: INFO,
+      detail: `Nothing to check: ${ways ? `every fixture goes to its own device (${ways})` : 'no fixture is patched'}. ${leaving}`,
+    };
+  }
+  const send = await probe(target);
   if (!send.ok) {
     return {
       id: 'artnet', label: 'Art-Net output', status: FAIL,
@@ -166,12 +209,12 @@ async function checkArtnet(): Promise<Check> {
   // ask it for a fresh poll rather than binding the port a second time.
   let nodes;
   let error;
-  if (output.artnetDiscovery.active) {
-    output.artnetDiscovery.pollNow();
+  if (discovery.active) {
+    discovery.pollNow();
     await new Promise((r) => setTimeout(r, 1500));
-    ({ nodes, error } = output.artnetDiscovery.status());
+    ({ nodes, error } = discovery.status());
   } else {
-    ({ nodes, error } = await discoverNodes({ host: target.host, port: target.port }));
+    ({ nodes, error } = await discover({ host: target.host, port: target.port }));
   }
   if (error) {
     return {
@@ -194,7 +237,7 @@ async function checkArtnet(): Promise<Check> {
     detail: `${nodes.length} node${nodes.length === 1 ? '' : 's'} answered: `
       + nodes.map((n) => `${n.shortName || n.longName || 'unnamed'} at ${n.from} (${
         n.outputs && n.outputs.length > 1 ? `universes ${n.outputs.join(', ')}` : `universe ${n.universe}`})`).join(', ')
-      + (output.artnetDiscovery.active ? ' — each is sent its universes directly.' : ''),
+      + (discovery.active ? ' — each is sent its universes directly.' : ''),
     nodes,
   };
 }
@@ -845,14 +888,14 @@ function checkPlaybackSources({ spotify, prolink }: Pick<PreflightSubjects, 'spo
  * The live input, when it is on: a capture library the service can import,
  * and the device it is set to among those it finds.
  */
-async function checkLiveInput(): Promise<Check> {
+async function checkLiveInput({ list = listLiveDevices }: { list?: () => Promise<LiveDevices> } = {}): Promise<Check> {
   const config = settings.group('live');
   if (!config.enabled) {
     return { id: 'live', label: 'Live input', status: INFO, detail: 'Off. Turn it on in Settings → Live Input to follow the music by ear.' };
   }
   let devices: LiveDevices;
   try {
-    devices = await listLiveDevices();
+    devices = await list();
   } catch (err) {
     return {
       id: 'live', label: 'Live input', status: WARN, detail: messageOf(err),
@@ -866,16 +909,20 @@ async function checkLiveInput(): Promise<Check> {
       fix: 'Install it into the analysis Python: pip install soundcard',
     };
   }
-  const listed = config.source === 'loopback' ? devices.outputs : devices.inputs;
+  const loopback = config.source === 'loopback';
+  const listed = loopback ? devices.outputs : devices.inputs;
   const wanted = config.device;
-  if (wanted && !listed.some((name) => name.toLowerCase().includes(wanted.toLowerCase()))) {
+  // The capture opens the device by the backend's id as readily as by its name (live-input.ts).
+  const found = wanted ? findLiveDevice(wanted, listed, loopback ? devices.outputIds : devices.inputIds) : null;
+  if (wanted && !found) {
     return {
       id: 'live', label: 'Live input', status: WARN,
-      detail: `"${wanted}" is not among the ${config.source === 'loopback' ? 'outputs' : 'inputs'} (${listed.join(', ') || 'none'}).`,
+      detail: `"${wanted}" is not among the ${loopback ? 'outputs' : 'inputs'} (${listed.join(', ') || 'none'}).`,
       fix: 'Plug it in, or pick another in Settings → Live Input.',
     };
   }
-  const which = wanted || (config.source === 'loopback' ? devices.defaultOutput : devices.defaultInput) || 'the default device';
+  const which = found ? (found === wanted ? found : `${found} (${wanted})`)
+    : (loopback ? devices.defaultOutput : devices.defaultInput) || 'the default device';
   return {
     id: 'live', label: 'Live input', status: OK,
     detail: `${config.source === 'loopback' ? 'Hears what' : 'Listens to'} ${which}${config.source === 'loopback' ? ' plays' : ''} (${devices.backend}).`,
@@ -1046,6 +1093,8 @@ export {
   checkPatch,
   checkEngine,
   checkOutputsArmed,
+  checkArtnet,
+  checkLiveInput,
   checkSacn,
   checkHue,
   checkWled,

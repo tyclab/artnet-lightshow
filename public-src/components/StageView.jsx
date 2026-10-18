@@ -4,7 +4,7 @@ import { fmtTime, rigLights } from '../utils.js';
 import { useDmxFeed } from '../use-dmx.js';
 import { useTimeline } from '../use-timeline.js';
 import { useRehearsalTrack, useRehearsalSampler } from '../rehearsal.js';
-import { placeRig, roomRig, lightRGB, STAGE_W, STAGE_D, TRUSS_H } from '../stage3d/world.js';
+import { placeRig, roomRig, hasBeams, lightRGB, STAGE_W, STAGE_D, TRUSS_H } from '../stage3d/world.js';
 import { buildRig, rigSignature } from '../../src/shared/rig.ts';
 import { StageRoomPanel } from './StageRoomPanel.jsx';
 
@@ -175,11 +175,11 @@ export function StageView() {
           ))}
         </div>
         {room && <button type="button" class="btn sm" aria-pressed={cutaway} onClick={() => setCutaway(!cutaway)}>Cutaway walls</button>}
-        <label class="stage3d-haze">
+        {hasBeams(placed) && <label class="stage3d-haze">
           <span>Haze</span>
           <input type="range" min="0" max="100" value={haze} aria-valuetext={`${haze} percent`}
             onInput={(e) => setHaze(Number(e.target.value))} />
-        </label>
+        </label>}
         <span class="stage3d-sep" aria-hidden="true" />
         <button type="button" class={`btn sm ${rehearsing ? 'active' : ''}`} aria-pressed={rehearsing} disabled={!data}
           title={data ? 'Play the loaded track\'s show here, at any moment of it' : 'Rehearsal needs an analysed track'}

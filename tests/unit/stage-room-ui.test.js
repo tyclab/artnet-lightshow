@@ -6,7 +6,7 @@ import path from 'node:path';
 import esbuild from 'esbuild';
 import { PerspectiveCamera, Vector3 } from 'three';
 import { buildRig } from '../../src/shared/rig.ts';
-import { placeRig, roomRig, roomViews, meanLightRGB, TRUSS_H, STAGE_FOV } from '../../public-src/stage3d/world.js';
+import { placeRig, roomRig, roomViews, hasBeams, meanLightRGB, TRUSS_H, STAGE_FOV } from '../../public-src/stage3d/world.js';
 
 const profiles = { lamp: { channelMap: { red: 0 } }, bar: { cells: [{ channelMap: { red: 0 } }, { channelMap: { red: 1 } }] } };
 const fixtures = [{ id: 10, label: 'Lamp', profileId: 'lamp' }, { id: 20, label: 'Bar', profileId: 'bar' }];
@@ -148,4 +148,11 @@ test('unplaced fixtures expose a placement action', () => {
   const markup = ui.render(ui.h(ui.StageRoomPanel, { snapshot: { room: model, revision: 'current' }, fixtures, rig,
     coverage: roomRig(fixtures, rig, model), onChange() {} }));
   assert.equal((markup.match(/>Place<\/button>/g) || []).length, 2);
+});
+
+test('haze has a beam to show in only where a lamp is drawn as a par', () => {
+  const par = { ...fixtures[0], position: { x: 50, y: 50, height: 100 }, group: 'front' };
+  assert.equal(hasBeams(placeRig([par], profiles, buildRig([par], () => profiles.lamp))), true);
+  // A room places lamps as bulbs, so there is no beam for the haze to thicken.
+  assert.equal(hasBeams(roomRig(fixtures, rig, { ...model, bindings: [binding('a', 10)] })), false);
 });
