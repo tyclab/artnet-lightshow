@@ -731,6 +731,8 @@ button.cb-bpm-num:focus-visible { outline: 2px solid var(--accent); outline-offs
 .perform-arm-switch.armed { border-color: var(--green); background: rgba(16, 185, 129, .14); }
 .perform-arm-state { font-size: 18px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .perform-arm-hint { font-size: 13px; color: var(--muted); text-align: right; }
+.perform-picture { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+.perform-picture-hint { font-size: 13px; color: var(--muted); }
 .perform-arm-switch.armed .perform-arm-hint { color: var(--text-2); }
 
 .perform-gate { display: flex; }

@@ -8,6 +8,8 @@ const help = `Usage: node cli.js --browser-profile PATH --visualizer-url URL [op
 Default: display only, with no lightshow connection or fixture lease.
   --controls-url URL    Loopback Party Visuals api/state endpoint
   --curtain             Explicitly enable transient curtain pixel input
+  --room                Paint every placed lamp from the picture (one colour per unit at its plan position)
+  --room-width N --room-height N  Capture size the room picture is sampled from (default: 64 x 36)
   --preview             Save one local capture and exit, without a lease
   --output PATH         Preview PPM file (default: browser-pixel-preview.ppm)
   --fixture ID          Existing RGB DDP grid fixture (default: 53)
@@ -53,7 +55,7 @@ export async function preview(settings) {
 export async function run(settings, dependencies = {}) {
   const attach = dependencies.connectPage ?? connectPage, readState = dependencies.readControls ?? readControls;
   const stdin = dependencies.stdin ?? process.stdin, log = dependencies.log ?? console.log;
-  let stopped = false, browser = null, curtain = null, browserRetryAt = 0, ready = false;
+  let stopped = false, browser = null, curtain = null, room = null, browserRetryAt = 0, ready = false;
   let controls = { ok: false, visible: false }, controlsAt = -Infinity, lastStatus = '', input = '';
   const report = status => { if (status !== lastStatus) { lastStatus = status; log(status); } };
   const sourceReady = () => !stopped && ready && browser?.connected && controls.ok && performance.now() - controlsAt < 1500;
@@ -61,7 +63,12 @@ export async function run(settings, dependencies = {}) {
     const { connectCurtain } = await import('./curtain.js');
     curtain = await connectCurtain(settings, () => captureCanvas(browser, settings, controls.visible), sourceReady, report);
   }
-  const stop = () => { stopped = true; ready = false; void curtain?.pump.stop(); };
+  if (settings.room) {
+    const { connectRoom } = await import('./room.js');
+    const small = { ...settings, width: settings.roomWidth, height: settings.roomHeight, fit: 'cover' };
+    room = await connectRoom(settings, () => captureCanvas(browser, small, controls.visible), sourceReady, report);
+  }
+  const stop = () => { stopped = true; ready = false; void curtain?.pump.stop(); void room?.pump.stop(); };
   const onInput = chunk => {
     // Windows PowerShell's redirected stdin starts with a UTF-8 BOM.
     input = (input + chunk.toString()).replaceAll('﻿', '').slice(-100);
@@ -69,27 +76,29 @@ export async function run(settings, dependencies = {}) {
   };
   process.on('SIGINT', stop); process.on('SIGTERM', stop); stdin.on('data', onInput);
   const parentTimer = setInterval(() => { if (!parentAlive(settings.parentPid)) stop(); }, 1000);
-  report(settings.curtain ? 'Browser display with optional curtain output' : 'Browser display only; no lightshow connection');
+  report(settings.curtain || settings.room ? `Browser display with ${[settings.curtain && 'curtain', settings.room && 'room picture'].filter(Boolean).join(' and ')} output` : 'Browser display only; no lightshow connection');
   try {
     while (!stopped) {
       const started = performance.now();
       if (started - controlsAt >= 250) { controls = await readState(settings.controlsUrl); controlsAt = performance.now(); }
       if (!browser?.connected && started >= browserRetryAt) {
         try {
-          browser = await attach(settings.browserProfile, settings.visualizerUrl, () => { ready = false; void curtain?.pump.invalidate(); });
+          browser = await attach(settings.browserProfile, settings.visualizerUrl, () => { ready = false; void curtain?.pump.invalidate(); void room?.pump.invalidate(); });
         } catch { browser = null; browserRetryAt = performance.now() + 3000; report('Waiting for the dedicated Music Assistant browser'); }
       }
       if (!stopped && browser?.connected) {
         try {
           ready = (await browser.action({ mode: 'display', visible: controls.visible })).ok;
-          if (!settings.curtain) report(!controls.ok ? 'Controls unavailable; display covered' : ready ? controls.visible ? 'Music Assistant visible' : 'Music Assistant covered' : 'Waiting for Music Assistant login or player page');
+          if (!settings.curtain && !settings.room) report(!controls.ok ? 'Controls unavailable; display covered' : ready ? controls.visible ? 'Music Assistant visible' : 'Music Assistant covered' : 'Waiting for Music Assistant login or player page');
         } catch { ready = false; await browser.close(); browser = null; browserRetryAt = performance.now() + 1000; }
       } else ready = false;
       if (curtain) await curtain.pump.step();
-      await sleep(settings.curtain ? Math.max(10, curtain.pump.nextCaptureAt - performance.now(), 1000 / settings.fps) : 250);
+      if (room) await room.pump.step();
+      const pumps = [curtain, room].filter(Boolean).map((feed) => feed.pump);
+      await sleep(pumps.length ? Math.max(10, Math.min(...pumps.map((pump) => pump.nextCaptureAt)) - performance.now(), 1000 / settings.fps) : 250);
     }
   } finally {
-    clearInterval(parentTimer); await curtain?.stop(); await browser?.close();
+    clearInterval(parentTimer); await curtain?.stop(); await room?.stop(); await browser?.close();
     process.removeListener('SIGINT', stop); process.removeListener('SIGTERM', stop); stdin.removeListener('data', onInput); stdin.pause();
     report('Browser helper stopped; any pixel lease released or expiring');
   }

@@ -1,14 +1,24 @@
-const acceptedCodes = new Set(['DISARMED', 'BUSY', 'INVALID', 'RATE_LIMIT', 'NO_LEASE', 'ACKNOWLEDGEMENT_REQUIRED']);
+const acceptedCodes = new Set(['DISARMED', 'BUSY', 'INVALID', 'RATE_LIMIT', 'NO_LEASE', 'ACKNOWLEDGEMENT_REQUIRED', 'STALE']);
+
+/** The curtain panel's wire protocol: one fixture, a row-major RGB grid. */
+export const panelProtocol = {
+  events: { claim: 'pixel-input:claim', frame: 'pixel-input:frame', release: 'pixel-input:release' },
+  claim: (pump) => ({ fixtureId: pump.fixtureId, width: pump.width, height: pump.height }),
+  accepts: (pump, response) => response.format === 'rgb24' && response.order === 'row-major' && response.ttlMs === 2000 && Number.isFinite(response.maxFps) && response.maxFps >= 10,
+  frame: (pump, lease, data) => ({ fixtureId: pump.fixtureId, leaseId: lease.id, data }),
+  release: (pump, lease) => ({ fixtureId: pump.fixtureId, leaseId: lease.id }),
+  image: (pump, image) => image && image.width === pump.width && image.height === pump.height && image.data instanceof Uint8Array && image.data.length === pump.width * pump.height * 3 ? image.data : null,
+};
 
 export class LeasePump {
-  constructor({ transport, capture, target, fixtureId, width, height, fps = 10, now = () => performance.now(), report = () => {} }) {
-    Object.assign(this, { transport, capture, target, fixtureId, width, height, fps, now, report });
+  constructor({ transport, capture, target, fixtureId, width, height, fps = 10, now = () => performance.now(), report = () => {}, protocol = panelProtocol }) {
+    Object.assign(this, { transport, capture, target, fixtureId, width, height, fps, now, report, protocol });
     this.generation = 0; this.lease = null; this.busy = false; this.retryAt = 0; this.failures = 0; this.frames = 0; this.stopped = false;
     this.nextCaptureAt = 0;
   }
   async release(lease, connectionId) {
     if (!lease || !this.transport.connected || this.transport.id !== connectionId) return;
-    try { await this.transport.request('pixel-input:release', { fixtureId: this.fixtureId, leaseId: lease.id }); } catch {}
+    try { await this.transport.request(this.protocol.events.release, this.protocol.release(this, lease)); } catch {}
   }
   invalidate() {
     this.generation++;
@@ -39,11 +49,11 @@ export class LeasePump {
     const generation = this.generation, connectionId = this.transport.id, key = target.key;
     try {
       if (!this.lease) {
-        const response = await this.transport.request('pixel-input:claim', { fixtureId: this.fixtureId, width: this.width, height: this.height });
+        const response = await this.transport.request(this.protocol.events.claim, this.protocol.claim(this, target));
         if (!response?.ok) { this.backoff(acceptedCodes.has(response?.code) ? response.code : 'Pixel input unavailable'); return; }
-        const lease = { id: response.leaseId, key, connectionId };
+        const lease = { id: response.leaseId, key, connectionId, claim: response };
         if (typeof lease.id !== 'string' || !lease.id) throw new Error('Missing pixel lease identity');
-        if (response.format !== 'rgb24' || response.order !== 'row-major' || response.ttlMs !== 2000 || !Number.isFinite(response.maxFps) || response.maxFps < 10) {
+        if (!this.protocol.accepts(this, response)) {
           await this.release(lease, connectionId);
           throw new Error('Incompatible pixel input protocol');
         }
@@ -54,8 +64,9 @@ export class LeasePump {
       const image = await this.capture();
       if (!this.valid(generation, connectionId, key)) { await this.invalidate(); return; }
       if (this.now() - captureStarted > 500) throw new Error('Captured frame is stale');
-      if (!image || image.width !== this.width || image.height !== this.height || !(image.data instanceof Uint8Array) || image.data.length !== this.width * this.height * 3) throw new Error('Invalid captured pixels');
-      const response = await this.transport.request('pixel-input:frame', { fixtureId: this.fixtureId, leaseId: this.lease.id, data: image.data });
+      const data = this.protocol.image(this, image, this.lease);
+      if (!data) throw new Error('Invalid captured pixels');
+      const response = await this.transport.request(this.protocol.events.frame, this.protocol.frame(this, this.lease, data));
       if (!this.valid(generation, connectionId, key)) { await this.invalidate(); return; }
       if (!response?.ok) {
         await this.invalidate();

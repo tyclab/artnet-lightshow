@@ -410,6 +410,43 @@ dimensions and remaining time, without exposing ownership keys or pixel data.
 Fullscreen Chrome displays the native visualizer directly; the optional curtain
 feed reads that same canvas without a desktop capture or OBS process.
 
+### Room picture
+
+The same canvas can paint the whole rig. Perform's **Picture** selector (also
+Settings → Show → Picture Source, or `POST /api/picture/source` with
+`{ "source": "effects" | "visualizer" }`) chooses what the base layer paints
+from. With **Visualizer** selected, a sender claims the room picture over the
+authenticated socket and sends one RGB colour per rig unit, sampled from the
+picture at the unit's plan position: the plot's left-to-right is the picture's
+left-to-right and the plot's top (the room's front) is the picture's top, so a
+sweep across the screen sweeps across the room. Matrix panels keep their own
+pixel feed and ignore the room picture. Voices, pads, Identify, overrides and
+blackouts stay above it, the master and trims still apply, and two seconds
+without a frame shows the effects again; with **Effects** selected the frames
+are accepted and ignored, so switching is instant and needs no reconnect.
+
+```powershell
+node cli.js --browser-profile $profile --visualizer-url $url --room
+node cli.js --browser-profile $profile --visualizer-url $url --curtain --fixture 53 --width 68 --height 42 --room
+```
+
+`--room` captures a 64 × 36 cover-fitted copy (`--room-width`/`--room-height`)
+and averages a 3 × 3 box around each unit, so one bright pixel does not flicker
+a lamp. The helper asks the server for the unit list (`picture:units`, in the
+renderer's unit order with each cell's plan position and a rig signature) and
+claims against that signature; a re-patched or re-placed rig answers `STALE`,
+the helper fetches the units again and claims anew.
+
+| Event | Payload | Successful acknowledgement |
+| --- | --- | --- |
+| `picture:units` | none | `{ ok: true, signature, units, list: [{ fixture, cell, x, y, grid }] }` |
+| `picture:claim` | `{ signature }` | `{ ok: true, leaseId, units, ttlMs: 2000, maxFps: 20, format: 'rgb24', order: 'units' }` |
+| `picture:frame` | `{ leaseId, data }` | `{ ok: true }` — `data` is `units * 3` RGB bytes |
+| `picture:release` | `{ leaseId }` | `{ ok: true }` |
+
+One sender holds the picture at a time; `GET /api/picture` reports the selected
+source and the live lease without pixel data.
+
 ### OpenRGB
 
 Each device is a fixture, with one RGB cell per LED, on dedicated universes.

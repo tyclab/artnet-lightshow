@@ -103,7 +103,7 @@ test('the Perform view has blackout, the bank, the strobe, tap and stop all', ()
   assert.deepStrictEqual(names, ['Blackout', 'Tap', 'Stop all voices']);
   assert.deepStrictEqual(padLabels(html), ['Kill', 'Blinder', 'Strobe', 'Colour strobe', 'UV', 'Glow', 'Domino', 'Empty']);
   assert.match(html, /class="strobe-hold"/);
-  assert.strictEqual(count(html, 'aria-pressed="true"'), 3, 'the Override destination, Off and Play look are pressed');
+  assert.strictEqual(count(html, 'aria-pressed="true"'), 4, 'the Override destination, Off, the Play look and the Effects picture are pressed');
   assert.match(html, /aria-pressed="true" data-override="off"/, 'no palette override: Off is pressed');
   assert.match(html, /aria-label="Palette destination"/);
   assert.match(html, />Base<.*>Override</);

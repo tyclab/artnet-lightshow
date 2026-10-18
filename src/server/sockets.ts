@@ -16,6 +16,8 @@ import { HttpError, messageOf } from '../errors.ts';
 import { PROTOCOL, ROOM, TOPICS } from './protocol.ts';
 import { pixelInputs } from './pixel-input-live.ts';
 import { PixelInputError } from './pixel-input.ts';
+import { pictureInput, pictureUnits } from './picture-live.ts';
+import { PictureInputError } from './picture.ts';
 import type { Server, Socket } from 'socket.io';
 import type { MidiPorts } from './midi-connect.ts';
 import type { Publisher, Snapshot } from './protocol.ts';
@@ -134,6 +136,22 @@ function attachSockets(io: Server, { midi, integrations }: {
         if (typeof ack === 'function') ack(answer);
       } catch (err) {
         if (typeof ack === 'function') ack({ ok: false, code: err instanceof PixelInputError ? err.code : 'INVALID', error: messageOf(err) });
+      }
+    });
+    // The room picture shares the pixel-input budget: one sender, a few frames a second.
+    socket.on('picture:units', (ack?: (answer: unknown) => void) => { if (typeof ack === 'function') ack({ ok: true, ...pictureUnits() }); });
+    for (const operation of ['claim', 'frame', 'release'] as const) socket.on(`picture:${operation}`, (payload: unknown, ack?: (answer: unknown) => void) => {
+      const now = performance.now();
+      if (now - pixelWindow >= 1000) { pixelWindow = now; pixelMessages = 0; }
+      if (++pixelMessages > 60) {
+        if (typeof ack === 'function') ack({ ok: false, code: 'RATE_LIMIT', error: 'Too many picture messages' });
+        socket.disconnect(true); return;
+      }
+      try {
+        const answer = pictureInput[operation](socket.id, payload);
+        if (typeof ack === 'function') ack(answer);
+      } catch (err) {
+        if (typeof ack === 'function') ack({ ok: false, code: err instanceof PictureInputError ? err.code : 'INVALID', error: messageOf(err) });
       }
     });
     if (protocolOf(socket) === PROTOCOL) {
@@ -319,6 +337,7 @@ function attachSockets(io: Server, { midi, integrations }: {
 
     socket.on('disconnect', () => {
       pixelInputs.disconnect(socket.id);
+      pictureInput.disconnect(socket.id);
       voices.disconnect(socket.id);
       console.log('Client disconnected:', socket.id);
     });

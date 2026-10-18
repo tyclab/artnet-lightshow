@@ -86,6 +86,32 @@ function Progress({ duration }) {
  * stage view but nothing leaves the machine: the WLEDs and the Hue lamps are
  * the house's again. The server starts disarmed; a party arms it here.
  */
+/**
+ * What the base layer paints from: the show's effects, or the picture a sender (the
+ * browser helper's --room mode) samples at each lamp's plan position. Voices, pads,
+ * overrides and the matrix's own pixel feed sit above either; without frames the
+ * effects show through after two seconds.
+ */
+function PictureSwitch() {
+  const s = pick(['picture', 'armed']);
+  const source = s.picture?.source ?? 'effects';
+  const input = s.picture?.input ?? null;
+  const choose = (next) => api('/api/picture/source', { method: 'POST', body: JSON.stringify({ source: next }) });
+  const hint = source !== 'visualizer' ? 'the show\'s effects paint the room'
+    : !s.armed ? 'arm the outputs; the picture needs a live rig'
+      : input?.receiving ? `visualizer picture on ${input.units} lamp cells` : 'no picture arriving — effects show meanwhile';
+  return (
+    <section class="perform-picture" aria-label="Picture source">
+      <div class="segmented" role="group" aria-label="Picture source">
+        {[['effects', 'Effects'], ['visualizer', 'Visualizer']].map(([id, label]) => (
+          <button key={id} type="button" class={`segmented-btn ${source === id ? 'active' : ''}`} aria-pressed={source === id} onClick={() => choose(id)}>{label}</button>
+        ))}
+      </div>
+      <span class="perform-picture-hint">{hint}</span>
+    </section>
+  );
+}
+
 function ArmSwitch() {
   const s = pick(['armed']);
   const armed = !!s.armed;
@@ -233,6 +259,7 @@ export function Perform() {
   return (
     <div class="perform-view">
       <ArmSwitch />
+      <PictureSwitch />
       <StrobesOff perform />
       <Transport />
       <div class="perform-body">

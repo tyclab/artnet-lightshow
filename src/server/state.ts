@@ -7,6 +7,7 @@ import type { PaletteBody } from '../shared/palette-model.ts';
 import { PALETTES } from './palettes.ts';
 import { conductor } from './conductor.ts';
 import { isArmed } from './armed.ts';
+import { pictureInput } from './picture-live.ts';
 import { safety } from './safety.ts';
 import { HttpError } from '../errors.ts';
 import { footprintOf, universesOf, isInternalUniverse, placeAddressless } from '../shared/placement.ts';
@@ -393,6 +394,7 @@ function getLiveState() {
     universes: wireUniverses(),
     // Companion lights its arm button by this.
     armed: isArmed(),
+    picture: { source: settings.get('picture.source'), input: pictureInput.status() },
     fixtures: state.fixtures.map((f) => ({
       ...f,
       universe: universeOf(f),
