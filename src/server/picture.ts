@@ -1,0 +1,89 @@
+import { randomUUID } from 'node:crypto';
+import type { PictureFrame } from '../types/picture.ts';
+
+export const PICTURE_TTL_MS = 2000;
+export const PICTURE_MAX_FPS = 20;
+
+export interface PictureRig { signature: string; units: number }
+
+interface Lease { leaseId: string; owner: string; signature: string; units: number; expiresAt: number; lastFrame: number; data: Uint8Array | null }
+
+export class PictureInputError extends Error {
+  code: string;
+  constructor(code: string, message: string) { super(message); this.code = code; }
+}
+const refuse = (code: string, message: string): never => { throw new PictureInputError(code, message); };
+
+function record(raw: unknown, keys: readonly string[]): Record<string, unknown> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return refuse('INVALID', 'Expected an object');
+  const value = raw as Record<string, unknown>;
+  if (Object.keys(value).some((key) => !keys.includes(key))) return refuse('INVALID', 'Unknown picture field');
+  return value;
+}
+
+/**
+ * The room picture's single lease: one sender at a time paints every placed unit
+ * from a picture sampled at the unit's plan position. The lease is bound to the
+ * rig it was claimed against (its signature): a re-patched or re-placed rig ends it,
+ * so a sender always samples the positions the renderer will read.
+ */
+export class PictureInput {
+  private lease: Lease | null = null;
+  private now: () => number;
+  private armed: () => boolean;
+  private acknowledged: () => boolean;
+  private rig: () => PictureRig;
+  constructor({ now = () => performance.now(), armed, acknowledged, rig }: {
+    now?: () => number; armed: () => boolean; acknowledged: () => boolean; rig: () => PictureRig;
+  }) { this.now = now; this.armed = armed; this.acknowledged = acknowledged; this.rig = rig; }
+
+  private prune(): void {
+    if (!this.lease) return;
+    if (!this.armed() || !this.acknowledged()) { this.lease = null; return; }
+    const current = this.rig();
+    if (this.now() >= this.lease.expiresAt || current.signature !== this.lease.signature || current.units !== this.lease.units) this.lease = null;
+  }
+  claim(owner: string, raw: unknown) {
+    this.prune();
+    if (!this.armed()) return refuse('DISARMED', 'Outputs must already be armed');
+    if (!this.acknowledged()) return refuse('ACKNOWLEDGEMENT_REQUIRED', 'Acknowledge photosensitivity before an external picture');
+    const value = record(raw, ['signature']);
+    const current = this.rig();
+    if (typeof value.signature !== 'string' || value.signature !== current.signature) return refuse('STALE', 'The rig changed: fetch the units again');
+    if (this.lease && this.lease.owner !== owner) return refuse('BUSY', 'The picture already has a sender');
+    const lease = this.lease ?? { leaseId: randomUUID(), owner, signature: current.signature, units: current.units,
+      expiresAt: this.now() + PICTURE_TTL_MS, lastFrame: -Infinity, data: null };
+    this.lease = lease;
+    return { ok: true as const, leaseId: lease.leaseId, units: lease.units, ttlMs: PICTURE_TTL_MS, maxFps: PICTURE_MAX_FPS, format: 'rgb24', order: 'units' };
+  }
+  private owned(owner: string, raw: unknown, frame: boolean): Lease {
+    this.prune();
+    const value = record(raw, frame ? ['leaseId', 'data'] : ['leaseId']);
+    const lease = this.lease;
+    if (!lease || lease.owner !== owner || lease.leaseId !== value.leaseId) return refuse('NO_LEASE', 'No matching live picture lease');
+    return lease;
+  }
+  frame(owner: string, raw: unknown): { ok: true } {
+    const lease = this.owned(owner, raw, true), data = (raw as { data?: unknown }).data;
+    if (!(data instanceof Uint8Array) || data.byteLength !== lease.units * 3) return refuse('INVALID', 'Expected exact RGB24 bytes, one colour per unit');
+    const now = this.now();
+    if (now - lease.lastFrame < 1000 / PICTURE_MAX_FPS) return refuse('RATE_LIMIT', 'Picture frame rate exceeds 20 fps');
+    lease.data = Uint8Array.from(data); lease.lastFrame = now; lease.expiresAt = now + PICTURE_TTL_MS;
+    return { ok: true };
+  }
+  release(owner: string, raw: unknown): { ok: true } {
+    this.owned(owner, raw, false); this.lease = null; return { ok: true };
+  }
+  disconnect(owner: string): void { if (this.lease?.owner === owner) this.lease = null; }
+  clear(): void { this.lease = null; }
+  status() {
+    this.prune();
+    const lease = this.lease;
+    return lease ? { units: lease.units, remainingMs: Math.max(0, Math.ceil(lease.expiresAt - this.now())), receiving: lease.data !== null } : null;
+  }
+  current(clockShift = 0): PictureFrame | null {
+    this.prune();
+    const lease = this.lease;
+    return lease && lease.data ? { leaseId: lease.leaseId, signature: lease.signature, units: lease.units, expiresAt: lease.expiresAt + clockShift, data: lease.data } : null;
+  }
+}

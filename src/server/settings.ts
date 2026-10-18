@@ -115,6 +115,9 @@ const DEFAULTS: Settings = {
     armed: false,
     idleDisarmMin: 15,
   },
+  picture: {
+    source: 'effects',
+  },
   setup: {
     completed: false,
   },
@@ -280,6 +283,9 @@ const schema = z.object({
   outputs: z.object({
     armed: z.boolean(),
     idleDisarmMin: z.number().int().min(0).max(1440),
+  }).strict(),
+  picture: z.object({
+    source: z.enum(['effects', 'visualizer']),
   }).strict(),
   setup: z.object({
     completed: z.boolean(),

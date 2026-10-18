@@ -20,15 +20,16 @@ export function lightshowConfig(file) {
 }
 
 export function options(args, env = process.env) {
-  const result = { fixtureId: 53, width: 68, height: 42, fps: 10, fit: 'cover', preview: false, curtain: false, output: 'browser-pixel-preview.ppm', controlsUrl: 'http://127.0.0.1:9090/bundles/party-visuals/api/state' };
-  const names = { '--fixture': 'fixtureId', '--width': 'width', '--height': 'height', '--fps': 'fps', '--fit': 'fit', '--output': 'output', '--browser-profile': 'browserProfile', '--visualizer-url': 'visualizerUrl', '--controls-url': 'controlsUrl', '--nodecg-config': 'nodecgConfig', '--parent-pid': 'parentPid' };
+  const result = { fixtureId: 53, width: 68, height: 42, fps: 10, fit: 'cover', preview: false, curtain: false, room: false, roomWidth: 64, roomHeight: 36, output: 'browser-pixel-preview.ppm', controlsUrl: 'http://127.0.0.1:9090/bundles/party-visuals/api/state' };
+  const names = { '--fixture': 'fixtureId', '--width': 'width', '--height': 'height', '--room-width': 'roomWidth', '--room-height': 'roomHeight', '--fps': 'fps', '--fit': 'fit', '--output': 'output', '--browser-profile': 'browserProfile', '--visualizer-url': 'visualizerUrl', '--controls-url': 'controlsUrl', '--nodecg-config': 'nodecgConfig', '--parent-pid': 'parentPid' };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--help') { result.help = true; continue; }
     if (args[i] === '--preview' || args[i] === '--dry-run') { result.preview = true; continue; }
     if (args[i] === '--curtain') { result.curtain = true; continue; }
+    if (args[i] === '--room') { result.room = true; continue; }
     const key = names[args[i]], value = args[++i];
     if (!key || !value || value.startsWith('--')) throw new Error('Unknown or incomplete option; use --help');
-    result[key] = ['fixtureId', 'width', 'height', 'fps', 'parentPid'].includes(key) ? Number(value) : value;
+    result[key] = ['fixtureId', 'width', 'height', 'roomWidth', 'roomHeight', 'fps', 'parentPid'].includes(key) ? Number(value) : value;
   }
   if (result.help) return result;
   if (!Number.isInteger(result.fixtureId) || result.fixtureId < 0 || ![result.width, result.height].every(x => Number.isInteger(x) && x > 0 && x <= 256) || result.width * result.height > 4096) throw new Error('Invalid fixture or pixel grid');
@@ -41,9 +42,10 @@ export function options(args, env = process.env) {
   if (visualizer.search || route.pathname !== '/now-playing' || !route.searchParams.get('player') || [...route.searchParams.keys()].some(key => !['player', 'frameless'].includes(key))) throw new Error('Visualizer URL must select a now-playing player without credentials');
   const controls = validatedUrl(result.controlsUrl);
   if (controls.protocol !== 'http:' || !['127.0.0.1', '[::1]', 'localhost'].includes(controls.hostname) || controls.search || controls.hash || controls.pathname !== '/bundles/party-visuals/api/state') throw new Error('Controls must use the loopback Party Visuals state endpoint');
-  if (result.preview && result.curtain) throw new Error('Preview cannot enable curtain output');
+  if (![result.roomWidth, result.roomHeight].every(x => Number.isInteger(x) && x >= 8 && x <= 256)) throw new Error('Invalid room capture size');
+  if (result.preview && (result.curtain || result.room)) throw new Error('Preview cannot enable curtain or room output');
   result.nodecgConfig ??= env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'PartyVisuals', 'EclipseGraphics', 'cfg', 'party-visuals.json');
-  if (result.curtain && !result.nodecgConfig) throw new Error('Curtain mode requires the Party Visuals configuration path');
+  if ((result.curtain || result.room) && !result.nodecgConfig) throw new Error('Curtain and room modes require the Party Visuals configuration path');
   return result;
 }
 

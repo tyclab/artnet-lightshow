@@ -25,6 +25,7 @@ import type { SequenceFrame } from './sequencer.ts';
 import { validateSpec } from '../shared/effects/registry.ts';
 import { effectContentKey } from '../shared/effects/layer.ts';
 import { pixelInputs } from './pixel-input-live.ts';
+import { pictureInput } from './picture-live.ts';
 
 export type EngineThread = 'worker' | 'main';
 
@@ -206,6 +207,7 @@ function renderInput(): RenderInput {
     effectRevision,
     voices: voiceFrames(),
     pixelInputs: pixelInputs.frames(thread === 'worker' ? WORKER_CLOCK_SHIFT : 0),
+    picture: settings.get('picture.source') === 'visualizer' ? pictureInput.current(thread === 'worker' ? WORKER_CLOCK_SHIFT : 0) : null,
     paletteOverride: state.paletteOverride,
     basePalette: state.basePalette,
     overridePalette: state.overridePalette,

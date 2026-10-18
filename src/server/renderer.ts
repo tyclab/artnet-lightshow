@@ -40,6 +40,7 @@ import type { SequenceTable, SequenceTransport } from '../shared/effects/sequenc
 import type { AudioMode, EffectCommand, EffectSlot, EffectSpec, FrameBase, HdMaster, Seed } from '../shared/effects/types.ts';
 import type { ChannelDefault, ChannelMap, Colour, Expression, Override, PixelMap, Profile, PulseReading, ShowDynamics, StageFixture } from '../types/rig.ts';
 import type { PixelInputFrame } from '../types/pixel-input.ts';
+import type { PictureFrame } from '../types/picture.ts';
 
 export type { VoiceFrame } from '../shared/effects/layer.ts';
 export { effectContentKey };
@@ -102,6 +103,8 @@ export interface RenderInput {
   effectRevision?: number;
   voices?: VoiceFrame[];
   pixelInputs?: PixelInputFrame[];
+  /** The room picture, one colour per rig unit, when the show paints from the visualizer. */
+  picture?: PictureFrame | null;
   paletteOverride?: Colour[] | null;
   basePalette?: PaletteBody | null;
   overridePalette?: PaletteBody | null;
@@ -937,6 +940,9 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       .filter((p) => now < p.expiresAt && p.data instanceof Uint8Array && p.data.length === p.width * p.height * 3)
       .map((p) => [p.fixtureId, p]));
     const pixelOwners: (string | null)[] = new Array(rigNow.units.length).fill(null);
+    // The room picture paints every non-matrix unit below voices and overrides, as a pixel stream does its panel.
+    const art = input.safety.acknowledged && input.picture && now < input.picture.expiresAt
+      && input.picture.data instanceof Uint8Array && input.picture.data.length === rigNow.units.length * 3 ? input.picture : null;
     const watch = !!voiceTop || baseKinds || seqUnits;
     let guarded = false;
     let strobed = false;
@@ -948,8 +954,9 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       const profile = profileOf(fix), stream = pixels.get(fix.id);
       const pixel = stream && profile.grid?.columns === stream.width && profile.grid.rows === stream.height
         && profile.cells?.length === stream.width * stream.height ? stream : null;
+      const painted = art && !pixel && !profile.grid ? art : null;
       let first: EnergyLook | null = sync;
-      let clip = !!pixel;
+      let clip = !!pixel || !!painted;
       for (let u = start; u < start + count; u++) {
         if (seqUnits && seqLight[u] && !overridden && !pixel) clip = true;
         const voice = sync || !voiceTop ? null : voiceTop[u];
@@ -961,6 +968,9 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
           const at = (point.y * pixel.width + point.x) * 3;
           colour = { r: pixel.data[at], g: pixel.data[at + 1], b: pixel.data[at + 2], w: 0, a: 0, uv: 0 };
           pixelOwners[u] = `pixel:${pixel.leaseId}`;
+        } else if (painted && !top && !overridden) {
+          colour = { r: painted.data[u * 3], g: painted.data[u * 3 + 1], b: painted.data[u * 3 + 2], w: 0, a: 0, uv: 0 };
+          pixelOwners[u] = `picture:${painted.leaseId}`;
         }
         lights.push(lightOf(u, fix, top, fadeT, target, colour));
         if (!watch) continue;

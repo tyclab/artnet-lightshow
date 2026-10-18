@@ -35,3 +35,13 @@ test('credentials stay in files; tokenFile resolves relative to NodeCG root', ()
     assert.throws(() => lightshowConfig(file), error => !error.message.includes('private'));
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+
+test('--room is an output mode beside --curtain with its own capture size', () => {
+  const base = ['--browser-profile', '/profile', '--visualizer-url', 'http://10.0.0.1:8095/#/now-playing?player=p', '--nodecg-config', '/cfg/party-visuals.json'];
+  const both = options([...base, '--curtain', '--room', '--room-width', '32', '--room-height', '18']);
+  assert.equal(both.curtain, true); assert.equal(both.room, true); assert.equal(both.roomWidth, 32); assert.equal(both.roomHeight, 18);
+  assert.deepEqual([options([...base]).roomWidth, options([...base]).roomHeight, options([...base]).room], [64, 36, false]);
+  assert.throws(() => options([...base, '--room', '--room-width', '4']), /room capture size/);
+  assert.throws(() => options([...base, '--room', '--preview']), /Preview cannot/);
+});

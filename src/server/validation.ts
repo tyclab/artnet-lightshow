@@ -28,6 +28,8 @@ const fixturePosition = z.object({
   height: z.number().min(0).max(100).optional(),
 }).strict();
 const fixtureGroup = z.enum(FIXTURE_GROUPS);
+const pictureSourceSchema = z.object({ source: z.enum(['effects', 'visualizer']) }).strict();
+
 const fixtureGeometry = z.object({
   length: z.number().finite().min(1).max(100),
   angle: z.number().finite().min(-180).max(180),
@@ -422,6 +424,7 @@ export type ShowFile = z.output<typeof showSchema>;
 export type DeezerState = z.output<typeof deezerStateSchema>;
 
 export {
+  pictureSourceSchema,
   fixtureId,
   dmxUniverse,
   hexColour,

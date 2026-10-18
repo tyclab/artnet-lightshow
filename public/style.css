@@ -710,7 +710,7 @@ button.cb-bpm-num:focus-visible { outline: 2px solid var(--accent); outline-offs
 .perform-progress-fill { position: absolute; inset: 0 auto 0 0; background: var(--accent-fill); opacity: .4; }
 .perform-progress-time { position: relative; padding: 0 8px; font: 600 13px/24px var(--mono); }
 
-.perform-arm { display: flex; }
+.perform-arm { display: flex; gap: 8px; align-items: stretch; }
 .perform-arm-switch {
   flex: 1;
   display: flex;
@@ -731,6 +731,14 @@ button.cb-bpm-num:focus-visible { outline: 2px solid var(--accent); outline-offs
 .perform-arm-switch.armed { border-color: var(--green); background: rgba(16, 185, 129, .14); }
 .perform-arm-state { font-size: 18px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .perform-arm-hint { font-size: 13px; color: var(--muted); text-align: right; }
+/* Beside the arm switch, never below it: the first screen keeps its height on a phone. */
+.perform-picture { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 0; }
+.perform-picture-hint { font-size: 12px; color: var(--muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 560px) {
+  /* A phone's arm row keeps one line: the state word and the picture switch, no running text. */
+  .perform-picture-hint, .perform-arm-hint { display: none; }
+  .perform-arm-switch { min-height: 48px; }
+}
 .perform-arm-switch.armed .perform-arm-hint { color: var(--text-2); }
 
 .perform-gate { display: flex; }

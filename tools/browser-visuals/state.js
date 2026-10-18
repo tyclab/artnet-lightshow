@@ -21,12 +21,19 @@ export class StateMirror {
     this.versions.set(patch.d, patch.v);
     return true;
   }
-  target({ fixtureId, width, height }) {
+  /** What every sender needs before a lease: fresh state with a clock, armed outputs, the acknowledgement. */
+  base() {
     const state = this.state;
     if (!state || this.now() - this.receivedAt >= 1500) return { ok: false, reason: 'Waiting for fresh state' };
     if (!state.clock || ![state.clock.bpm, state.clock.beatPos, state.clock.at].every(Number.isFinite) || state.clock.bpm <= 0) return { ok: false, reason: 'Waiting for clock state' };
     if (state.armed !== true) return { ok: false, reason: 'Outputs disarmed' };
     if (state.safety?.photosensitivityAcknowledged !== true) return { ok: false, reason: 'Photosensitivity acknowledgement required' };
+    return { ok: true, state };
+  }
+  target({ fixtureId, width, height }) {
+    const checked = this.base();
+    if (!checked.ok) return checked;
+    const { state } = checked;
     const fixture = Array.isArray(state.fixtures) && state.fixtures.find(f => f.id === fixtureId);
     const profile = fixture && state.profiles?.[fixture.profileId];
     if (!fixture || fixture.output?.protocol !== 'ddp' || typeof fixture.output.host !== 'string' || !profile || profile.zoned || profile.grid?.columns !== width || profile.grid?.rows !== height || profile.cells?.length !== width * height) return { ok: false, reason: 'Target is not the expected full RGB DDP grid' };
