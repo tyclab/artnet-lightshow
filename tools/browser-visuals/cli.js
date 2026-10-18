@@ -80,7 +80,8 @@ export async function run(settings, dependencies = {}) {
   try {
     while (!stopped) {
       const started = performance.now();
-      if (started - controlsAt >= 250) { controls = await readState(settings.controlsUrl); controlsAt = performance.now(); }
+      // A timer can wake a hair early: a poll due this tick must not slip to the next one and act on stale controls.
+      if (started - controlsAt >= 240) { controls = await readState(settings.controlsUrl); controlsAt = performance.now(); }
       if (!browser?.connected && started >= browserRetryAt) {
         try {
           browser = await attach(settings.browserProfile, settings.visualizerUrl, () => { ready = false; void curtain?.pump.invalidate(); void room?.pump.invalidate(); });
