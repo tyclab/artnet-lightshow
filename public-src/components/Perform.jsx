@@ -101,14 +101,14 @@ function PictureSwitch() {
     : !s.armed ? 'arm the outputs; the picture needs a live rig'
       : input?.receiving ? `visualizer picture on ${input.units} lamp cells` : 'no picture arriving — effects show meanwhile';
   return (
-    <section class="perform-picture" aria-label="Picture source">
+    <div class="perform-picture" title={hint}>
       <div class="segmented" role="group" aria-label="Picture source">
         {[['effects', 'Effects'], ['visualizer', 'Visualizer']].map(([id, label]) => (
           <button key={id} type="button" class={`segmented-btn ${source === id ? 'active' : ''}`} aria-pressed={source === id} onClick={() => choose(id)}>{label}</button>
         ))}
       </div>
       <span class="perform-picture-hint">{hint}</span>
-    </section>
+    </div>
   );
 }
 
@@ -122,6 +122,7 @@ function ArmSwitch() {
         <span class="perform-arm-state">{armed ? 'Armed' : 'Disarmed'}</span>
         <span class="perform-arm-hint">{armed ? 'frames go out to the rig — tap to disarm' : 'nothing goes out to the rig — tap to arm'}</span>
       </button>
+      <PictureSwitch />
     </section>
   );
 }
@@ -259,7 +260,6 @@ export function Perform() {
   return (
     <div class="perform-view">
       <ArmSwitch />
-      <PictureSwitch />
       <StrobesOff perform />
       <Transport />
       <div class="perform-body">
