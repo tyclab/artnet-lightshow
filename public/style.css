@@ -735,7 +735,9 @@ button.cb-bpm-num:focus-visible { outline: 2px solid var(--accent); outline-offs
 .perform-picture { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 0; }
 .perform-picture-hint { font-size: 12px; color: var(--muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 560px) {
-  .perform-picture-hint { display: none; }
+  /* A phone's arm row keeps one line: the state word and the picture switch, no running text. */
+  .perform-picture-hint, .perform-arm-hint { display: none; }
+  .perform-arm-switch { min-height: 48px; }
 }
 .perform-arm-switch.armed .perform-arm-hint { color: var(--text-2); }
 
