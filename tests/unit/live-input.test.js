@@ -9,7 +9,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import { PassThrough } from 'node:stream';
 
-import LiveInput, { BAND_HZ_MAX, MAX_BANDS, listLiveDevices } from '../../src/live-input.ts';
+import LiveInput, { BAND_HZ_MAX, MAX_BANDS, listLiveDevices, findLiveDevice } from '../../src/live-input.ts';
 import { Conductor } from '../../src/server/conductor.ts';
 import { makeGrid } from '../../src/shared/beat-clock.ts';
 
@@ -467,8 +467,22 @@ test('the devices come from the service, and a failure says why', async () => {
   const listed = await listLiveDevices({ spawner: withOutput(`${JSON.stringify({
     type: 'devices', backend: 'soundcard', outputs: ['Speakers'], inputs: ['Line In'], defaultOutput: 'Speakers', defaultInput: null,
   })}\n`) });
-  assert.deepStrictEqual(listed, { backend: 'soundcard', outputs: ['Speakers'], inputs: ['Line In'], defaultOutput: 'Speakers', defaultInput: null });
+  assert.deepStrictEqual(listed, {
+    backend: 'soundcard', outputs: ['Speakers'], inputs: ['Line In'], outputIds: [], inputIds: [], defaultOutput: 'Speakers', defaultInput: null,
+  });
   await assert.rejects(listLiveDevices({ spawner: withOutput('', 1, 'ModuleNotFoundError: No module named numpy\n') }));
+});
+
+test('a device is found the way soundcard finds it: by id, then within a name, then loosely', () => {
+  const names = ['Null Output', 'Speakers (Realtek)'];
+  const ids = ['auto_null', 'alsa_output.pci-0000_00_1f.3.analog-stereo'];
+  assert.strictEqual(findLiveDevice('auto_null', names, ids), 'Null Output');
+  assert.strictEqual(findLiveDevice('Realtek', names, ids), 'Speakers (Realtek)');
+  assert.strictEqual(findLiveDevice('Spkrs', names, ids), 'Speakers (Realtek)');
+  assert.strictEqual(findLiveDevice('(', names), 'Speakers (Realtek)');
+  // Case matters to the capture, so a name typed in the wrong case will not open.
+  assert.strictEqual(findLiveDevice('speakers', names, ids), null);
+  assert.strictEqual(findLiveDevice('Line In', names, ids), null);
 });
 
 // ── The pattern clock ─────────────────────────────────────────────────────────

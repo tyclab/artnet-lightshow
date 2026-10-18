@@ -132,10 +132,16 @@ export const LIVE = {
         const loopback = valueOf('live.source') !== 'input';
         const devices = ctx.liveDevices || { outputs: [], inputs: [] };
         const names = (loopback ? devices.outputs : devices.inputs) || [];
-        return [
+        const ids = (loopback ? devices.outputIds : devices.inputIds) || [];
+        const options = [
           { value: '', label: loopback ? 'The default output' : 'The default input' },
           ...names.map((name) => ({ value: name, label: name })),
         ];
+        // A config may name the device by the backend's id (a PulseAudio sink's `auto_null`): show it by its name.
+        const current = valueOf('live.device');
+        const byId = current && !names.includes(current) ? ids.indexOf(current) : -1;
+        if (byId >= 0) options.push({ value: current, label: `${names[byId]} (${current})` });
+        return options;
       },
       missing: (value) => `${value} (not found)`,
       help: 'A device that is not plugged in now keeps its name and is used when it comes back.' },

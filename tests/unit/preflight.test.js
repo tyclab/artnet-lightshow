@@ -3,7 +3,9 @@ import assert from 'node:assert';
 
 import { state } from '../../src/server/state.ts';
 import * as output from '../../src/server/output.ts';
-import { checkPatch, checkSacn, checkHue, checkPanns, checkAccess, checkMidi, probeCommand, STATUSES } from '../../src/server/preflight.ts';
+import {
+  checkPatch, checkSacn, checkHue, checkPanns, checkAccess, checkMidi, checkArtnet, checkLiveInput, probeCommand, STATUSES,
+} from '../../src/server/preflight.ts';
 import { buildArtPoll, parseArtPollReply } from '../../src/server/artnet.ts';
 import { settings } from '../../src/server/settings.ts';
 
@@ -126,6 +128,86 @@ test('a fixture running past the end of its universe is a failure', () => {
 
   assert.strictEqual(result.status, STATUSES.FAIL);
   assert.ok(result.detail);
+});
+
+// ── Art-Net check ───────────────────────────────────────────────────────────
+
+async function withRig(fixtures, fn) {
+  const original = state.fixtures;
+  const enabled = state.artnet.enabled;
+  state.fixtures = fixtures;
+  state.artnet.enabled = true;
+  try { return await fn(); } finally { state.fixtures = original; state.artnet.enabled = enabled; }
+}
+
+// Stand-ins that fail the test if the check reaches for the network.
+const unreachable = {
+  probe: async () => { throw new Error('the check probed'); },
+  discover: async () => { throw new Error('the check polled'); },
+  discovery: { active: false, pollNow() { throw new Error('the check polled'); }, status: () => ({ nodes: [], error: null }) },
+};
+
+test('Art-Net has nothing to check when every fixture goes to its own device', async () => {
+  const result = await withRig([
+    fixture({ id: 0, label: 'Lamp', output: { protocol: 'hue', bridge: 'b', lamp: '1' } }),
+    fixture({ id: 1, label: 'Strip', address: 1, universe: 1, output: { protocol: 'ddp', host: '10.0.0.2' } }),
+    fixture({ id: 2, label: 'Keyboard', address: 1, universe: 2, output: { protocol: 'openrgb', host: '10.0.0.3', device: 0, name: 'K', leds: 4 } }),
+  ], () => checkArtnet(unreachable));
+
+  assert.strictEqual(result.status, STATUSES.INFO);
+  assert.match(result.detail, /every fixture goes to its own device \(1 on Hue, 1 on DDP, 1 on OpenRGB\)/);
+  // The default universe still leaves, empty; the detail says so rather than hiding it.
+  assert.match(result.detail, new RegExp(`Only universe ${state.artnet.universe}, with no fixture on it, goes to `));
+});
+
+test('a fixture on a plain universe keeps the Art-Net poll, and silence is a warning', async () => {
+  const quiet = { ...unreachable, probe: async () => ({ ok: true }), discover: async () => ({ nodes: [], error: null }) };
+  const result = await withRig([fixture({ id: 0, label: 'PAR', address: 1, universe: 0 })], () => checkArtnet(quiet));
+
+  assert.strictEqual(result.status, STATUSES.WARN);
+  assert.match(result.detail, /no node answered a poll/);
+});
+
+test('a node answering the poll passes the Art-Net check', async () => {
+  const answered = {
+    ...unreachable,
+    probe: async () => ({ ok: true }),
+    discover: async () => ({ nodes: [{ shortName: 'DMX-1', from: '192.168.1.50', universe: 0 }], error: null }),
+  };
+  const result = await withRig([fixture({ id: 0, label: 'PAR', address: 1, universe: 0 })], () => checkArtnet(answered));
+
+  assert.strictEqual(result.status, STATUSES.OK);
+  assert.match(result.detail, /DMX-1 at 192\.168\.1\.50/);
+});
+
+// ── Live input check ────────────────────────────────────────────────────────
+
+function withLive(t, live) {
+  const group = settings.group.bind(settings);
+  t.mock.method(settings, 'group', (name) => (name === 'live'
+    ? { enabled: true, source: 'loopback', device: '', latencyMs: 0, autoSync: true, director: true, ...live }
+    : group(name)));
+}
+
+const pulse = async () => ({
+  backend: 'soundcard', outputs: ['Null Output'], outputIds: ['auto_null'], inputs: [], inputIds: [],
+  defaultOutput: 'Null Output', defaultInput: null,
+});
+
+test('the live device is accepted the way the capture opens it: by the backend id as well as by name', async (t) => {
+  withLive(t, { device: 'auto_null' });
+  const result = await checkLiveInput({ list: pulse });
+
+  assert.strictEqual(result.status, STATUSES.OK);
+  assert.match(result.detail, /Hears what Null Output \(auto_null\) plays/);
+});
+
+test('a live device the capture cannot open is a warning', async (t) => {
+  withLive(t, { device: 'Speakers' });
+  const result = await checkLiveInput({ list: pulse });
+
+  assert.strictEqual(result.status, STATUSES.WARN);
+  assert.match(result.detail, /"Speakers" is not among the outputs \(Null Output\)/);
 });
 
 // ── sACN check ──────────────────────────────────────────────────────────────

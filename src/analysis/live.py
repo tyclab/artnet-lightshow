@@ -280,12 +280,19 @@ def _sounddevice():
 
 
 def list_devices():
+    """The devices by name, with the backend's id beside each: a config may name
+    one either way (PulseAudio's `auto_null` is "Null Output"), and
+    get_speaker/get_microphone open it by either."""
     sc = _soundcard()
     if sc is not None:
+        speakers = sc.all_speakers()
+        mics = sc.all_microphones(include_loopback=False)
         return {
             'type': 'devices', 'backend': 'soundcard',
-            'outputs': [s.name for s in sc.all_speakers()],
-            'inputs': [m.name for m in sc.all_microphones(include_loopback=False)],
+            'outputs': [s.name for s in speakers],
+            'outputIds': [str(s.id) for s in speakers],
+            'inputs': [m.name for m in mics],
+            'inputIds': [str(m.id) for m in mics],
             'defaultOutput': _name(sc.default_speaker),
             'defaultInput': _name(sc.default_microphone),
         }
@@ -294,12 +301,12 @@ def list_devices():
         devices = sd.query_devices()
         return {
             'type': 'devices', 'backend': 'sounddevice',
-            'outputs': [],
-            'inputs': [d['name'] for d in devices if d.get('max_input_channels', 0) > 0],
+            'outputs': [], 'outputIds': [],
+            'inputs': [d['name'] for d in devices if d.get('max_input_channels', 0) > 0], 'inputIds': [],
             'defaultOutput': None,
             'defaultInput': None,
         }
-    return {'type': 'devices', 'backend': None, 'outputs': [], 'inputs': [],
+    return {'type': 'devices', 'backend': None, 'outputs': [], 'outputIds': [], 'inputs': [], 'inputIds': [],
             'defaultOutput': None, 'defaultInput': None}
 
 

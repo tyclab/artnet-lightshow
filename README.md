@@ -1205,7 +1205,10 @@ and cannot be set or changed here.
 Run `npm run preflight` or use the Preflight view. Checks cover patch/output
 configuration, Art-Net nodes, sACN conflicts, Hue, WLED/OpenRGB, MIDI, playback
 sources, Python imports, models, ffmpeg and download tools. Missing required
-models may be downloaded in the background.
+models may be downloaded in the background. Art-Net has nothing to check when
+every fixture goes to its own device (Hue, DDP, OpenRGB) and only an empty
+universe leaves. The live input accepts its device the way the capture opens
+it: by the backend's id (`auto_null`) as well as by name.
 
 | Result | Meaning |
 |--------|---------|

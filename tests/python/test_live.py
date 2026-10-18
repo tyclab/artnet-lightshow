@@ -165,6 +165,22 @@ class Sources(unittest.TestCase):
         states = [x for x in lines if x['type'] == 'state']
         self.assertAlmostEqual(states[-1]['captured'], 200 * 256 / 22050.0, places=3)
 
+    def test_devices_carry_the_backend_id_beside_each_name(self):
+        from analysis import live
+
+        class Device:
+            def __init__(self, id, name):
+                self.id, self.name = id, name
+
+        null = Device('auto_null', 'Null Output')
+        fake = mock.Mock(all_speakers=lambda: [null], all_microphones=lambda include_loopback=False: [],
+                         default_speaker=lambda: null, default_microphone=mock.Mock(side_effect=RuntimeError('none')))
+        with mock.patch.object(live, '_soundcard', return_value=fake):
+            listed = live.list_devices()
+        self.assertEqual((listed['outputs'], listed['outputIds']), (['Null Output'], ['auto_null']))
+        self.assertEqual((listed['inputs'], listed['inputIds']), ([], []))
+        self.assertEqual((listed['defaultOutput'], listed['defaultInput']), ('Null Output', None))
+
     def test_no_sound_card_library_is_an_error_not_a_hang(self):
         from analysis import live
         out = io.StringIO()

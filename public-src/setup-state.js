@@ -63,7 +63,9 @@ function lister(path, pick, empty) {
 }
 
 export const networkInterfaces = lister('/api/network/interfaces', (d) => d.interfaces || [], []);
-export const liveDevices = lister('/api/live/devices', (d) => ({ outputs: d.outputs || [], inputs: d.inputs || [] }), { outputs: [], inputs: [] });
+export const liveDevices = lister('/api/live/devices', (d) => ({
+  outputs: d.outputs || [], inputs: d.inputs || [], outputIds: d.outputIds || [], inputIds: d.inputIds || [],
+}), { outputs: [], inputs: [], outputIds: [], inputIds: [] });
 
 export const post = (path, body, method = 'POST') => api(path, { method, body: JSON.stringify(body ?? {}) });
 
