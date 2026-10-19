@@ -159,3 +159,29 @@ test('rapid mixed-palette voice handovers keep emitted Hue RGB and rehearsal his
   for (const { t, lights } of [...frames, ...frames.toReversed()]) assert.deepEqual(sample(t, [fixture], COLOR_PRESETS, rig), lights, `handover at ${t}`);
   assertRate(frames);
 });
+
+
+test('40 ms Hue transitions constrain the emitted RGB of mixed colour and white', () => {
+  const measure = hueLightMeasure(HUE_COLOR, HUE_COLOR.channelMap), guard = new HardwareGuard();
+  const limits = { maxFlashHz: 5, minTransitionMs: 40 }, mixed = { r: 255, g: 255, b: 255, w: 255, a: 0, uv: 0 };
+  const first = guard.light('lamp', mixed, 255, 0, limits, 'same', false, measure);
+  const emitted = measure(first.colour, first.dim, 1);
+  assert.ok(emitted > .5 && emitted <= FRAME_MS / 40, `first emitted level ${emitted}`);
+  const next = guard.light('lamp', mixed, 255, 25, limits, 'same', false, measure);
+  assert.equal(measure(next.colour, next.dim, 1), 1);
+});
+
+test('40 ms ambiance transitions follow visible white changes while raw colour and dimmer remain full', () => {
+  const measure = hueLightMeasure(HUE_AMBIANCE, HUE_AMBIANCE.channelMap), guard = new HardwareGuard();
+  const limits = { maxFlashHz: 5, minTransitionMs: 40 };
+  const white = { r: 0, g: 0, b: 255, w: 255, a: 0, uv: 0 }, blue = { ...white, w: 0 };
+  const level = (colour, t) => { const result = guard.light('lamp', colour, 255, t, limits, 'same', false, measure); return measure(result.colour, result.dim, 1); };
+  level(white, 0);
+  assert.equal(level(white, 25), 1);
+  const falling = level(blue, 50);
+  assert.ok(falling > 0 && falling <= 1 - 25 / 40, `white fading tail ${falling}`);
+  for (let t = 75; t <= 225; t += 25) assert.equal(level(blue, t), 0);
+  const rising = level(white, 250);
+  assert.ok(rising > 0 && rising <= 25 / 40, `white returning level ${rising}`);
+  assert.equal(level(white, 275), 1);
+});

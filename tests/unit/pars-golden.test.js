@@ -16,44 +16,20 @@ import { createPreviewSampler } from '../../src/shared/preview.ts';
 import AutoShow from '../../src/auto-show.ts';
 import { acknowledgeFlashes } from '../helpers/acknowledged.js';
 
-// The hashes have changed four times, each time on purpose.
-//
-// 1. The engine: the built-in par's dimmer is 16-bit, and its fine channel
-//    used to be written 0. It now carries the low byte of the level
-//    (renderer.js writeDimmer), and the coarse byte is that level's high byte
-//    rather than its rounding. With the fine write taken back out, every frame
-//    matched the hash taken before the pixel work (e2498330…1dad).
-//
-// 2. All three, when the show for a rig of pars was improved rather than kept
-//    (engine 1e425b3f…9c97, preview d6cfb977…ed2a, director 439b3a25…c419
-//    before it):
-//      - `stack-up` fills in N steps rather than N + 1, so a stack of four
-//        lamps is a bar of quarters instead of drifting a step against the
-//        bar every time round with the downbeat dark. That alone is what
-//        changed in the frames and colours the hashes already covered: with
-//        the old stack put back (and the engine's new scenes below left out),
-//        both match their hashes before it.
-//      - the director lays the chorus and the drop mirrored about the centre
-//        of the stage, stacks a build-up out from the middle, says on every
-//        scene how it is laid out, brings a long passage back to its own look
-//        at the top of every phrase, offers the pictures drawn for bars that
-//        read on a handful of lamps, and rests on a gradient or a plasma as
-//        well as a ribbon, a fade or a wave (show-pars.test.js).
-//    The engine hash also now covers what that added: looks laid mirrored,
-//    and `hit` following the drums.
-//
-// 3. The director's, when it came to hash the plan's fractions to ten digits
-//    (toTenDigits, below) rather than to the last bit: on Node 24 one level
-//    in one track came out a unit in the last place away from Node 22's. The
-//    plan did not change — hashed to the bit on Node 22 it is still
-//    880194d8…b17c — and both Nodes now hash it the same.
-// 4. Hardware admission now limits Hue to 5 Hz and 40 ms transitions and
-//    renders legacy strobes on Hue. Comparing all 2,908 frames against 2b3c8a4
-//    (engine b825f49a…c1d) changed only Hue bytes 48–58. The additional par
-//    digest is taken from that deployed baseline, retaining its exact output.
-//    Falling transitions retain colour; explicit cuts and exclusions remain immediate.
+// Intentional hash changes, each checked against the prior rendering:
+// 1. Write both bytes of the PAR's 16-bit dimmer instead of leaving its fine byte zero.
+// 2. Stack-up uses N steps for N lamps; the director gained mirrored layouts,
+//    phrase changes and drum-driven hits. Reverting stack-up restored the old hashes.
+// 3. Hash director fractions to ten significant digits: V8's Math.pow rounding
+//    changed between Node 22 and 24, while the planned show stayed the same.
+// 4. Hue admission gained 5 Hz/40 ms limits and software strobes. All 2,908
+//    frames differed only at Hue offsets 48–58 versus 2b3c8a4; the separate PAR
+//    digest pins its unchanged bytes. Ordinary falling transitions retain colour.
+// 5. Final emitted-light admission changes only Hue offsets 48–56 across 2,908
+//    frames (159 with different emitted RGB), respecting mixed-emitter and
+//    white-to-nonwhite transitions. Every PAR byte and its digest remain unchanged.
 const GOLDEN = {
-  engine: '5a5c5d56456b5abdc26613202adb7b384cc0328d89bc705217680e50a2f40cf3',
+  engine: '6f56aa0be51bef93e6482ea70a1eaeedcc53ae4d263d57b576b9cfbabc0dcbff',
   pars: 'f09adeceba236949a3dbf0326a7f37186921a63d97fc0ec33c90bc3e0920db51',
   preview: '65bd25548046cbe773dba9b0fee279aa99c3fc922498d7cfb965724057119178',
   director: '1c05f05e93b67859d56e850ddd4f178fdab4c366e8c7c22b1a0ba82f15e6b978',
