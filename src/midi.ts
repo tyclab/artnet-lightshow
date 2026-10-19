@@ -118,24 +118,24 @@ const LEARN_CONFIRM_MS = 2000;
 const clearRing = (value: number): number => (value >= 64 ? 96 : 32);
 
 export interface LookRow {
-    id: string;
-    pixel?: boolean;
-    app?: string;
-    party?: boolean;
-    rapidFlash?: boolean;
+  id: string;
+  pixel?: boolean;
+  app?: string;
+  party?: boolean;
+  rapidFlash?: boolean;
 }
 
 export interface MidiBusk {
-    looks(): readonly LookRow[];
-    palettes(): readonly string[];
-    acknowledged(): boolean;
-    stopEffects(): unknown;
-    strobeBurst(ms: number): unknown;
-    strobeRate(): number;
-    setStrobeRate(hz: number): unknown;
-    strobeMaxRate: number;
-    autoShowOn(): boolean;
-    toggleAutoShow(): unknown;
+  looks(): readonly LookRow[];
+  palettes(): readonly string[];
+  acknowledged(): boolean;
+  stopEffects(): unknown;
+  strobeBurst(ms: number): unknown;
+  strobeRate(): number;
+  setStrobeRate(hz: number): unknown;
+  strobeMaxRate: number;
+  autoShowOn(): boolean;
+  toggleAutoShow(): unknown;
 }
 
 const DIVISIONS = [1, 2, 4, 8, 16];
@@ -151,7 +151,7 @@ type ColorSlot = typeof COLOR_SLOTS[number];
 const slotOf = (value: unknown): ColorSlot | null => COLOR_SLOTS.find((slot) => slot === value) ?? null;
 
 const LIT_COLORS = COLOR_PRESETS.map((c, i) => ({ c: c as Record<string, unknown>, i }))
-    .filter(({ c }) => ['r', 'g', 'b', 'w', 'a', 'uv'].some((k) => Number(c[k]) > 0)).map(({ i }) => i);
+  .filter(({ c }) => ['r', 'g', 'b', 'w', 'a', 'uv'].some((k) => Number(c[k]) > 0)).map(({ i }) => i);
 
 const wrapIndex = (i: number, n: number): number => ((i % n) + n) % n;
 

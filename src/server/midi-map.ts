@@ -63,6 +63,7 @@ const ACTIONS: MidiAction[] = [
 
 const ACTION_IDS = ACTIONS.map((a) => a.id);
 const ACTION_BY_ID = new Map(ACTIONS.map((a) => [a.id, a]));
+const DISCRETE_ACTIONS = new Set(['browsePattern', 'browseEffect', 'browseColor', 'browseBeatDivision', 'browseBarsPattern', 'browsePalette']);
 
 function defaultTypeFor(actionId: string): 'relative' | 'absolute' {
   const action = ACTION_BY_ID.get(actionId);
@@ -80,6 +81,9 @@ const bindingSchema = z.object({
   bank: z.number().int().min(0).max(1).optional(),
   slot: z.number().int().min(0).max(7).optional(),
 }).strict().superRefine((b, ctx) => {
+  if (DISCRETE_ACTIONS.has(b.action) && b.scale !== undefined && !Number.isInteger(b.scale)) {
+    ctx.addIssue({ code: 'custom', path: ['scale'], message: 'browsing steps require a whole-number scale' });
+  }
   if (b.action === 'padPress' && (b.bank === undefined || b.slot === undefined)) {
     ctx.addIssue({ code: 'custom', path: ['bank'], message: 'a pad binding names its bank and slot' });
   }

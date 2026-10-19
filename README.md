@@ -11,6 +11,41 @@ the [MIT license](LICENSE). It combines reviewed upstream improvements with
 Tyclab’s own workflows and deployment revisions. An upstream release is not
 a Tyclab Lightshow release.
 
+## Upstream integration
+
+This consolidation was reviewed against LightD31's
+[`b6f7f28`](https://github.com/LightD31/artnet-lightshow/commit/b6f7f2812d28ef1e0d40b19c64d9c59a8ea23a6f)
+(8 October 2026). Tyclab retains its Music Assistant pixel input, Stage rooms
+and screens, hardware capability/admission policies, saved sequences and
+Fire/Ice effect catalogue. New upstream work is reviewed by behavior and
+regression tests before integration; a different commit history does not mean
+a performance fix is missing.
+
+| Upstream work | Consolidated behavior |
+|---------------|-----------------------|
+| `6299390`, `d01c20b`, `e17b3fa` | Existing frame deadlines, whole-frame worker publication and live-input restart cleanup retained |
+| `ba641f5`, `cff5f5e`, `56f7ec9`, `87c66b8`, `b34a3eb` | Existing tempo-follow, manual tempo hold and cross-screen phase fixes retained |
+| `0f72767`, `f69d7cf`, `5ec4c55`, `d2458be` | Proxy authentication/manifest fixes and dependency security updates retained |
+| `86d505e`, `59f4e60`, `60b02cb`, `5ad78c2` | Explicit MIDI ports, encoder detection, MIDI/Companion show controls and UI fixes integrated; classic MIDI mappings retained by default |
+| `a9ea36d`, `a7a1bc9`, `cea505b` | Capability-derived Hue profiles and ordered sections integrated with legacy migration that preserves fixture identities |
+| `64b104b` | WLED and OpenRGB use internal allocation without operator-facing DMX addresses |
+| `89b62d9`, `0f222a1` | Drawn strobe programs integrated with hardware and shared flash guards after program rendering |
+
+Upstream's removal of legacy Hue fixtures and restored comment-heavy files
+are not adopted. Existing shows keep their references; legacy lamp profiles
+remain available until the operator refreshes capabilities. Emission geometry
+is explicit: bulbs, strips and directional beams can use any output protocol.
+Every startup remains disarmed.
+
+```mermaid
+flowchart LR
+  Upstream[Incoming upstream commits] --> Review[Behavior and performance review]
+  Fork[Tyclab workflows and saved shows] --> Review
+  Review --> Adapt[Integrate improvements and preserve migrations]
+  Adapt --> Tests[Safety / protocol / browser regressions]
+  Tests --> Release[Tyclab Lightshow build]
+```
+
 ## Signal flow
 
 ```mermaid

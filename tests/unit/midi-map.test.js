@@ -23,6 +23,18 @@ test('the built-in default is a valid map', () => {
   assert.doesNotThrow(() => mapSchema.parse(DEFAULT_MAP));
 });
 
+test('browse scales cannot produce fractional indices, while BPM nudges can stay fractional', () => {
+  const s = store();
+  const original = structuredClone(s.get());
+  for (const action of ['browsePattern', 'browseEffect', 'browseColor', 'browseBeatDivision', 'browseBarsPattern', 'browsePalette']) {
+    assert.throws(() => s.setBinding('cc', 70, { action, type: 'relative', scale: 0.5 }), /whole-number scale/);
+    assert.deepStrictEqual(s.get(), original);
+    assert.doesNotThrow(() => mapSchema.parse({ cc: { 70: { action, scale: 2 } }, notes: {} }));
+  }
+  s.setBinding('cc', 70, { action: 'adjustBpm', type: 'relative', scale: 0.5 });
+  assert.strictEqual(store().get().cc[70].scale, 0.5);
+});
+
 test('show control is opt-in and persists without changing the classic default', () => {
   const original = structuredClone(DEFAULT_MAP);
   for (const preset of MIDI_PRESETS) assert.doesNotThrow(() => mapSchema.parse(preset.map));

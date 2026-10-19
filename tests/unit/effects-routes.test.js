@@ -842,4 +842,3 @@ test("busking from MIDI reaches the looks, the palettes, the voices, the strobe 
   busk.toggleAutoShow();
   assert.equal(busk.autoShowOn(), false);
 });
-
