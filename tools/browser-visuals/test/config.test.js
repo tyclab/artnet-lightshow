@@ -22,6 +22,9 @@ test('only explicit player URLs, dedicated absolute profiles and loopback state 
   for (const url of ['http://user:secret@music.invalid/#/now-playing?player=one', 'file:///tmp/source', 'http://music.invalid/#/now-playing', 'http://music.invalid/#/now-playing?player=one&token=secret']) assert.throws(() => options([...base, '--visualizer-url', url], {}), error => !error.message.includes('secret'));
   for (const url of ['http://evil.invalid/bundles/party-visuals/api/state', 'http://127.0.0.1:9090/bundles/party-visuals/api/cmd', 'http://127.0.0.1:9090/bundles/party-visuals/api/state?token=secret']) assert.throws(() => options([...base, '--controls-url', url], {}));
   assert.throws(() => options([...base, '--browser-profile', 'relative-profile'], {}));
+  assert.throws(() => options([...base, '--telemetry-file', 'relative.ndjson'], {}));
+  const file = path.resolve('logs/browser-visuals.ndjson');
+  assert.equal(options([...base, '--telemetry-file', file], {}).telemetryFile, file);
 });
 test('credentials stay in files; tokenFile resolves relative to NodeCG root', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-visuals-config-'));

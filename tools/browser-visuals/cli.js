@@ -3,6 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { options } from './config.js';
 import { connectPage, captureCanvas, ppm } from './browser.js';
+import { startTelemetry } from './telemetry.js';
 
 const help = `Usage: node cli.js --browser-profile PATH --visualizer-url URL [options]
 Default: display only, with no lightshow connection or fixture lease.
@@ -18,6 +19,7 @@ Default: display only, with no lightshow connection or fixture lease.
   --fit cover|contain   Center crop or black letterbox (default: cover)
   --nodecg-config PATH  Party Visuals config (default: Windows LOCALAPPDATA)
   --parent-pid PID      Stop if the supervising launcher exits
+  --telemetry-file PATH Optional bounded NDJSON log (otherwise summaries use stdout)
 Chrome must use a dedicated profile with an ephemeral loopback debugging port.
 Only the configured Music Assistant now-playing player page is accessed.
 Wash on/off controls display visibility; wash intensity does not dim MilkDrop.
@@ -76,6 +78,7 @@ export async function run(settings, dependencies = {}) {
   };
   process.on('SIGINT', stop); process.on('SIGTERM', stop); stdin.on('data', onInput);
   const parentTimer = setInterval(() => { if (!parentAlive(settings.parentPid)) stop(); }, 1000);
+  const stopTelemetry = startTelemetry([['curtain', curtain?.pump], ['room', room?.pump]].filter(([, pump]) => pump), settings.telemetryFile, log);
   report(settings.curtain || settings.room ? `Browser display with ${[settings.curtain && 'curtain', settings.room && 'room picture'].filter(Boolean).join(' and ')} output` : 'Browser display only; no lightshow connection');
   try {
     while (!stopped) {
@@ -98,6 +101,7 @@ export async function run(settings, dependencies = {}) {
       await sleep(pumps.length ? Math.min(250, Math.max(1, Math.min(...pumps.map((pump) => Math.max(pump.nextCaptureAt, pump.retryAt))) - performance.now())) : 250);
     }
   } finally {
+    stopTelemetry();
     clearInterval(parentTimer); await curtain?.stop(); await room?.stop(); await browser?.close();
     process.removeListener('SIGINT', stop); process.removeListener('SIGTERM', stop); stdin.removeListener('data', onInput); stdin.pause();
     report('Browser helper stopped; any pixel lease released or expiring');

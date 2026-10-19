@@ -49,10 +49,11 @@ export class LeasePump {
     if (this.now() < this.retryAt || this.now() < this.nextCaptureAt) return;
     this.busy = true;
     const generation = this.generation, connectionId = this.transport.id, key = target.key;
+    let failure = 'claimFailures';
     try {
       if (!this.lease) {
         const response = await this.transport.request(this.protocol.events.claim, this.protocol.claim(this, target));
-        if (!response?.ok) { this.backoff(acceptedCodes.has(response?.code) ? response.code : 'Pixel input unavailable'); return; }
+        if (!response?.ok) { this.telemetry?.count('claimFailures'); this.backoff(acceptedCodes.has(response?.code) ? response.code : 'Pixel input unavailable'); return; }
         const lease = { id: response.leaseId, key, connectionId, claim: response };
         if (typeof lease.id !== 'string' || !lease.id) throw new Error('Missing pixel lease identity');
         if (!this.protocol.accepts(this, response)) {
@@ -62,21 +63,25 @@ export class LeasePump {
         if (!this.valid(generation, connectionId, key)) { await this.release(lease, connectionId); return; }
         this.lease = lease;
       }
+      failure = 'captureFailures';
       const captureStarted = this.now();
-      const image = await this.capture();
-      if (!this.valid(generation, connectionId, key)) { await this.invalidate(); return; }
-      if (this.now() - captureStarted > 500) throw new Error('Captured frame is stale');
+      const image = await (this.telemetry ? this.telemetry.measure('capture', () => this.capture()) : this.capture());
+      if (!this.valid(generation, connectionId, key)) { this.telemetry?.count('revokedFrames'); await this.invalidate(); return; }
+      if (this.now() - captureStarted > 500) { failure = 'staleFrames'; throw new Error('Captured frame is stale'); }
       const data = this.protocol.image(this, image, this.lease);
       if (!data) throw new Error('Invalid captured pixels');
       const delay = this.nextSendAt - this.now();
       if (delay > 0) await this.wait(delay);
-      if (!this.valid(generation, connectionId, key)) { await this.invalidate(); return; }
-      if (this.now() - captureStarted > 500) throw new Error('Captured frame is stale');
+      if (!this.valid(generation, connectionId, key)) { this.telemetry?.count('revokedFrames'); await this.invalidate(); return; }
+      if (this.now() - captureStarted > 500) { failure = 'staleFrames'; throw new Error('Captured frame is stale'); }
       const period = 1000 / Math.min(this.fps, this.lease.claim.maxFps);
       this.nextSendAt = this.now() + period;
-      const response = await this.transport.request(this.protocol.events.frame, this.protocol.frame(this, this.lease, data));
+      failure = 'ackFailures';
+      const send = () => this.transport.request(this.protocol.events.frame, this.protocol.frame(this, this.lease, data));
+      const response = await (this.telemetry ? this.telemetry.measure('ack', send) : send());
       if (!this.valid(generation, connectionId, key)) { await this.invalidate(); return; }
       if (!response?.ok) {
+        this.telemetry?.count('rejectedFrames');
         await this.invalidate();
         this.backoff(acceptedCodes.has(response?.code) ? response.code : 'Pixel frame rejected');
         return;
@@ -84,6 +89,7 @@ export class LeasePump {
       this.nextCaptureAt = Math.max(captureStarted + period, this.now());
       this.failures = 0; this.frames++; this.report('Streaming');
     } catch {
+      this.telemetry?.count(failure);
       await this.invalidate();
       this.backoff('Capture or pixel connection unavailable');
     } finally { this.busy = false; }
