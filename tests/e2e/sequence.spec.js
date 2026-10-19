@@ -50,6 +50,17 @@ test.afterEach(async ({ request }) => {
 
 const cursorLeft = (page) => page.locator('.seq-cursor').first().evaluate((el) => parseFloat(el.style.left));
 
+test('the sequence transport fetches lane and clip names on opening the view', async ({ page, request }) => {
+  const sequence = { ...BASE, lanes: [{ ...BASE.lanes[0], name: 'Front wash' }],
+    clips: [{ id: 'clip-label', laneId: 'base', startBeat: 0, lengthBeats: 128, loopBeats: 4,
+      presetId: 'hd.neonDomino', targets: 'lane', mute: false }] };
+  expect((await request.put('/api/sequence', { data: sequence })).ok()).toBe(true);
+  expect((await request.post('/api/sequence/play', { data: {} })).ok()).toBe(true);
+  await open(page, 'sequence');
+  await expect(page.locator('.transport-lanes')).toContainText('Front wash');
+  await expect(page.locator('.transport-lanes')).toContainText('Neon Domino');
+});
+
 test('a clip added in the editor plays, and the lane cursor moves', async ({ page }) => {
   await open(page, 'sequence');
   await expect(page.locator('.seq-now')).toContainText('E2E');

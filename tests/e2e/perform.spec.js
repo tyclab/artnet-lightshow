@@ -24,6 +24,23 @@ async function padOf(request, id) {
 }
 const cell = (page, { bank, slot }) => page.locator(`.pad-cell[data-bank="${bank}"][data-slot="${slot}"]`);
 
+test('strobe settings keep the palette visible and close back to the deck', async ({ page }) => {
+  await open(page, 'perform');
+  const gear = page.getByRole('button', { name: 'Strobe settings', exact: true });
+  await gear.click();
+  const dialog = page.getByRole('dialog', { name: 'Strobe settings' });
+  await expect(dialog).toBeVisible();
+  const swatches = dialog.locator('.palette-swatches');
+  const entry = swatches.locator('.palette-entry').first();
+  const bounds = await swatches.boundingBox();
+  const colour = await entry.boundingBox();
+  expect(bounds.height).toBeGreaterThanOrEqual(colour.height);
+  await expect(dialog.getByRole('slider', { name: 'Flashes per second', exact: true })).toHaveAttribute('max', '5');
+  await dialog.getByRole('button', { name: 'Close the strobe settings' }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(gear).toBeFocused();
+});
+
 test('an energy pad runs its effect while held, and stops when let go', async ({ page, request }) => {
   await open(page, 'perform');
   const blinder = await padOf(request, 'energy.blinder');
