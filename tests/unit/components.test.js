@@ -22,6 +22,7 @@ async function load() {
         export { store } from './public-src/state.js';
         export { Perform, sourceHealth } from './public-src/components/Perform.jsx';
         export { Show } from './public-src/components/Show.jsx';
+        export { Strip } from './public-src/components/Strip.jsx';
         export { Header } from './public-src/components/Header.jsx';
         export { StagePreview } from './public-src/components/StagePreview.jsx';
         export { NowPlaying, PlayingVoices } from './public-src/components/NowPlaying.jsx';
@@ -97,30 +98,31 @@ const STROBE = {
 };
 const padLabels = (html) => [...html.matchAll(/class="pad-label">([^<]*)</g)].map((m) => m[1]);
 
-test('the Perform view has blackout, the bank, the strobe, tap and stop all', () => {
+test('the Perform view has the bank, the strobe, tap and stop all, and leaves the masters to the strip', () => {
   given({});
   const html = ui.html(ui.h(ui.Perform, {}));
   const names = [...html.matchAll(/class="perform-pad-name">([^<]+)</g)].map((m) => m[1]);
-  assert.deepStrictEqual(names, ['Blackout', 'Tap', 'Stop all voices']);
+  assert.deepStrictEqual(names, ['Tap', 'Stop all voices']);
   assert.deepStrictEqual(padLabels(html), ['Kill', 'Blinder', 'Strobe', 'Colour strobe', 'UV', 'Glow', 'Domino', 'Empty']);
   assert.match(html, /class="strobe-hold"/);
-  assert.strictEqual(count(html, 'aria-pressed="true"'), 4, 'the Override destination, Off, the Play look and the Effects picture are pressed');
+  assert.strictEqual(count(html, 'aria-pressed="true"'), 3, 'the Override destination, Off and the Play look are pressed');
   assert.match(html, /aria-pressed="true" data-override="off"/, 'no palette override: Off is pressed');
   assert.match(html, /aria-label="Palette destination"/);
   assert.match(html, />Base<.*>Override</);
-  assert.match(html, /aria-valuetext="50 percent"/, 'the master, as a person reads it');
+  assert.strictEqual(count(html, 'role="switch"'), 0, 'arm, blackout and the master live on the strip');
+  assert.doesNotMatch(html, /Master dimmer|Picture source/);
   assert.match(html, /aria-valuetext="70 percent"/, 'the show\'s intensity');
   assert.match(html, /Nothing loaded/);
   assert.doesNotMatch(html, /Latch effects/, 'a pad\'s launch mode says how it plays');
 });
 
-test('the Perform view has the outputs switch, saying what disarmed means', () => {
+test('the strip has the outputs switch, saying what disarmed means', () => {
   given({ armed: false });
-  let html = ui.html(ui.h(ui.Perform, {}));
+  let html = ui.html(ui.h(ui.Strip, {}));
   assert.match(html, /class="perform-arm-switch" role="switch" aria-checked="false"/);
   assert.match(html, /Disarmed.*nothing goes out to the rig — tap to arm/s);
   given({ armed: true });
-  html = ui.html(ui.h(ui.Perform, {}));
+  html = ui.html(ui.h(ui.Strip, {}));
   assert.match(html, /class="perform-arm-switch armed" role="switch" aria-checked="true"/);
   assert.match(html, /Armed.*frames go out to the rig — tap to disarm/s);
 });
@@ -149,14 +151,14 @@ test('the header flags a frozen look only while the look is what plays', () => {
   assert.doesNotMatch(ui.html(ui.h(ui.Header, {})), /Frozen/);
 });
 
-test('blackout and a running voice\'s pad show as pressed', () => {
+test('blackout on the strip and a running voice\'s pad show as pressed', () => {
   const lit = Array(16).fill(null);
   lit[4] = 'v7';
   given({ masterBlackout: true, pads: { layout: LAYOUT, lit } });
-  const html = ui.html(ui.h(ui.Perform, {}));
-  assert.match(html, /class="perform-pad pad-blackout active" aria-pressed="true"/);
-  assert.match(html, /class="pad-cell lit"[^>]*data-slot="4"[^>]*aria-pressed="true"/);
-  assert.match(html, /on — tap to restore/);
+  const strip = ui.html(ui.h(ui.Strip, {}));
+  assert.match(strip, /class="show-switch blackout on" role="switch" aria-checked="true"/);
+  assert.match(strip, /the rig is dark — tap to restore/);
+  assert.match(ui.html(ui.h(ui.Perform, {})), /class="pad-cell lit"[^>]*data-slot="4"[^>]*aria-pressed="true"/);
 });
 
 test('sync health says when the source the show follows is not working', () => {
@@ -174,14 +176,16 @@ test('sync health says when the source the show follows is not working', () => {
   assert.match(html, /chip-warn" title="no beats"/, 'a failed analysis is flagged, with why');
 });
 
-test('command bar exposes tempo, division and master controls', () => {
+test('command bar exposes tempo and division; the master is the strip\'s', () => {
   given({});
   const html = ui.html(ui.h(ui.CommandBar, {}));
   const divisions = [...html.matchAll(/title="Beat division 1\/(\d+)"/g)].map((m) => Number(m[1]));
   assert.deepStrictEqual(divisions, [1, 2, 4, 8, 16]);
   assert.match(html, /aria-label="Tempo 124.5 BPM. Press to type a tempo."/);
-  assert.match(html, /aria-label="Master dimmer" aria-valuetext="50 percent"/);
+  assert.doesNotMatch(html, /Master dimmer|BLACKOUT/, 'blackout and the master sit on the strip above every live view');
+  assert.match(ui.html(ui.h(ui.Strip, {})), /aria-label="Master dimmer" aria-valuetext="50 percent"/);
   assert.match(html, /<section class="command-bar" aria-label="Live controls">/);
+  assert.doesNotMatch(ui.html(ui.h(ui.CommandBar, { transport: false })), /cb-transport/, 'no empty transport block without a transport');
 });
 
 test('a follow control sits beside the clock only while a tempo is held by hand', () => {
@@ -787,19 +791,21 @@ test('pad labels agree between the deck and command bar', () => {
   assert.strictEqual(labels[0], ui.CATALOGUE.find((row) => row.id === entry.content.id).name);
 });
 
-test('the Show view carries the arm, auto show and blackout switches, the master, the room and the looks', () => {
+test('the strip carries the arm, picture, auto show and blackout switches and the master; Show the room and the looks', () => {
   given({ armed: false, picture: { source: 'effects', input: null }, fixtures: [], profiles: {}, patterns: [], families: [],
     safety: { photosensitivityAcknowledged: true }, showOn: false, autoShow: { status: 'idle', intensity: 70 } });
-  const html = ui.html(ui.h(ui.Show));
-  assert.strictEqual(count(html, 'role="switch"'), 3);
-  for (const text of ['Disarmed', 'Auto show', 'off — the look stays as picked', 'Blackout', 'Master', 'stage3d-canvas', 'effects-deck']) {
-    assert.ok(html.includes(text), text);
+  const strip = ui.html(ui.h(ui.Strip));
+  assert.strictEqual(count(strip, 'role="switch"'), 3);
+  for (const text of ['Disarmed', 'Picture source', 'Auto show', 'off — the look stays as picked', 'Blackout', 'Master dimmer']) {
+    assert.ok(strip.includes(text), text);
   }
-  assert.ok(!html.includes('stage-room-panel'), 'the room panel stays in Stage');
+  const show = ui.html(ui.h(ui.Show));
+  for (const text of ['stage3d-canvas', 'effects-deck']) assert.ok(show.includes(text), text);
+  assert.strictEqual(count(show, 'role="switch"'), 0, 'the switches are the strip\'s, not the view\'s');
+  assert.ok(!show.includes('stage-room-panel'), 'the room panel stays in Stage');
 
   given({ showOn: true, autoShow: { status: 'playing', intensity: 70, track: { name: 'Levels', artist: 'Avicii' } } });
-  const running = ui.html(ui.h(ui.Show));
-  assert.ok(running.includes('Avicii — Levels'));
+  assert.ok(ui.html(ui.h(ui.Strip)).includes('Avicii — Levels'));
 });
 
 test('shortcut help derives every view chord from the navigation', () => {

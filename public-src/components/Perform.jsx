@@ -24,17 +24,17 @@ import { LiveAutomation } from './LiveAutomation.jsx';
  * The view for running a show from a tablet: what a hand needs mid-set, as
  * big as the screen allows, and nothing that needs reading twice.
  *
- *   outputs      armed or not: whether anything leaves the machine at all
  *   strobes      off until the photosensitivity acknowledgement, one tap from it
  *   now / next   the track playing, how far in, and what comes after it
  *   sync         what the lights are keeping time by, and whether it is well
  *   pads         two banks of eight, each played as its launch mode says,
- *                the strobe held, blackout, tap tempo and stop all voices
+ *                the strobe held, tap tempo and stop all voices
  *   palettes     one tap writes the whole look's colours
- *   faders       the master and how hard the generated show pushes
+ *   fader        how hard the generated show pushes
  *
  * Everything here is also on the other views; this is the same controls laid
- * out for a thumb rather than a mouse.
+ * out for a thumb rather than a mouse. Arming, the picture source, blackout
+ * and the master are on the strip the shell keeps above every live view.
  */
 
 const SOURCE_LABELS = {
@@ -78,52 +78,6 @@ function Progress({ duration }) {
       <div class="perform-progress-fill" style={{ width: `${pct}%` }} />
       <span class="perform-progress-time">{fmtTime(at)} / {fmtTime(duration)}</span>
     </div>
-  );
-}
-
-/**
- * The outputs' switch. Disarmed, the show renders for the preview and the
- * stage view but nothing leaves the machine: the WLEDs and the Hue lamps are
- * the house's again. The server starts disarmed; a party arms it here.
- */
-/**
- * What the base layer paints from: the show's effects, or the picture a sender (the
- * browser helper's --room mode) samples at each lamp's plan position. Voices, pads,
- * overrides and the matrix's own pixel feed sit above either; without frames the
- * effects show through after two seconds.
- */
-function PictureSwitch() {
-  const s = pick(['picture', 'armed']);
-  const source = s.picture?.source ?? 'effects';
-  const input = s.picture?.input ?? null;
-  const choose = (next) => api('/api/picture/source', { method: 'POST', body: JSON.stringify({ source: next }) });
-  const hint = source !== 'visualizer' ? 'the show\'s effects paint the room'
-    : !s.armed ? 'arm the outputs; the picture needs a live rig'
-      : input?.receiving ? `visualizer picture on ${input.units} lamp cells` : 'no picture arriving — effects show meanwhile';
-  return (
-    <div class="perform-picture" title={hint}>
-      <div class="segmented" role="group" aria-label="Picture source">
-        {[['effects', 'Effects'], ['visualizer', 'Visualizer']].map(([id, label]) => (
-          <button key={id} type="button" class={`segmented-btn ${source === id ? 'active' : ''}`} aria-pressed={source === id} onClick={() => choose(id)}>{label}</button>
-        ))}
-      </div>
-      <span class="perform-picture-hint">{hint}</span>
-    </div>
-  );
-}
-
-export function ArmSwitch() {
-  const s = pick(['armed']);
-  const armed = !!s.armed;
-  return (
-    <section class="perform-arm" aria-label="Outputs">
-      <button type="button" class={`perform-arm-switch${armed ? ' armed' : ''}`} role="switch" aria-checked={armed}
-        onClick={() => api(armed ? '/api/outputs/disarm' : '/api/outputs/arm', { method: 'POST' })}>
-        <span class="perform-arm-state">{armed ? 'Armed' : 'Disarmed'}</span>
-        <span class="perform-arm-hint">{armed ? 'frames go out to the rig — tap to disarm' : 'nothing goes out to the rig — tap to arm'}</span>
-      </button>
-      <PictureSwitch />
-    </section>
   );
 }
 
@@ -209,15 +163,8 @@ function SyncHealth() {
 export const stopAllVoices = () => api('/api/voices', { method: 'DELETE' });
 
 function Utility() {
-  const s = pick(['masterBlackout']);
   return (
-    <section class="perform-utility" aria-label="Blackout, tap and stop all voices">
-      <button type="button" class={`perform-pad pad-blackout ${s.masterBlackout ? 'active' : ''}`}
-        aria-pressed={!!s.masterBlackout}
-        onClick={() => send({ masterBlackout: !s.masterBlackout })}>
-        <span class="perform-pad-name">Blackout</span>
-        <span class="perform-pad-hint">{s.masterBlackout ? 'on — tap to restore' : 'tap'}</span>
-      </button>
+    <section class="perform-utility" aria-label="Tap and stop all voices">
       <button type="button" class="perform-pad pad-tap" onPointerDown={(e) => { if (e.button === 0) emitTap(); }}
         onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); emitTap(); } }}>
         <span class="perform-pad-name">Tap</span>
@@ -231,18 +178,10 @@ function Utility() {
 }
 
 function Faders() {
-  const s = pick(['masterDimmer', 'autoShow']);
-  const [dim, onDim, commitDim] = useDraft(s.masterDimmer ?? 255, (v) => send({ masterDimmer: v }));
+  const s = pick(['autoShow']);
   const [intensity, onIntensity, commitIntensity] = useDraft(s.autoShow ? s.autoShow.intensity ?? 50 : 50, (v) => send({ autoIntensity: v }));
-  const dimPct = Math.round((dim / 255) * 100);
   return (
     <section class="perform-faders" aria-label="Faders">
-      <label class="perform-fader">
-        <span class="perform-fader-label">Master</span>
-        <input type="range" min="0" max="255" value={dim} aria-valuetext={`${dimPct} percent`}
-          onInput={(e) => onDim(parseInt(e.target.value, 10))} onChange={(e) => commitDim(parseInt(e.target.value, 10))} />
-        <span class="perform-fader-value">{dimPct}%</span>
-      </label>
       <label class="perform-fader">
         <span class="perform-fader-label">Intensity</span>
         <input type="range" min="0" max="100" value={intensity} aria-valuetext={`${intensity} percent`}
@@ -259,7 +198,6 @@ export function Perform() {
   const [tab, setTab] = useSubTab('perform', INSTRUMENTS);
   return (
     <div class="perform-view">
-      <ArmSwitch />
       <StrobesOff perform />
       <Transport />
       <div class="perform-body">

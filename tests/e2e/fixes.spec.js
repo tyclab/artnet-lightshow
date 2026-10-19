@@ -13,10 +13,10 @@ test('Space taps tempo without retriggering a clicked button', async ({ page, re
     if (event === 'tap') taps.push(event);
   }));
   await open(page, 'effects');
-  await page.locator('.cb-blackout').click();
+  await page.getByRole('switch', { name: /Blackout/ }).click();
   await until(request, (s) => s.masterBlackout === true);
   // Clicked again, so focus is left on the button, as a click leaves it.
-  await page.locator('.cb-blackout').click();
+  await page.getByRole('switch', { name: /Blackout/ }).click();
   await until(request, (s) => s.masterBlackout === false);
   for (let i = 0; i < 4; i++) await page.keyboard.press('Space');
   await expect.poll(() => taps.length).toBe(4);

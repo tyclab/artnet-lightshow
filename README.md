@@ -47,8 +47,8 @@ the server under its supervisor. Complete or skip the first-run wizard; its
 controls remain available in Rig, Sources and Settings.
 
 The server always starts **disarmed**, including after a crash or restart.
-Previewing still works. Arm from Perform, Settings → Show, Companion, or
-`POST /api/outputs/arm` when the rig should transmit. Arming alone does not
+Previewing still works. Arm from the strip above any live view, Settings →
+Show, Companion, or `POST /api/outputs/arm` when the rig should transmit. Arming alone does not
 start the pattern engine.
 
 ### Packaged builds
@@ -181,9 +181,9 @@ to effects; pad banks launch effects or patterns over the look.
 
 | View | Shortcut | Purpose |
 |------|----------|---------|
-| Show | 1 | The room in 3D, the looks beside it, and the switches a party needs: arm, picture source, auto show, blackout, master |
+| Show | 1 | The room in 3D and the looks beside it |
 | Effects | 2 | Effects catalogue and inspector, cues, look colours, fixture overrides and stage preview |
-| Perform | 3 | Arm outputs, pads and Matrix, transport, strobe, blackout, tap, colours and faders |
+| Perform | 3 | Pads and Matrix, transport, strobe, tap, colours and the intensity fader |
 | Stage | 4 | Monitor the rendered rig in 3D, import a room and bind its lights |
 | Auto Show | 5 | Analyse music, choose its source, run the generated show; Timeline tab for rehearsal and edits |
 | Sequence | 6 | Create/load sequences; shared transport and recording; lanes, clips and patterns behind Edit |
@@ -191,6 +191,11 @@ to effects; pad banks launch effects or patterns over the look.
 | Sources | 8 | Playback sources, live input, analysis environment and models |
 | Settings | 9 | Show behaviour, safety, MIDI, engine and server access |
 | Preflight | 0 | Run the pre-show checks |
+
+Above every live view — Show to Sequence — one strip carries the switches a
+party needs wherever it is: arm and the picture source, the auto show on or
+off, blackout and the master. It is rendered once by the app shell; the setup
+views have none, and no view repeats its controls below it.
 
 Hashes open a view directly, such as `/#perform` or `/#rig/outputs`.
 Show opens by default. Old `#manual`, `#timeline` and `#matrix` bookmarks redirect
@@ -418,7 +423,7 @@ feed reads that same canvas without a desktop capture or OBS process.
 
 ### Room picture
 
-The same canvas can paint the whole rig. Perform's **Picture** selector (also
+The same canvas can paint the whole rig. The strip's **Picture** selector (also
 Settings → Show → Picture Source, or `POST /api/picture/source` with
 `{ "source": "effects" | "visualizer" }`) chooses what the base layer paints
 from. With **Visualizer** selected, a sender claims the room picture over the

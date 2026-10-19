@@ -17,6 +17,7 @@ import { ConnectionVeil } from './components/ConnectionVeil.jsx';
 import { ShortcutsOverlay } from './components/Shortcuts.jsx';
 import { Perform } from './components/Perform.jsx';
 import { Show } from './components/Show.jsx';
+import { Strip } from './components/Strip.jsx';
 import { TimelineView } from './components/TimelineView.jsx';
 import { StageView } from './components/StageView.jsx';
 import { Sequence } from './components/Sequence.jsx';
@@ -121,6 +122,8 @@ function AutoView() {
   );
 }
 
+const LIVE_VIEWS = new Set(VIEWS.filter((view) => view.group === 'live').map((view) => view.id));
+
 const PANELS = {
   show: Show,
   effects: EffectsView,
@@ -140,7 +143,9 @@ function Root() {
   // actually needs.
   const [mode, setMode] = useState(initialView);
   const Panel = PANELS[mode];
-  // Show and Perform carry their own masters and transport: no command bar, no drawer.
+  // The strip — arm, picture source, auto show, blackout, master — sits above every live view.
+  const live = LIVE_VIEWS.has(mode);
+  // Show and Perform carry their own transport: no command bar, no drawer.
   const bare = mode === 'show' || mode === 'perform';
   useFirstRun();
   useTapShortcut();
@@ -196,6 +201,7 @@ function Root() {
       <nav class="mode-nav" aria-label="Views">
         <ModeTabs mode={mode} setMode={setMode} />
       </nav>
+      {live && <Strip />}
       <main id="main" class={`mode-${mode}`}>
         <div id={`panel-${mode}`} class="view-panel" role="tabpanel" aria-labelledby={`tab-${mode}`} tabIndex={-1}>
           <Panel />

@@ -2,7 +2,6 @@ import { useState } from 'preact/hooks';
 import { send, emitTap, followMusic, pick } from '../state.js';
 import { padLabel } from '../now-playing.js';
 import { formatBpm, clockSource } from '../utils.js';
-import { useDraft } from '../draft.js';
 import { useVoicePads, holdsWhilePressed, padKey, rapidPad } from '../voice-pad.js';
 import { useSafetyGate } from './Photosensitivity.jsx';
 import { Transport } from './Transport.jsx';
@@ -45,7 +44,7 @@ function BpmEntry({ bpm }) {
 export function CommandBar({ transport = true } = {}) {
   const { held, gatedPadProps } = useVoicePads();
   const gate = useSafetyGate();
-  const s = pick(['bpm', 'beatDivision', 'clock', 'running', 'masterDimmer', 'masterBlackout', 'pads', 'patterns', 'effects', 'sequencePatterns']);
+  const s = pick(['bpm', 'beatDivision', 'clock', 'running', 'masterBlackout', 'pads', 'patterns', 'effects', 'sequencePatterns']);
   const bpm = s.bpm || 120;
   const division = s.beatDivision || 1;
   const periodMs = (60_000 / bpm) / division;
@@ -54,11 +53,6 @@ export function CommandBar({ transport = true } = {}) {
   // From the tempo the rig is running at, to a hundredth, so +1 on 123.7 is
   // 124.7 rather than float noise.
   const nudge = (delta) => send({ bpm: Math.max(20, Math.min(300, Math.round((bpm + delta) * 100) / 100)) });
-
-
-
-  const [dim, onMaster, commitMaster] = useDraft(s.masterDimmer ?? 255, (v) => send({ masterDimmer: v }));
-  const masterPct = Math.round((dim / 255) * 100);
   // The strip is pads bank A, the filled ones, played as on the deck.
   const strip = (s.pads?.layout || []).filter((p) => p.bank === 0 && p.content).sort((a, b) => a.slot - b.slot);
   const lit = s.pads?.lit || [];
@@ -106,34 +100,11 @@ export function CommandBar({ transport = true } = {}) {
 
       <div class="cb-divider" />
 
-      {/* Transport */}
-      <div class="cb-block cb-transport">
-        {transport && <Transport compact />}
-
-        <button
-          class={`cb-blackout ${s.masterBlackout ? 'active' : ''}`}
-          onClick={() => send({ masterBlackout: !s.masterBlackout })}
-          title="Master blackout"
-        >
-          <span class="cb-blackout-dot" />
-          <span>BLACKOUT</span>
-        </button>
-
-        <div class="cb-master">
-          <span class="cb-master-label">MASTER</span>
-          <input
-            type="range" min="0" max="255"
-            aria-label="Master dimmer"
-            aria-valuetext={`${masterPct} percent`}
-            value={dim}
-            onInput={(e) => onMaster(parseInt(e.target.value, 10))}
-            onChange={(e) => commitMaster(parseInt(e.target.value, 10))}
-          />
-          <span class="cb-master-val">{masterPct}%</span>
-        </div>
-      </div>
-
-      <div class="cb-divider" />
+      {/* Transport; blackout and the master are on the strip above the view */}
+      {transport && <>
+        <div class="cb-block cb-transport"><Transport compact /></div>
+        <div class="cb-divider" />
+      </>}
 
       {/* Pads bank A */}
       <div class="cb-block cb-energy">

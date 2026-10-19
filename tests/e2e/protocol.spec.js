@@ -27,7 +27,7 @@ test('a change reaches the page as that key alone', async ({ page, request }) =>
   expect(seen.snapshot).toBe(1);
   expect(seen.state).toBe(0);
   await set(request, { masterDimmer: 90 });
-  await expect(page.locator('.cb-master-val')).toHaveText('35%');
+  await expect(page.locator('.show-master-value')).toHaveText('35%');
   const look = seen.patches.find((p) => p && p.d === 'look' && 'masterDimmer' in p.set);
   expect(look).toBeTruthy();
   expect(Object.keys(look.set)).toEqual(['masterDimmer']);
@@ -49,5 +49,5 @@ test('a fader drag goes out as the latest value, and the fader does not jump bac
   for (let i = 0; i < 20; i++) await page.keyboard.press('ArrowLeft');
   await until(request, (s) => s.masterDimmer === 235);
   await expect(fader).toHaveValue('235');
-  await expect(page.locator('.cb-master-val')).toHaveText('92%');
+  await expect(page.locator('.show-master-value')).toHaveText('92%');
 });

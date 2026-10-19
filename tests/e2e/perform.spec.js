@@ -151,9 +151,10 @@ test('a loop pad starts on a tap and stops on the next', async ({ page, request 
 
 test('blackout, palettes and the master', async ({ page, request }) => {
   await open(page, 'perform');
-  await page.getByRole('button', { name: /^Blackout/ }).click();
+  // Blackout and the master are the strip's above the view.
+  await page.getByRole('switch', { name: /^Blackout/ }).click();
   await until(request, (s) => s.masterBlackout === true);
-  await page.getByRole('button', { name: /^Blackout/ }).click();
+  await page.getByRole('switch', { name: /^Blackout/ }).click();
   await until(request, (s) => s.masterBlackout === false);
 
   await page.locator('.palette-strip').getByRole('button', { name: 'Base', exact: true }).click();
@@ -163,7 +164,7 @@ test('blackout, palettes and the master', async ({ page, request }) => {
   await expect(palette).toHaveAttribute('aria-pressed', 'true');
   const chosen = await until(request, (s) => !!s.palette);
 
-  const master = page.locator('.perform-fader input').first();
+  const master = page.getByRole('slider', { name: 'Master dimmer' });
   await master.scrollIntoViewIfNeeded();
   await master.focus();
   for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowDown');
