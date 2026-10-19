@@ -1,6 +1,7 @@
 import { lightshowConfig } from './config.js';
 import { StateMirror } from './state.js';
 import { LeasePump } from './pump.js';
+import { requester } from './request.js';
 
 /** One colour per rig unit: the small cover-fitted capture read at each unit's plan position
  * (percent of the stage plot; the plot's top is the room's front), a 3 x 3 box average so a
@@ -46,12 +47,7 @@ export async function connectRoom(settings, capture, sourceReady, report) {
   const { io } = await import('socket.io-client');
   const config = lightshowConfig(settings.nodecgConfig), mirror = new StateMirror();
   const socket = io(config.origin, { path: config.socketPath, auth: { token: config.token, protocol: 2 }, transports: ['websocket'], autoConnect: false, reconnection: true, reconnectionDelay: 1000, reconnectionDelayMax: 10_000, timeout: 3000 });
-  const request = (event, payload) => new Promise((resolve, reject) => {
-    if (!socket.connected) { reject(new Error('Lightshow disconnected')); return; }
-    const ack = (error, response) => error ? reject(new Error('Lightshow acknowledgement timed out')) : resolve(response);
-    const send = socket.timeout(600).volatile;
-    if (payload === undefined) send.emit(event, ack); else send.emit(event, payload, ack);
-  });
+  const request = requester(socket);
   let stopped = false, syncing = false, units = null, unitsAt = -Infinity;
   const pump = new LeasePump({
     transport: { get connected() { return socket.connected; }, get id() { return socket.id; }, request },
