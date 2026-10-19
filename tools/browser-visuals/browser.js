@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { gpuCapture } from './gpu-capture.js';
 
 export function matchesTarget(actual, expected) {
   try {
@@ -73,31 +74,41 @@ export async function connectPage(profile, expected, onClose = () => {}, discove
     pending.set(id, { resolve: value => { clearTimeout(timer); resolve(value); }, reject: error => { clearTimeout(timer); reject(error); } });
     ws.send(JSON.stringify({ id, method, params }));
   });
+  let objectId;
   const action = async options => {
-    const expression = `(${pageAction.toString()})(${JSON.stringify({ ...options, expected })}, ${matchesTarget.toString()})`;
-    const result = await call('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true, timeout: 750 });
+    const result = await call('Runtime.callFunctionOn', { objectId, functionDeclaration: 'function(options) { return this.action(options, this.matches, this.gpu); }',
+      arguments: [{ value: { ...options, expected } }], returnByValue: true, awaitPromise: true });
     if (result?.exceptionDetails || !result?.result?.value) throw new Error('Music Assistant canvas unavailable');
     return result.result.value;
   };
-  try { await call('Page.enable'); } catch { ws.close(); throw new Error('Browser page unavailable'); }
+  try {
+    await call('Page.enable');
+    const installed = await call('Runtime.evaluate', { expression: `({ action: ${pageAction.toString()}, matches: ${matchesTarget.toString()}, gpu: ${gpuCapture.toString()} })` });
+    objectId = installed.result?.objectId;
+    if (!objectId) throw new Error('Browser capture unavailable');
+  } catch { ws.close(); throw new Error('Browser page unavailable'); }
   return {
     get connected() { return ready && ws.readyState === 1; },
     action,
-    async close() { try { if (ready) await action({ mode: 'cleanup' }); } catch {} ws.close(); },
+    async close() {
+      try { if (ready) { await action({ mode: 'cleanup' }); await call('Runtime.releaseObject', { objectId }); } } catch {}
+      ws.close();
+    },
   };
 }
 
 export async function captureCanvas(browser, settings, visible = true) {
-  const result = await browser.action({ mode: 'capture', width: settings.width, height: settings.height, fit: settings.fit, visible });
+  const result = await browser.action({ mode: 'capture', width: settings.width, height: settings.height, fit: settings.fit, visible, ...(settings.fps ? { fps: settings.fps } : {}) });
   if (!result.ok || result.width !== settings.width || result.height !== settings.height || !Array.isArray(result.data) || result.data.length !== settings.width * settings.height * 3 || !result.data.every(value => Number.isInteger(value) && value >= 0 && value <= 255)) throw new Error('Music Assistant canvas unavailable');
   return { width: result.width, height: result.height, data: Buffer.from(result.data) };
 }
 
-export function pageAction(options, matches) {
+export function pageAction(options, matches, gpu = null) {
   const doc = globalThis.document, styleId = 'party-visuals-browser-style';
   if (!matches(globalThis.location.href, options.expected)) return { ok: false };
   const view = doc.querySelector('.now-playing-view');
   if (options.mode === 'cleanup') {
+    void gpu?.(options, null, view);
     doc.getElementById(styleId)?.remove(); view?.removeAttribute('data-party-display');
     if (view) delete view.__tyclabCaptureCanvases;
     return { ok: true };
@@ -117,6 +128,12 @@ export function pageAction(options, matches) {
   if (options.mode !== 'capture') return { ok: true };
   const canvas = view.querySelector('.visualizer-layer__canvas');
   if (!canvas || !canvas.width || !canvas.height || doc.visibilityState !== 'visible') return { ok: false };
+  const valid = () => {
+    const layer = canvas.closest('.visualizer-layer');
+    return canvas.isConnected && doc.visibilityState === 'visible' && matches(globalThis.location.href, options.expected)
+      && (!options.visible || !layer || Number(globalThis.getComputedStyle(layer).opacity) > 0.001);
+  };
+  if (gpu) return gpu(options, canvas, view, valid).then((result) => result ?? pageAction(options, matches));
   return new Promise(resolve => {
     let done = false;
     const timer = globalThis.setTimeout(() => { done = true; resolve({ ok: false }); }, 250);
