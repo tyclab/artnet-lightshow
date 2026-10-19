@@ -95,7 +95,8 @@ const rig = () => [
 
 async function fakeServer(devices = rig(), { version = 4, answerVersion = true } = {}) {
   const log = { leds: [], modes: [], names: [], connections: 0, closed: 0 };
-  const sockets = new Set();
+  const sockets = new Set(), heldDescriptions = [];
+  let holdDescriptions = false;
   const server = net.createServer((socket) => {
     log.connections++;
     sockets.add(socket);
@@ -112,7 +113,12 @@ async function fakeServer(devices = rig(), { version = 4, answerVersion = true }
         else if (header.id === PACKET.SET_CLIENT_NAME) log.names.push(data.toString('utf8').replace(/\0$/, ''));
         else if (header.id === PACKET.REQUEST_CONTROLLER_COUNT) reply(u32(devices.length));
         else if (header.id === PACKET.REQUEST_CONTROLLER_DATA) {
-          if (header.device < devices.length) reply(encodeController(devices[header.device], data.length >= 4 ? data.readUInt32LE(0) : 0));
+          if (header.device < devices.length) {
+            const description = encodeController(devices[header.device], data.length >= 4 ? data.readUInt32LE(0) : 0);
+            const answer = () => reply(description);
+            if (holdDescriptions) heldDescriptions.push(answer);
+            else answer();
+          }
         } else if (header.id === PACKET.RGBCONTROLLER_UPDATELEDS) log.leds.push({ device: header.device, ...parseUpdateLeds(data) });
         else if (header.id === PACKET.RGBCONTROLLER_UPDATEMODE) {
           log.modes.push({ device: header.device, mode: data.readInt32LE(4) });
@@ -128,6 +134,9 @@ async function fakeServer(devices = rig(), { version = 4, answerVersion = true }
     port: server.address().port, log, devices,
     changed: () => { for (const socket of sockets) socket.write(buildPacket(0, PACKET.DEVICE_LIST_UPDATED)); },
     disconnect: () => { for (const socket of sockets) socket.destroy(); },
+    holdDescriptions: () => { holdDescriptions = true; },
+    heldDescriptions: () => heldDescriptions.length,
+    releaseDescriptions: () => { holdDescriptions = false; for (const answer of heldDescriptions.splice(0)) answer(); },
     close: () => new Promise((resolve) => server.close(() => resolve())),
   };
 }
@@ -486,7 +495,9 @@ test('missing OpenRGB devices back off independently while healthy frames remain
       now = due;
       const count = attempts.length;
       connection.send(missing, rgb, 1);
+      assert.strictEqual(connection.send(keyboard, rgb, 1), false, 'uncertain indices pause only during discovery');
       await until(() => attempts.length === count + 1 && !connection.preparing.size);
+      assert.strictEqual(connection.send(keyboard, rgb, 1), true, 'unchanged healthy frames resume immediately after discovery');
       assert.strictEqual([...connection.failed.values()][0].delay, Math.min(due + 1000, 30000));
     }
     assert.deepStrictEqual(attempts.filter((a) => a.name === 'Monitor').map((a) => a.now), [0, 1000, 3000, 7000, 15000, 31000, 61000]);
@@ -495,6 +506,127 @@ test('missing OpenRGB devices back off independently while healthy frames remain
     await until(() => connection.send(missing, rgb, 1), { what: 'retry discovers a returned monitor without a notification' });
     assert.strictEqual(connection.failed.size, 0);
     await until(() => server.log.leds.some((p) => p.device === 1));
+  } finally {
+    connection.end();
+    await server.close();
+  }
+});
+
+for (const replaced of [false, true]) test(`retry discovery rebinds OpenRGB indices when a device ${replaced ? 'replaces another' : 'returns before a healthy device'}`, async () => {
+  const server = await fakeServer([{ name: 'Keyboard', leds: 1 }, ...(replaced ? [{ name: 'Mouse', leds: 1 }] : [])]);
+  let now = 0;
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port, clock: () => now });
+  const keyboard = { device: 6, name: 'Keyboard' }, monitor = { device: 6, name: 'Monitor' };
+  try {
+    await connection.open();
+    connection.send(keyboard, Uint8Array.of(100, 0, 0), 1);
+    connection.send(monitor, Uint8Array.of(0, 0, 200), 1);
+    await until(() => connection.failed.size === 1 && !connection.preparing.size);
+    if (replaced) server.devices.pop();
+    server.devices.unshift({ name: 'Monitor', leds: 1, activeMode: 1 });
+    now = 1000;
+    assert.strictEqual((await connection.prepare(monitor)).name, 'Monitor', 'fresh description replaces the old occupant of index zero');
+    await connection.prepare(keyboard);
+    assert.strictEqual(connection.send(keyboard, Uint8Array.of(100, 0, 0), 1), true);
+    assert.strictEqual(connection.send(monitor, Uint8Array.of(0, 0, 200), 1), true);
+    await until(() => server.log.leds.length === 2);
+    assert.deepStrictEqual(server.log.leds.map((p) => [p.device, ...p.rgb]), [[1, 100, 0, 0], [0, 0, 0, 200]]);
+    assert.deepStrictEqual(server.log.modes, [{ device: 0, mode: 0 }], 'the returned monitor enters Direct mode from its own fresh description');
+  } finally {
+    connection.end();
+    await server.close();
+  }
+});
+
+for (const inserted of [false, true]) test(`OpenRGB pauses uncertain indices during delayed ${inserted ? 'changed' : 'unchanged'} discovery`, async () => {
+  const server = await fakeServer([{ name: 'Keyboard', leds: 1 }]);
+  let now = 0;
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port, clock: () => now });
+  const keyboard = { device: 6, name: 'Keyboard' }, monitor = { device: 6, name: 'Monitor' }, rgb = Uint8Array.of(100, 0, 0);
+  try {
+    await connection.open();
+    connection.send(keyboard, rgb, 1);
+    connection.send(monitor, rgb, 1);
+    await until(() => connection.failed.size === 1 && !connection.preparing.size);
+    if (inserted) server.devices.unshift({ name: 'Monitor', leds: 1 });
+    server.holdDescriptions();
+    now = 1000;
+    connection.send(monitor, rgb, 1);
+    assert.strictEqual(connection.send(keyboard, rgb, 1), false, 'pause begins before the first discovery reply');
+    await until(() => server.heldDescriptions() > 0);
+    const pendingKeyboard = connection.prepare(keyboard);
+    let settled = false;
+    pendingKeyboard.then(() => { settled = true; });
+    for (let frame = 0; frame < 44; frame++) {
+      assert.strictEqual(connection.send(keyboard, rgb, 1), false);
+      connection.restore(keyboard);
+      await new Promise(setImmediate);
+    }
+    assert.strictEqual(settled, false, 'prepare cannot return a cached occupant during validation');
+    assert.strictEqual(server.log.leds.length, 0, 'no frames or restores reach uncertain indices');
+    server.releaseDescriptions();
+    await pendingKeyboard;
+    await until(() => !connection.refreshing && !connection.preparing.size);
+    for (let frame = 0; frame < 44; frame++) assert.strictEqual(connection.send(keyboard, rgb, 1), true);
+    await until(() => server.log.leds.length === 44);
+    assert.ok(server.log.leds.every((p) => p.device === (inserted ? 1 : 0) && p.rgb[0] === 100));
+  } finally {
+    server.releaseDescriptions();
+    connection.end();
+    await server.close();
+  }
+});
+
+for (const timeout of [false, true]) test(`OpenRGB discovery ${timeout ? 'timeout' : 'invalid data'} discards uncertain indices before recovery`, async () => {
+  const server = await fakeServer([{ name: 'Keyboard', leds: 1 }]);
+  let now = 0;
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port, clock: () => now });
+  const keyboard = { device: 6, name: 'Keyboard' }, monitor = { device: 6, name: 'Monitor' }, rgb = Uint8Array.of(100, 0, 0);
+  const request = connection.request.bind(connection);
+  let fail = false;
+  connection.request = (...args) => fail && args[1] === PACKET.REQUEST_CONTROLLER_DATA
+    ? Promise.reject(Object.assign(new Error('description failed'), { code: timeout ? 'ETIMEDOUT' : 'EBADDATA' })) : request(...args);
+  try {
+    await connection.open();
+    connection.send(keyboard, rgb, 1);
+    connection.send(monitor, rgb, 1);
+    await until(() => connection.failed.size === 1 && !connection.preparing.size);
+    server.devices.unshift({ name: 'Monitor', leds: 1 });
+    fail = true; now = 1000;
+    await assert.rejects(connection.prepare(monitor), /description failed/);
+    await until(() => !connection.refreshing && !connection.preparing.size);
+    assert.strictEqual(connection.live.size, 0);
+    assert.strictEqual(connection.devices.size, 0);
+    assert.strictEqual(connection.count, null);
+    if (timeout) assert.strictEqual(connection.socket, null, 'timeout closes the session so late replies cannot match a new request');
+    assert.strictEqual(connection.send(keyboard, rgb, 1), false, 'failed validation cannot resume the cached index');
+    fail = false;
+    await connection.prepare(keyboard);
+    assert.strictEqual(connection.send(keyboard, rgb, 1), true);
+    await until(() => server.log.leds.length === 1);
+    assert.strictEqual(server.log.leds[0].device, 1);
+  } finally {
+    connection.end();
+    await server.close();
+  }
+});
+
+test('OpenRGB refresh shares one timeout budget across controller descriptions', async () => {
+  const server = await fakeServer([{ name: 'Keyboard', leds: 1 }, { name: 'Monitor', leds: 1 }]);
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port });
+  const request = connection.request.bind(connection), budgets = [];
+  connection.request = async (device, id, data, timeoutMs) => {
+    if (id === PACKET.REQUEST_CONTROLLER_DATA) {
+      budgets.push(timeoutMs);
+      if (budgets.length === 1) await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    return request(device, id, data, timeoutMs);
+  };
+  try {
+    await connection.open();
+    await connection.refreshDiscovery();
+    assert.strictEqual(budgets.length, 2);
+    assert.ok(budgets[0] <= 5000 && budgets[1] > 0 && budgets[1] < budgets[0] - 20, 'each next request uses the remaining scan time');
   } finally {
     connection.end();
     await server.close();
