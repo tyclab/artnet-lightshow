@@ -59,10 +59,12 @@ overrides have explicit semantics. These are documented decisions.
 A Hue Entertainment channel can represent more than one physical lamp, and a
 gradient lamp can span channels. A channel-shaped fixture is therefore not proof
 of unique physical-lamp identity. Stage can draw one marker per physical lamp
-that averages its contributing channels by segment length; the engine still
-renders per channel. Physical-lamp topology in the engine needs a separate
-migration and device acceptance; it must preserve the deployed patch and output
-mapping.
+that averages its contributing units by segment length. Newly patched physical
+lamps use ordered `output.channels[]`; the array index is the fixture unit.
+Legacy channel fixtures retain their mapping during migration. Discovery returns
+both physical `lamps` and authoritative `channels` with segment membership, so
+room exporters can join devices without guessing from labels. Physical ordering
+and shared-channel behaviour still need device acceptance.
 
 The [private room model](stage-room.md) supplies walls, furniture and explicit
 preview bindings. It does not repair engine topology or relocate spatial
@@ -77,9 +79,9 @@ retaining attribution and the upstream remote. Review and adopt upstream changes
 selectively. Rebase is not required to operate independently, and rewriting
 published deployment history is unnecessary.
 
-The reviewed upstream revision `cac3618a` contains the `2b539dc` release but also
-changes fixture migration and output rendering. Its generic Hue migration drops
-fixtures without `channels[]`, and an isolated renderer probe found drawn
-strobes bypassing the device flash cap. Those blockers need fixes and regression
-coverage before that upstream state can be adopted. No rebase or upstream merge
-was performed as part of this workflow audit.
+The earlier review of upstream `cac3618a` found two adoption blockers: legacy
+Hue fixtures could be dropped during migration, and drawn strobes could bypass
+the device flash cap. The consolidation merged in fork PR #27 addresses both
+with migration and renderer regression coverage. These historical findings are
+not outstanding blockers; physical device acceptance remains separate from the
+automated checks.

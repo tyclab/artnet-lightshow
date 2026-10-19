@@ -206,11 +206,24 @@ async function withApp(fixtures, fn, areas = areaOf(LAMPS)) {
   });
 }
 
+test('lamp discovery retains physical channel members for room exporters', async () => {
+  const areas = await areaOf(LAMPS)();
+  areas[0].channels[3].members = [{ deviceId: 'tv', serviceId: 'gradient-service', segmentIndex: 0, segmentLength: 3, segmentCount: 3 }];
+  await withApp([], async (call) => {
+    const listed = await call('GET', '/api/hue/b1/lamps');
+    assert.strictEqual(listed.status, 200);
+    assert.deepStrictEqual(listed.body.channels, areas[0].channels);
+    assert.deepStrictEqual(listed.body.lamps.find((entry) => entry.id === 'tv').channels, [3, 4, 5]);
+    assert.ok(!JSON.stringify(listed.body).includes('app-key'));
+  }, async () => areas);
+});
+
 test('a lamp is added from its bridge, on a profile of its own built from what it can show, with no address', async () => {
   await withApp([par(0, 1)], async (call) => {
     const listed = await call('GET', '/api/hue/b1/lamps');
     assert.strictEqual(listed.body.ok, true, listed.body.error);
     assert.deepStrictEqual(listed.body.bridge, { id: 'b1', label: 'Lounge' });
+    assert.deepStrictEqual(listed.body.channels, (await areaOf(LAMPS)())[0].channels);
     assert.deepStrictEqual(listed.body.lamps.map((l) => [l.id, l.channels, l.shows]), [
       ['shelf', [0], 'colour (gamut C), white 2000 K–6500 K'],
       ['desk', [1], 'white 2200 K–6500 K'],
@@ -272,6 +285,7 @@ test('the routes from before several bridges address the first one, and an unkno
   await withApp([par(0, 1)], async (call) => {
     const listed = await call('GET', '/api/hue/lamps');
     assert.deepStrictEqual(listed.body.bridge, { id: 'b1', label: 'Lounge' });
+    assert.deepStrictEqual(listed.body.channels, (await areaOf(LAMPS)())[0].channels);
     const added = await call('POST', '/api/hue/add', { lamps: ['hall'] });
     assert.deepStrictEqual(added.body.fixtures.map((f) => f.output), [{ protocol: 'hue', bridge: 'b1', channels: [2] }]);
     assert.strictEqual((await call('GET', '/api/hue/nope/lamps')).status, 404);
