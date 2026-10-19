@@ -11,6 +11,8 @@ test('WebGL captures share bounded canvases, follow replacement and clear on cle
     const raf = globalThis.requestAnimationFrame;
     globalThis.captureRafs = 0;
     globalThis.requestAnimationFrame = callback => raf(time => { globalThis.captureRafs++; callback(time); });
+    globalThis.displayMutations = 0;
+    new globalThis.MutationObserver(records => { globalThis.displayMutations += records.length; }).observe(document.querySelector('.now-playing-view'), { attributes: true, attributeFilter: ['data-party-display'] });
   });
   const capture = (width, height, visible = true) => page.evaluate(`(${pageAction.toString()})(${JSON.stringify({ expected, mode: 'capture', width, height, fit: 'cover', visible })}, ${matchesTarget.toString()})`);
   for (let i = 0; i < 3; i++) {
@@ -34,7 +36,9 @@ test('WebGL captures share bounded canvases, follow replacement and clear on cle
     const ctx = canvas.getContext('2d'); ctx.fillStyle = '#00ff00'; ctx.fillRect(0, 0, 40, 80);
   });
   expect((await capture(68, 42)).data.slice(0, 3)).toEqual([0, 255, 0]);
+  expect(await page.evaluate(() => globalThis.displayMutations)).toBe(1);
   expect((await capture(68, 42, false)).data.every(value => value === 0)).toBe(true);
+  expect(await page.evaluate(() => globalThis.displayMutations)).toBe(2);
   const rafs = await page.evaluate(() => globalThis.captureRafs);
   await page.waitForTimeout(100);
   expect(await page.evaluate(() => globalThis.captureRafs)).toBe(rafs);

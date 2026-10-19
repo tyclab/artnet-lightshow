@@ -54,7 +54,8 @@ test('capture reuses bounded scratch canvases across source replacement and outp
   const saved = Object.fromEntries(['document', 'location', 'requestAnimationFrame'].map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   let source = { width: 800, height: 600, isConnected: true, closest: () => null }, created = 0;
   const drawn = [];
-  const view = { setAttribute() {}, removeAttribute() {}, querySelector: () => source };
+  const attrs = new Map();
+  const view = { getAttribute: key => attrs.get(key), setAttribute: (key, value) => attrs.set(key, value), removeAttribute: key => attrs.delete(key), querySelector: () => source };
   globalThis.location = { href: expected };
   globalThis.requestAnimationFrame = (fn) => fn();
   globalThis.document = {

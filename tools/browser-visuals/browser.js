@@ -112,7 +112,8 @@ export function pageAction(options, matches) {
       .now-playing-view[data-party-display="off"]::after { content:""; position:absolute; inset:0; background:#000; z-index:10; pointer-events:none; }`;
     doc.head.append(style);
   }
-  view.setAttribute('data-party-display', options.visible === false ? 'off' : 'on');
+  const display = options.visible === false ? 'off' : 'on';
+  if (view.getAttribute('data-party-display') !== display) view.setAttribute('data-party-display', display);
   if (options.mode !== 'capture') return { ok: true };
   const canvas = view.querySelector('.visualizer-layer__canvas');
   if (!canvas || !canvas.width || !canvas.height || doc.visibilityState !== 'visible') return { ok: false };
