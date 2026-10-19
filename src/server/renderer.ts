@@ -3,6 +3,8 @@ import type { PaletteBody } from '../shared/palette-model.ts';
 import { COLOR_PRESETS, STANDARD_STROBE } from './presets.ts';
 import { outputEmitters } from '../shared/emitter-capability.ts';
 import { HardwareClock } from '../shared/hardware-clock.ts';
+import { hueLightMeasure } from '../shared/hue-light.ts';
+import type { LightMeasure } from '../shared/hardware-guard.ts';
 import { HardwareGuard } from '../shared/hardware-guard.ts';
 import { drawnByTheShow, strobeLevel } from '../shared/strobe-fx.ts';
 import { hardwareStrobe } from '../shared/hardware-strobe.ts';
@@ -287,6 +289,11 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
   const guard = new HdFlashGuard(RENDER_SAFETY_DEFAULTS.hdFlashIntervalMs);
   const strobeGuard = new StrobeLampGuard();
   const hardwareGuard = new HardwareGuard();
+  const emittedGuard = new HardwareGuard();
+  type EmittedUnit = { fixture: number; cell: number; id: string; measure: LightMeasure; owner: string; cut: boolean };
+  let emittedUnits: EmittedUnit[] = [];
+  let emittedFixtures = new Map<number, EmittedUnit[]>();
+  let emittedNow = 0;
   const hardwareStrobeGuard = new HardwareGuard();
   const hardwareClock = new HardwareClock();
   let lastSweep = -Infinity;
@@ -373,16 +380,29 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
   let capabilityIndex = new Map<number, number>();
   const inputFixtureIndex = (f: RenderFixture) => capabilityIndex.get(f.id) ?? -1;
   function hardwareFor(input: RenderInput): void {
-    if (!input.hardware) { capabilities = []; hardwareKey = ''; hardwareClock.clear(); return; }
+    if (!input.hardware) { capabilities = []; emittedUnits = []; emittedFixtures.clear(); hardwareKey = ''; hardwareClock.clear(); return; }
     const key = JSON.stringify([profilesRevision(), input.hardware, input.fixtures.map((f) =>
       [f.id, f.profileId, f.productId, f.hardware, f.admission, f.output?.protocol, f.hue])]);
     if (key !== hardwareKey) {
       hardwareKey = key;
       hardwareClock.clear();
       hardwareGuard.blackout();
+      emittedGuard.blackout();
       capabilityIndex = new Map(input.fixtures.map((f, i) => [f.id, i]));
       hardwareStrobeGuard.retain(new Set(input.fixtures.map((f) => String(f.id))));
       capabilities = input.fixtures.map((f) => hardwareOf(f, profileOf(f), input.hardware));
+      emittedUnits = input.fixtures.flatMap((fix, fixture) => {
+        if (capabilities[fixture].technology !== 'hue') return [];
+        const profile = profileOf(fix), maps = profile.cells?.map((cell) => cell.channelMap) ?? [profile.channelMap];
+        return maps.map((map, cell) => ({ fixture, cell, id: `${fix.id}:${cell}`, measure: hueLightMeasure(profile, map), owner: '', cut: false }));
+      });
+      emittedFixtures = new Map();
+      for (const unit of emittedUnits) {
+        const id = input.fixtures[unit.fixture].id;
+        if (!emittedFixtures.has(id)) emittedFixtures.set(id, []);
+        emittedFixtures.get(id)!.push(unit);
+      }
+      emittedGuard.retain(new Set(emittedUnits.map((unit) => unit.id)));
     }
   }
   function cellHardware(layout: Layout, rig: Rig): HardwareCaps[] | undefined {
@@ -563,8 +583,8 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     elapsed: number, now: number): void {
     const plain: RenderInput = { ...input, masterDimmer: 255, pattern: '', flashLimit: false };
     const lights = identifyLights(cells ? cells.length : 1, elapsed).map(({ col, dim }) => ({ col, dim, strobe: 0 }));
-    if (cells) writeBar(plain, store, fix, cells, lights, null, now);
-    else writePar(plain, store, fix, lights[0], null, now);
+    if (cells) writeBar(plain, store, fix, cells, lights, null, now, false, true);
+    else writePar(plain, store, fix, lights[0], null, now, false, true);
   }
 
   // Re-anchor after clock epochs so patterns cannot keep an anchor from the old transport position.
@@ -816,7 +836,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
   }
 
   function writePar(input: RenderInput, store: FrameStore, fix: RenderFixture, { col, dim, strobe: flash }: LightValue,
-    energy: EnergyLook | null, now: number, clip = false): void {
+    energy: EnergyLook | null, now: number, clip = false, identified = false): void {
     const dmx = store.getBuffer(fix.universe);
     const base = fix.address - 1;
     const profile = profileOf(fix);
@@ -824,13 +844,19 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     const ms = mastersOf(input, fix);
 
     writeDefaults(dmx, base, profile.defaults);
-    if (!strobe(dmx, base, fix, ch, strobeRequest(input, energy, flash, clip), now)) return;
+    const gate = strobe(dmx, base, fix, ch, strobeRequest(input, energy, flash, clip), now);
+    const unit = emittedFixtures.get(fix.id)?.[0];
+    if (unit) {
+      const light = emittedGuard.light(unit.id, col, gate ? dim : 0, emittedNow, capabilities[unit.fixture],
+        identified ? 'identify' : unit.owner, !identified && unit.cut, unit.measure, ms);
+      col = light.colour; dim = light.dim;
+    } else if (!gate) return;
     writeDimmer(dmx, base, ch, dim * ms);
     writeEmitters(dmx, base, ch, col, ms * (dim / 255));
   }
 
   function writeBar(input: RenderInput, store: FrameStore, fix: RenderFixture, cells: ChannelMap[], lights: LightValue[],
-    energy: EnergyLook | null, now: number, clip = false): void {
+    energy: EnergyLook | null, now: number, clip = false, identified = false): void {
     const dmx = store.getBuffer(fix.universe);
     const base = fix.address - 1;
     const profile = profileOf(fix);
@@ -846,7 +872,18 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       if (light.dim > top) top = light.dim;
       if (light.strobe > flash) flash = light.strobe;
     }
-    if (!strobe(dmx, base, fix, ch, strobeRequest(input, energy, flash, clip), now)) return;
+    const gate = strobe(dmx, base, fix, ch, strobeRequest(input, energy, flash, clip), now);
+    const measured = emittedFixtures.get(fix.id);
+    if (measured) {
+      top = 0;
+      for (let c = 0; c < lights.length; c++) {
+        const unit = measured[c], light = lights[c];
+        const admitted = emittedGuard.light(unit.id, light.col, gate ? light.dim : 0, emittedNow, capabilities[unit.fixture],
+          identified ? 'identify' : unit.owner, !identified && unit.cut, unit.measure, ms);
+        light.col = admitted.colour; light.dim = admitted.dim;
+        top = Math.max(top, light.dim);
+      }
+    } else if (!gate) return;
     const fixtureDimmer = ch.dimmer !== undefined;
     writeDimmer(dmx, base, ch, top * ms);
 
@@ -885,6 +922,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     sizeUnitBuffers(rigNow.units.length);
 
     const effNow = effectNow(now, gridOriginMs);
+    emittedNow = now;
     const effDt = lastEffectNow === null ? 0 : Math.max(0, effNow - lastEffectNow);
     lastEffectNow = effNow;
     if (effNow - lastSweep >= 1000 || effNow < lastSweep) {
@@ -938,6 +976,9 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
 
     if (input.masterBlackout) {
       hardwareGuard.blackout();
+      for (const unit of emittedUnits) if (!ident?.ids.has(fixtures[unit.fixture].id)) {
+        emittedGuard.light(unit.id, COLOR_PRESETS[14], 0, now, capabilities[unit.fixture], 'blackout', true, unit.measure);
+      }
       hardwareStrobeGuard.blackout();
       if (input.flashLimit) limiter.commit(0, now);
       if (guard.brightCount) for (let u = 0; u < rigNow.units.length; u++) guard.clear(u);
@@ -1025,6 +1066,17 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     else if (strobeGuard.liveCount) for (let u = 0; u < rigNow.units.length; u++) strobeGuard.clear(u);
     if (input.flashLimit) limitFlashes(input, all, now);
     else limiter.reset();
+    for (const unit of emittedUnits) {
+      const i = unit.fixture, c = unit.cell, fix = fixtures[i];
+      const u = rigNow.ranges[i].start + c, voice = voiceTop?.[u];
+      const override = fix.override && (fix.override.enabled || fix.override.blackout);
+      const clip = seqUnits && seqLight[u], kind = watch ? topKind[u] : null;
+      const owner = sync ? 'sync' : voice?.owner ?? (override ? 'override' : pixelOwners[u] ?? (clip ? seqOwner[u] ?? 'sequence:black'
+        : input.effect ? baseOwner[u] ?? 'base:excluded' : `legacy:${input.pattern}`));
+      const cut = kind === 'energy.kill' || !voice && !sync && (!!fix.override?.blackout
+        || !pixelOwners[u] && (target?.level === 0 && !fix.override?.enabled || !!clip && input.sequenceTransport?.stop?.mode === 'black'));
+      unit.owner = owner; unit.cut = cut;
+    }
     for (let i = 0; i < fixtures.length; i++) {
       const cells = rigNow.cellMaps[i];
       if (ident && ident.ids.has(fixtures[i].id)) writeIdentified(input, store, fixtures[i], cells, now - ident.start, now);

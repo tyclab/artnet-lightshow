@@ -706,7 +706,9 @@ limits. The same curves drive the legacy look strobe, while Standard
 uses a verified hardware channel or software fallback. Shapes are applied
 before device flash guards, so ramps, random flashes and bursts obey fixture
 limits. Manual programs and palette flashes share admission history across
-voice replacements. The global flash limiter, acknowledgement and blackout
+voice replacements. Hue admission measures the final RGB sent to each bulb or
+strip section, including mixed RGB/white emitters, master levels and transitions.
+The global flash limiter, acknowledgement and blackout
 still apply; older saved strobes default to palette flashes.
 
 ## Sequencer

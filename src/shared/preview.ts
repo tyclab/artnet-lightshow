@@ -3,6 +3,7 @@ import { outputEmitters } from './emitter-capability.ts';
 import { hueEmitterColour } from './hue-colour.ts';
 import { isHueProfile } from './hue-lamp.ts';
 import { HardwareClock } from './hardware-clock.ts';
+import { hueLightMeasure } from './hue-light.ts';
 import { HardwareGuard } from './hardware-guard.ts';
 import { hardwareStrobe } from './hardware-strobe.ts';
 import { hardwareOf } from './hardware.ts';
@@ -272,6 +273,7 @@ interface Walk {
   /** The strobe's permit per lamp, as the renderer keeps it. */
   strobeGuard: StrobeLampGuard;
   hardwareGuard: HardwareGuard;
+  emittedGuard: HardwareGuard;
   hardwareStrobeGuard: HardwareGuard;
   hardwareClock: HardwareClock;
   expression: Expression;
@@ -309,6 +311,7 @@ function copyWalk(w: Walk): Walk {
     guard: w.guard.clone(),
     strobeGuard: w.strobeGuard.clone(),
     hardwareGuard: w.hardwareGuard.clone(),
+    emittedGuard: w.emittedGuard.clone(),
     hardwareStrobeGuard: w.hardwareStrobeGuard.clone(),
     hardwareClock: w.hardwareClock.clone(),
     expression: { ...w.expression },
@@ -328,7 +331,7 @@ function copyWalk(w: Walk): Walk {
 interface Checkpoint { walk: Walk; periodic: boolean; used: number }
 
 const emptyWalk = (k: number, intervalMs: number): Walk => ({
-  k, cursor: 0, stepper: new EffectStepper(), guard: new HdFlashGuard(intervalMs), strobeGuard: new StrobeLampGuard(), hardwareGuard: new HardwareGuard(), hardwareStrobeGuard: new HardwareGuard(), hardwareClock: new HardwareClock(), expression: { ...EXPRESSION_REST }, phase: 0,
+  k, cursor: 0, stepper: new EffectStepper(), guard: new HdFlashGuard(intervalMs), strobeGuard: new StrobeLampGuard(), hardwareGuard: new HardwareGuard(), emittedGuard: new HardwareGuard(), hardwareStrobeGuard: new HardwareGuard(), hardwareClock: new HardwareClock(), expression: { ...EXPRESSION_REST }, phase: 0,
   lastBeat: null, lastEpoch: 0, lastNow: null, lastSweep: -Infinity, epoch: 0, base: null, voices: new Map(), records: new Map(), strobes: new Set(),
   compat: null, fadeOf: null, fade: null, shown: [], output: null, seq: newSequenceRun(),
 });
@@ -836,7 +839,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       const cut = tops[u] === 'energy.kill' || !voice && (target?.level === 0 || !!clip && sequence?.transport.stop?.mode === 'black');
       const guardedLight = w.hardwareGuard.light(`${fixtures[i]?.id ?? i}:${cell}`, cols[u], dims[u], t, e.hardware[i], owner, cut);
       cols[u] = guardedLight.colour; dims[u] = guardedLight.dim;
-      if (!programs[u] && w.hardwareStrobeGuard.apply(String(fixtures[i]?.id ?? i), hardwareStrobe(flashes[u], e.hardware[i], t).previewLevel, t,
+      if (e.hardware[i].technology !== 'hue' && !programs[u] && w.hardwareStrobeGuard.apply(String(fixtures[i]?.id ?? i), hardwareStrobe(flashes[u], e.hardware[i], t).previewLevel, t,
         { ...e.hardware[i], minTransitionMs: 0 }) === 0) dims[u] = 0;
     }
     // The party flash limit on the hd.* kinds, on what each lamp puts out at its trim (the preview's master is full).
@@ -858,6 +861,20 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       }
     } else if (w.strobeGuard.liveCount) for (let u = 0; u < n; u++) w.strobeGuard.clear(u);
 
+    if (e.hardware) for (let u = 0; u < n; u++) {
+      const { fixture: i, cell } = rig.units[u], fixture = fixtures[i], caps = e.hardware[i];
+      const profile = options.profiles?.[fixture?.profileId ?? ''];
+      if (caps.technology !== 'hue' || !profile) continue;
+      const voice = voiceTop?.[u], clip = clips?.[u];
+      const owner = voice?.owner ?? (clip ? clipOwner[u] ?? 'sequence:black' : spec ? baseOwner[u] ?? 'base:excluded' : `legacy:${s.pattern}`);
+      const cut = tops[u] === 'energy.kill' || !voice && (target?.level === 0 || !!clip && sequence?.transport.stop?.mode === 'black');
+      const map = rig.cellMaps[i]?.[cell] ?? profile.channelMap;
+      if (!programs[u] && w.hardwareStrobeGuard.apply(String(fixture.id), hardwareStrobe(flashes[u], caps, t).previewLevel, t,
+        { ...caps, minTransitionMs: 0 }) === 0) dims[u] = 0;
+      const guardedLight = w.emittedGuard.light(`${fixture?.id ?? i}:${cell}`, cols[u], dims[u], t, caps, owner, cut,
+        hueLightMeasure(profile, map), (fixture.maxBrightness ?? 255) / 255);
+      cols[u] = guardedLight.colour; dims[u] = guardedLight.dim;
+    }
     if (!lights) return null;
     const out = new Array<Colour>(n);
     for (let u = 0; u < n; u++) {
