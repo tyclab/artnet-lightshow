@@ -164,6 +164,16 @@ test('DMX goes out as bytes only to the pages that subscribed to it', async () =
     other.emit('subscribe', 'dmx');
     assert.deepStrictEqual([...decodeDmxFrame(await late)[0]], [10, 20, 30]);
 
+    // The room sender's picture rides the same feed, for the Stage's screens, and clears with it.
+    const picture = next(watching, 'picture-image');
+    assert.ok(s.publisher.sendPictureImage({ width: 2, height: 1, data: Uint8Array.from([1, 2, 3, 4, 5, 6]) }));
+    const shown = await picture;
+    assert.deepStrictEqual([shown.width, shown.height, [...new Uint8Array(shown.data)]], [2, 1, [1, 2, 3, 4, 5, 6]]);
+    const cleared = next(watching, 'picture-image');
+    assert.ok(s.publisher.sendPictureImage(null));
+    assert.strictEqual(await cleared, null);
+    assert.strictEqual(s.publisher.sendPictureImage(null), false, 'nothing new to say');
+
     watching.emit('unsubscribe', ['dmx']);
     other.emit('unsubscribe', ['dmx']);
     await new Promise((r) => setTimeout(r, 50));

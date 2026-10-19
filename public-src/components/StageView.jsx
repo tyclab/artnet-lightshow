@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { api, pick, connectedSig, dmxSig, stagePreviewSig } from '../state.js';
+import { effect } from '@preact/signals';
+import { api, pick, connectedSig, dmxSig, field, pictureImageSig, stagePreviewSig } from '../state.js';
 import { fmtTime, rigLights } from '../utils.js';
 import { useDmxFeed } from '../use-dmx.js';
 import { useTimeline } from '../use-timeline.js';
@@ -88,6 +89,16 @@ export function StageView({ compact = false } = {}) {
   }, [status, placed]);
 
   useEffect(() => { if (status === 'ready') scene.current.setRoom(room); }, [status, room]);
+  // The room picture on the screens while a sender paints: its own subscription, so ten
+  // pictures a second wake the scene and not the view.
+  useEffect(() => {
+    if (status !== 'ready') return undefined;
+    return effect(() => {
+      const image = pictureImageSig.value;
+      const painting = !!field('picture').value?.input;
+      scene.current.setPicture(painting ? image : null);
+    });
+  }, [status]);
   useEffect(() => { if (status === 'ready') scene.current.setCutaway(cutaway); }, [status, cutaway]);
 
   useEffect(() => {

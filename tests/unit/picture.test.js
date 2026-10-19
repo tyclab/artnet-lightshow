@@ -26,6 +26,24 @@ test('one sender claims the rig by signature, paints and releases', () => {
   assert.equal(input.current(), null);
 });
 
+test('a frame may carry the small picture it was sampled from, for the Stage screens', () => {
+  const { input, tick } = setup();
+  const claim = input.claim('a', { signature: 'rig-a' });
+  assert.equal(input.image(), null);
+  const picture = { width: 2, height: 1, data: Uint8Array.from([1, 2, 3, 4, 5, 6]) };
+  assert.deepEqual(input.frame('a', { leaseId: claim.leaseId, data: bytes(4), image: picture }), { ok: true });
+  assert.deepEqual(input.image(), picture);
+  assert.notEqual(input.image().data, picture.data, 'the picture is copied');
+  tick(100);
+  assert.deepEqual(input.frame('a', { leaseId: claim.leaseId, data: bytes(4) }), { ok: true });
+  assert.deepEqual(input.image(), picture, 'a frame without a picture keeps the last one');
+  tick(100);
+  assert.equal(code(() => input.frame('a', { leaseId: claim.leaseId, data: bytes(4), image: { width: 2, height: 1, data: Uint8Array.from([1, 2, 3]) } })), 'INVALID');
+  assert.equal(code(() => input.frame('a', { leaseId: claim.leaseId, data: bytes(4), image: { width: 129, height: 1, data: new Uint8Array(129 * 3) } })), 'INVALID');
+  tick(2001);
+  assert.equal(input.image(), null, 'gone with the lease');
+});
+
 test('a frame must carry one colour per unit and respect the rate limit', () => {
   const { input, tick } = setup();
   const { leaseId } = input.claim('a', { signature: 'rig-a' });

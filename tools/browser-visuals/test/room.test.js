@@ -40,6 +40,7 @@ test('the room protocol claims by signature, accepts only a matching unit count 
   assert.deepEqual(calls[0].payload, { signature: 'rig-a' });
   assert.deepEqual(calls[1].payload.leaseId, 'lease');
   assert.deepEqual([...calls[1].payload.data], [255, 0, 0, 0, 0, 255]);
+  assert.deepEqual(calls[1].payload.image, { width: 4, height: 2, data: image().data }, 'the picture itself, for the screens in the Stage');
   assert.equal(roomProtocol.accepts(pump, { format: 'rgb24', order: 'units', ttlMs: 2000, maxFps: 20, units: 3 }), false);
   assert.equal(roomProtocol.accepts(pump, { format: 'rgb24', order: 'row-major', ttlMs: 2000, maxFps: 20, units: 2 }), false);
 });

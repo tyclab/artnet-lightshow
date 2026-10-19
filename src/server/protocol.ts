@@ -1,6 +1,7 @@
 // Version each domain independently so clients can detect missed patches and request a snapshot.
 
 import type { Server } from 'socket.io';
+import type { PictureImage } from '../types/picture.ts';
 
 export const PROTOCOL = 2;
 
@@ -139,6 +140,7 @@ export function createPublisher(io: Io) {
   const differ = new StateDiffer();
   let lastLiveJson = '';
   let lastFrame: Uint8Array | null = null;
+  let lastImage: PictureImage | null = null;
   let lastAudio: unknown;
   let lastAudioJson: string | undefined;
 
@@ -173,6 +175,19 @@ export function createPublisher(io: Io) {
 
     lastDmxFrame(): Uint8Array | null {
       return lastFrame;
+    },
+
+    /** The room picture for the Stage's screens, to the DMX feed's subscribers; null when the sender is gone. */
+    sendPictureImage(image: PictureImage | null): boolean {
+      if (typeof io.to !== 'function') return false;
+      if (image === lastImage) return false;
+      lastImage = image;
+      io.to(ROOM.dmx).volatile.emit('picture-image', image);
+      return true;
+    },
+
+    lastPictureImage(): PictureImage | null {
+      return lastImage;
     },
 
     resetDmx(): void {

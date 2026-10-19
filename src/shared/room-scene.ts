@@ -52,7 +52,8 @@ export const roomSceneSchema = z.object({
     id,
     label: name.optional(),
     kind: z.enum(['box', 'cylinder', 'prism']),
-    role: z.enum(['wall', 'furniture']),
+    // A screen shows the live room picture while a sender paints.
+    role: z.enum(['wall', 'furniture', 'screen']),
     position: vector,
     size,
     rotation: rotation.optional(),
