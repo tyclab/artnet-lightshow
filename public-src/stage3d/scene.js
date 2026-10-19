@@ -151,6 +151,8 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
   let roomDisposables = [];
   let cutaway = true;
   let roomWalls = [];
+  let screens = [];
+  let screenTexture = null;
   let roomBounds = null;
 
   function fitRoom() {
@@ -175,6 +177,8 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
     for (const resource of roomDisposables) resource.dispose();
     roomDisposables = [];
     roomWalls = [];
+    screens = [];
+    if (screenTexture) { screenTexture.dispose(); screenTexture = null; }
     roomGroup = null;
     floor.visible = deck.visible = wall.visible = !model;
     roomBounds = model?.bounds || null;
@@ -213,6 +217,7 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
           keepRoom(new THREE.LineBasicMaterial({ color: 0x171a21, transparent: true, opacity: 0.45 })));
         mesh.add(outline);
         if (object.role === 'wall') roomWalls.push({ mesh, model: object });
+        if (object.role === 'screen') screens.push({ material: mesh.material, color: object.color || '#747985' });
         roomGroup.add(mesh);
       }
       scene.add(roomGroup);
@@ -433,6 +438,36 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
     if (roomBounds) { fitRoom(); view(activeView); }
   }
 
+  /** The live room picture on the room's screens (RGB24, row-major from the top-left); null darkens them again. */
+  function setPicture(image) {
+    if (!image) {
+      for (const screen of screens) {
+        if (!screen.material.map) continue;
+        screen.material.map = null; screen.material.color.set(screen.color); screen.material.needsUpdate = true;
+      }
+      return;
+    }
+    if (!screens.length) return;
+    const { width, height, data } = image;
+    if (!screenTexture || screenTexture.image.width !== width || screenTexture.image.height !== height) {
+      if (screenTexture) screenTexture.dispose();
+      screenTexture = new THREE.DataTexture(new Uint8Array(width * height * 4), width, height, THREE.RGBAFormat);
+      screenTexture.colorSpace = THREE.SRGBColorSpace;
+      screenTexture.magFilter = THREE.LinearFilter;
+      screenTexture.minFilter = THREE.LinearFilter;
+      screenTexture.flipY = true;
+    }
+    const rgba = screenTexture.image.data;
+    for (let i = 0, j = 0; i < width * height; i++, j += 3) {
+      rgba[i * 4] = data[j]; rgba[i * 4 + 1] = data[j + 1]; rgba[i * 4 + 2] = data[j + 2]; rgba[i * 4 + 3] = 255;
+    }
+    screenTexture.needsUpdate = true;
+    for (const screen of screens) {
+      if (screen.material.map === screenTexture) continue;
+      screen.material.map = screenTexture; screen.material.color.set('#ffffff'); screen.material.needsUpdate = true;
+    }
+  }
+
   function render() {
     controls.update();
     renderer.render(scene, camera);
@@ -446,12 +481,13 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
     }
     for (const thing of rigDisposables) thing.dispose();
     for (const thing of roomDisposables) thing.dispose();
+    if (screenTexture) screenTexture.dispose();
     for (const thing of disposables) if (thing && thing.dispose) thing.dispose();
     renderer.dispose();
   }
 
   return {
-    setRig, setLights, setHaze, setRoom, setCutaway, view, nudge, resize, render, dispose,
+    setRig, setLights, setHaze, setRoom, setCutaway, setPicture, view, nudge, resize, render, dispose,
     /** What is drawn, for tests and the page's description. */
     info: () => ({ units, pars: parts ? parts.pars.length : 0, bulbs: parts ? parts.bulbs.length : 0, cells: parts ? parts.cells.length : 0 }),
   };

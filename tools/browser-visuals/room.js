@@ -30,10 +30,12 @@ export const roomProtocol = {
   claim: (pump, target) => ({ signature: target.signature }),
   accepts: (pump, response) => response.format === 'rgb24' && response.order === 'units' && response.ttlMs === 2000
     && Number.isFinite(response.maxFps) && response.maxFps >= 10 && Number.isInteger(response.units) && response.units === pump.units?.length,
-  frame: (pump, lease, data) => ({ leaseId: lease.id, data }),
+  // One colour per unit, and the small picture itself for the screens in the Stage.
+  frame: (pump, lease, payload) => ({ leaseId: lease.id, data: payload.data, image: payload.image }),
   release: (pump, lease) => ({ leaseId: lease.id }),
   image: (pump, image) => image && image.width === pump.width && image.height === pump.height && image.data instanceof Uint8Array
-    && image.data.length === pump.width * pump.height * 3 && pump.units ? sampleUnits(image, pump.units) : null,
+    && image.data.length === pump.width * pump.height * 3 && pump.units
+    ? { data: sampleUnits(image, pump.units), image: { width: image.width, height: image.height, data: image.data } } : null,
 };
 
 /** The room target: fresh state, armed, acknowledged, and a unit list for the rig the server reports. */

@@ -124,6 +124,14 @@ socket.on('dmx-frame', (message) => {
   if (frame) dmxSig.value = frame;
 });
 
+// The small picture a room sender paints from, with the DMX feed, for the Stage's screens;
+// null once the sender is gone.
+export const pictureImageSig = signal(null);
+socket.on('picture-image', (message) => {
+  pictureImageSig.value = message && message.data && message.width > 0 && message.height > 0
+    ? { width: message.width, height: message.height, data: new Uint8Array(message.data) } : null;
+});
+
 // The first view subscribes, the last unsubscribes, and a reconnect subscribes again.
 let dmxWanted = 0;
 export function wantDmx() {

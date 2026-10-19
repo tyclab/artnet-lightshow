@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import type { PictureFrame } from '../types/picture.ts';
+import type { PictureFrame, PictureImage } from '../types/picture.ts';
 
 export const PICTURE_TTL_MS = 2000;
 export const PICTURE_MAX_FPS = 20;
+/** The picture itself travels small: enough for a screen in the Stage, not a video feed. */
+export const PICTURE_IMAGE_MAX = 128;
 
 export interface PictureRig { signature: string; units: number }
 
-interface Lease { leaseId: string; owner: string; signature: string; units: number; expiresAt: number; lastFrame: number; data: Uint8Array | null }
+interface Lease { leaseId: string; owner: string; signature: string; units: number; expiresAt: number; lastFrame: number; data: Uint8Array | null; image: PictureImage | null }
 
 export class PictureInputError extends Error {
   code: string;
@@ -19,6 +21,16 @@ function record(raw: unknown, keys: readonly string[]): Record<string, unknown> 
   const value = raw as Record<string, unknown>;
   if (Object.keys(value).some((key) => !keys.includes(key))) return refuse('INVALID', 'Unknown picture field');
   return value;
+}
+
+/** The small picture a sender samples from, copied; a screen in the Stage shows it. */
+function pictureImage(raw: unknown): PictureImage {
+  const value = record(raw, ['width', 'height', 'data']);
+  const { width, height, data } = value;
+  if (!Number.isInteger(width) || !Number.isInteger(height) || (width as number) < 1 || (height as number) < 1
+    || (width as number) > PICTURE_IMAGE_MAX || (height as number) > PICTURE_IMAGE_MAX) return refuse('INVALID', `Expected a picture of at most ${PICTURE_IMAGE_MAX} x ${PICTURE_IMAGE_MAX}`);
+  if (!(data instanceof Uint8Array) || data.byteLength !== (width as number) * (height as number) * 3) return refuse('INVALID', 'Expected exact RGB24 bytes for the picture');
+  return { width: width as number, height: height as number, data: Uint8Array.from(data) };
 }
 
 /**
@@ -52,13 +64,13 @@ export class PictureInput {
     if (typeof value.signature !== 'string' || value.signature !== current.signature) return refuse('STALE', 'The rig changed: fetch the units again');
     if (this.lease && this.lease.owner !== owner) return refuse('BUSY', 'The picture already has a sender');
     const lease = this.lease ?? { leaseId: randomUUID(), owner, signature: current.signature, units: current.units,
-      expiresAt: this.now() + PICTURE_TTL_MS, lastFrame: -Infinity, data: null };
+      expiresAt: this.now() + PICTURE_TTL_MS, lastFrame: -Infinity, data: null, image: null };
     this.lease = lease;
     return { ok: true as const, leaseId: lease.leaseId, units: lease.units, ttlMs: PICTURE_TTL_MS, maxFps: PICTURE_MAX_FPS, format: 'rgb24', order: 'units' };
   }
   private owned(owner: string, raw: unknown, frame: boolean): Lease {
     this.prune();
-    const value = record(raw, frame ? ['leaseId', 'data'] : ['leaseId']);
+    const value = record(raw, frame ? ['leaseId', 'data', 'image'] : ['leaseId']);
     const lease = this.lease;
     if (!lease || lease.owner !== owner || lease.leaseId !== value.leaseId) return refuse('NO_LEASE', 'No matching live picture lease');
     return lease;
@@ -68,7 +80,10 @@ export class PictureInput {
     if (!(data instanceof Uint8Array) || data.byteLength !== lease.units * 3) return refuse('INVALID', 'Expected exact RGB24 bytes, one colour per unit');
     const now = this.now();
     if (now - lease.lastFrame < 1000 / PICTURE_MAX_FPS) return refuse('RATE_LIMIT', 'Picture frame rate exceeds 20 fps');
+    const image = (raw as { image?: unknown }).image;
+    const picture = image === undefined ? null : pictureImage(image);
     lease.data = Uint8Array.from(data); lease.lastFrame = now; lease.expiresAt = now + PICTURE_TTL_MS;
+    if (picture) lease.image = picture;
     return { ok: true };
   }
   release(owner: string, raw: unknown): { ok: true } {
@@ -80,6 +95,11 @@ export class PictureInput {
     this.prune();
     const lease = this.lease;
     return lease ? { units: lease.units, remainingMs: Math.max(0, Math.ceil(lease.expiresAt - this.now())), receiving: lease.data !== null } : null;
+  }
+  /** The sender's picture, while its lease paints. */
+  image(): PictureImage | null {
+    this.prune();
+    return this.lease && this.lease.data ? this.lease.image : null;
   }
   current(clockShift = 0): PictureFrame | null {
     this.prune();

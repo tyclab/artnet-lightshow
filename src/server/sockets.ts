@@ -150,6 +150,8 @@ function attachSockets(io: Server, { midi, integrations }: {
       try {
         const answer = pictureInput[operation](socket.id, payload);
         if (typeof ack === 'function') ack(answer);
+        // The Stage's screens show the sender's picture while it paints.
+        if (operation !== 'claim') publisher.sendPictureImage(pictureInput.image());
       } catch (err) {
         if (typeof ack === 'function') ack({ ok: false, code: err instanceof PictureInputError ? err.code : 'INVALID', error: messageOf(err) });
       }
@@ -170,6 +172,8 @@ function attachSockets(io: Server, { midi, integrations }: {
           // What the others already have: the feeds only send a change.
           const frame = room === ROOM.dmx ? publisher.lastDmxFrame() : null;
           if (frame) socket.emit('dmx-frame', frame);
+          const image = room === ROOM.dmx ? pictureInput.image() : null;
+          if (image) socket.emit('picture-image', image);
           const audio = room === ROOM.audio ? publisher.lastAudio() : undefined;
           if (audio !== undefined) socket.emit('audio', audio);
         }

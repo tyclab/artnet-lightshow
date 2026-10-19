@@ -447,11 +447,14 @@ the helper fetches the units again and claims anew.
 | --- | --- | --- |
 | `picture:units` | none | `{ ok: true, signature, units, list: [{ fixture, cell, x, y, grid }] }` |
 | `picture:claim` | `{ signature }` | `{ ok: true, leaseId, units, ttlMs: 2000, maxFps: 20, format: 'rgb24', order: 'units' }` |
-| `picture:frame` | `{ leaseId, data }` | `{ ok: true }` — `data` is `units * 3` RGB bytes |
+| `picture:frame` | `{ leaseId, data, image? }` | `{ ok: true }` — `data` is `units * 3` RGB bytes; `image` is the picture itself, `{ width, height, data }` up to 128 × 128 RGB, for the Stage |
 | `picture:release` | `{ leaseId }` | `{ ok: true }` |
 
 One sender holds the picture at a time; `GET /api/picture` reports the selected
-source and the live lease without pixel data.
+source and the live lease without pixel data. The picture a frame carries goes
+to the pages subscribed to the DMX feed (`picture-image`, null once the sender
+is gone), and the Stage paints it on the room's screens: the objects a room
+export marks `role: screen` (the TV and the monitors in a house-model export).
 
 ### OpenRGB
 
