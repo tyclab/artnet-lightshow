@@ -29,7 +29,7 @@ export const roomProtocol = {
   events: { claim: 'picture:claim', frame: 'picture:frame', release: 'picture:release' },
   claim: (pump, target) => ({ signature: target.signature }),
   accepts: (pump, response) => response.format === 'rgb24' && response.order === 'units' && response.ttlMs === 2000
-    && Number.isFinite(response.maxFps) && response.maxFps >= 10 && Number.isInteger(response.units) && response.units === pump.units?.length,
+    && Number.isFinite(response.maxFps) && response.maxFps >= 1 && Number.isInteger(response.units) && response.units === pump.units?.length,
   // One colour per unit, and the small picture itself for the screens in the Stage.
   frame: (pump, lease, payload) => ({ leaseId: lease.id, data: payload.data, image: payload.image }),
   release: (pump, lease) => ({ leaseId: lease.id }),

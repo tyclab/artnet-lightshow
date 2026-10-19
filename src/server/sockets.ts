@@ -19,6 +19,7 @@ import { pixelInputs } from './pixel-input-live.ts';
 import { PixelInputError } from './pixel-input.ts';
 import { pictureInput, pictureUnits } from './picture-live.ts';
 import { PictureInputError } from './picture.ts';
+import { VISUAL_INPUT_MESSAGE_BUDGET } from './visual-input-rate.ts';
 import type { Server, Socket } from 'socket.io';
 import type { MidiPorts } from './midi-connect.ts';
 import type { Publisher, Snapshot } from './protocol.ts';
@@ -128,7 +129,7 @@ function attachSockets(io: Server, { midi, integrations }: {
     for (const operation of ['claim', 'frame', 'release'] as const) socket.on(`pixel-input:${operation}`, (payload: unknown, ack?: (answer: unknown) => void) => {
       const now = performance.now();
       if (now - pixelWindow >= 1000) { pixelWindow = now; pixelMessages = 0; }
-      if (++pixelMessages > 60) {
+      if (++pixelMessages > VISUAL_INPUT_MESSAGE_BUDGET) {
         if (typeof ack === 'function') ack({ ok: false, code: 'RATE_LIMIT', error: 'Too many pixel-input messages' });
         socket.disconnect(true); return;
       }
@@ -139,12 +140,12 @@ function attachSockets(io: Server, { midi, integrations }: {
         if (typeof ack === 'function') ack({ ok: false, code: err instanceof PixelInputError ? err.code : 'INVALID', error: messageOf(err) });
       }
     });
-    // The room picture shares the pixel-input budget: one sender, a few frames a second.
+    // One socket may send both a room picture and a panel at their negotiated rate.
     socket.on('picture:units', (ack?: (answer: unknown) => void) => { if (typeof ack === 'function') ack({ ok: true, ...pictureUnits() }); });
     for (const operation of ['claim', 'frame', 'release'] as const) socket.on(`picture:${operation}`, (payload: unknown, ack?: (answer: unknown) => void) => {
       const now = performance.now();
       if (now - pixelWindow >= 1000) { pixelWindow = now; pixelMessages = 0; }
-      if (++pixelMessages > 60) {
+      if (++pixelMessages > VISUAL_INPUT_MESSAGE_BUDGET) {
         if (typeof ack === 'function') ack({ ok: false, code: 'RATE_LIMIT', error: 'Too many picture messages' });
         socket.disconnect(true); return;
       }

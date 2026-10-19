@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { matchesTarget, discoverPage, captureCanvas, ppm } from '../browser.js';
+import { matchesTarget, discoverPage, captureCanvas, pageAction, ppm } from '../browser.js';
 import { parentAlive, readControls } from '../cli.js';
 
 const expected = 'http://music.invalid:8095/#/now-playing?player=one&frameless=1';
@@ -48,4 +48,43 @@ test('parent watchdog distinguishes exited supervisor from access-denied alive p
   assert.equal(parentAlive(123, (pid, signal) => { assert.equal(pid, 123); assert.equal(signal, 0); }), true);
   assert.equal(parentAlive(123, () => { throw Object.assign(new Error(), { code: 'ESRCH' }); }), false);
   assert.equal(parentAlive(123, () => { throw Object.assign(new Error(), { code: 'EPERM' }); }), true);
+});
+
+test('capture reuses bounded scratch canvases across source replacement and output sizes', async () => {
+  const saved = Object.fromEntries(['document', 'location', 'requestAnimationFrame'].map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  let source = { width: 800, height: 600, isConnected: true, closest: () => null }, created = 0;
+  const drawn = [];
+  const view = { setAttribute() {}, removeAttribute() {}, querySelector: () => source };
+  globalThis.location = { href: expected };
+  globalThis.requestAnimationFrame = (fn) => fn();
+  globalThis.document = {
+    visibilityState: 'visible', querySelector: () => view, getElementById: () => ({ remove() {} }),
+    createElement: () => {
+      created++;
+      const canvas = { width: 0, height: 0 };
+      const context = { fillRect() {}, drawImage: (image) => drawn.push(image), getImageData: () => ({ data: new Uint8Array(canvas.width * canvas.height * 4) }) };
+      canvas.getContext = () => context;
+      return canvas;
+    },
+  };
+  try {
+    const capture = (width = 2, height = 1) => pageAction({ expected, mode: 'capture', visible: true, fit: 'cover', width, height }, matchesTarget);
+    await capture(); await capture();
+    assert.equal(created, 1);
+    const replaced = { width: 1920, height: 1080, isConnected: true, closest: () => null };
+    source = replaced;
+    assert.equal((await capture()).ok, true);
+    assert.equal(drawn.at(-1), replaced, 'capture resolves the current visualizer canvas on every request');
+    await capture(4, 3); await capture();
+    assert.equal(created, 2, 'room and panel each reuse their own capture size');
+    for (let width = 5; width < 15; width++) await capture(width);
+    assert.ok(view.__tyclabCaptureCanvases.size <= 4);
+    await pageAction({ expected, mode: 'cleanup' }, matchesTarget);
+    assert.equal(view.__tyclabCaptureCanvases, undefined);
+  } finally {
+    for (const [key, descriptor] of Object.entries(saved)) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else delete globalThis[key];
+    }
+  }
 });

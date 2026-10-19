@@ -1,15 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { MAX_CELLS_PER_FIXTURE } from '../shared/rig.ts';
+import { nextVisualFrame, VISUAL_INPUT_MAX_FPS } from './visual-input-rate.ts';
 import type { Profile } from '../types/rig.ts';
 import type { PixelInputFrame } from '../types/pixel-input.ts';
 
 export const PIXEL_INPUT_TTL_MS = 2000;
-export const PIXEL_INPUT_MAX_FPS = 20;
+export const PIXEL_INPUT_MAX_FPS = VISUAL_INPUT_MAX_FPS;
 export interface PixelTarget { profile: Profile; outputKey: string }
 interface Lease extends Omit<PixelInputFrame, 'data'> {
   owner: string;
   target: PixelTarget;
-  lastFrame: number;
+  nextFrame: number;
   data: Uint8Array | null;
 }
 export class PixelInputError extends Error {
@@ -69,7 +70,7 @@ export class PixelInputs {
     const current = this.leases.get(id);
     if (current && current.owner !== owner) return refuse('BUSY', 'Fixture already has a pixel-input owner');
     const lease = current ?? { fixtureId: id, leaseId: randomUUID(), owner, target, width: value.width as number, height: value.height as number,
-      expiresAt: this.now() + PIXEL_INPUT_TTL_MS, lastFrame: -Infinity, data: null };
+      expiresAt: this.now() + PIXEL_INPUT_TTL_MS, nextFrame: -Infinity, data: null };
     this.leases.set(id, lease);
     return { ok: true as const, leaseId: lease.leaseId, ttlMs: PIXEL_INPUT_TTL_MS, maxFps: PIXEL_INPUT_MAX_FPS, format: 'rgb24', order: 'row-major' };
   }
@@ -84,8 +85,9 @@ export class PixelInputs {
     const lease = this.owned(owner, raw, true), data = (raw as { data?: unknown }).data;
     if (!(data instanceof Uint8Array) || data.byteLength !== lease.width * lease.height * 3) return refuse('INVALID', 'Expected exact RGB24 binary bytes');
     const now = this.now();
-    if (now - lease.lastFrame < 1000 / PIXEL_INPUT_MAX_FPS) return refuse('RATE_LIMIT', 'Pixel frame rate exceeds 20 fps');
-    lease.data = Uint8Array.from(data); lease.lastFrame = now; lease.expiresAt = now + PIXEL_INPUT_TTL_MS;
+    const next = nextVisualFrame(now, lease.nextFrame);
+    if (next === null) return refuse('RATE_LIMIT', `Pixel frame rate exceeds ${PIXEL_INPUT_MAX_FPS} fps`);
+    lease.data = Uint8Array.from(data); lease.nextFrame = next; lease.expiresAt = now + PIXEL_INPUT_TTL_MS;
     return { ok: true };
   }
   release(owner: string, raw: unknown): { ok: true } {

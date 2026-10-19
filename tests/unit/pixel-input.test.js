@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { Server } from 'socket.io';
 import { io as connect } from 'socket.io-client';
 import { PixelInputs, PixelInputError, PIXEL_INPUT_TTL_MS, PIXEL_INPUT_MAX_FPS } from '../../src/server/pixel-input.ts';
+import { VISUAL_INPUT_MESSAGE_BUDGET } from '../../src/server/visual-input-rate.ts';
 import { pixelInputs } from '../../src/server/pixel-input-live.ts';
 import { attachSockets } from '../../src/server/sockets.ts';
 import { createAuth } from '../../src/server/auth.ts';
@@ -147,6 +148,24 @@ test('frames carry absolute expiry in the requested renderer clock', () => {
   assert.deepEqual(h.manager.frames(shift), []);
 });
 
+test('60 fps panel input replaces one latest frame and expires without replaying older frames', () => {
+  const h = harness(), lease = h.claim();
+  assert.equal(lease.maxFps, 60);
+  let first;
+  for (let i = 0; i < 120; i++) {
+    h.context.now = 100 + i * 1000 / 60;
+    const data = bytes(); data[0] = i;
+    h.frame(lease, data);
+    if (i === 0) first = h.manager.frames()[0];
+    const latest = h.manager.frames();
+    assert.equal(latest.length, 1);
+    assert.equal(latest[0].data[0], i);
+  }
+  assert.equal(first.data[0], 0, 'a renderer reading a prior frame keeps an immutable copy');
+  h.context.now += PIXEL_INPUT_TTL_MS;
+  assert.deepEqual(h.manager.frames(), []);
+});
+
 test('patch removal, profile replacement and changed destination revoke the old lease', () => {
   for (const change of [
     (c) => { c.target = null; },
@@ -248,7 +267,26 @@ test('socket message flooding disconnects its source and relinquishes ownership'
   await once(socket, 'snapshot'); setArmed(true);
   assert.equal((await emit(socket, 'claim', CLAIM)).ok, true);
   const disconnected = once(socket, 'disconnect');
-  for (let i = 0; i < 61; i++) socket.emit('pixel-input:frame', {});
+  for (let i = 0; i <= VISUAL_INPUT_MESSAGE_BUDGET; i++) socket.emit('pixel-input:frame', {});
   await disconnected;
   assert.deepEqual(pixelInputs.status(), []);
+});
+
+test('one authenticated socket can stream a panel and room picture above the old shared budget', { timeout: 10000 }, async (t) => {
+  const s = await serve(t), socket = s.client();
+  await once(socket, 'snapshot'); setArmed(true);
+  const panel = await emit(socket, 'claim', CLAIM);
+  const request = (event, payload) => payload === undefined ? socket.timeout(3000).emitWithAck(event) : socket.timeout(3000).emitWithAck(event, payload);
+  const units = await request('picture:units');
+  const room = await request('picture:claim', { signature: units.signature });
+  assert.equal(panel.maxFps, 60); assert.equal(room.maxFps, 60);
+  for (let i = 0; i < 40; i++) {
+    const answers = await Promise.all([
+      emit(socket, 'frame', { fixtureId: 53, leaseId: panel.leaseId, data: bytes() }),
+      request('picture:frame', { leaseId: room.leaseId, data: new Uint8Array(units.units * 3) }),
+    ]);
+    assert.ok(answers.every((answer) => answer.ok));
+    await new Promise((resolve) => setTimeout(resolve, 17));
+  }
+  assert.equal(socket.connected, true);
 });

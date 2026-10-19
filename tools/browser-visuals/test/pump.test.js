@@ -72,7 +72,7 @@ test('an incompatible successful claim is explicitly released without sending pi
   assert.deepEqual(h.calls.map(x => x.event), ['pixel-input:claim', 'pixel-input:release']);
   assert.equal(h.pump.lease, null);
 });
-test('slow captures cannot cause catch-up bursts after a frame acknowledgement', async () => {
+test('slow captures skip missed deadlines without bursts of sent frames', async () => {
   let now = 0;
   const sentAt = [];
   const transport = { connected: true, id: 'connection', request: async event => {
@@ -81,9 +81,46 @@ test('slow captures cannot cause catch-up bursts after a frame acknowledgement',
     return { ok: true };
   } };
   const pump = new LeasePump({ transport, target: () => ({ ok: true, key: 'target' }), fixtureId: 53, width: 2, height: 1, now: () => now,
+    fps: 10, wait: async (ms) => { now += ms; },
     capture: async () => { now += sentAt.length ? 1 : 150; return image(); },
   });
-  await pump.step(); assert.deepEqual(sentAt, [150]); assert.equal(pump.nextCaptureAt, 260);
-  now = 200; await pump.step(); assert.equal(sentAt.length, 1);
-  now = 260; await pump.step(); assert.deepEqual(sentAt, [150, 261]);
+  await pump.step(); assert.deepEqual(sentAt, [150]); assert.equal(pump.nextCaptureAt, 160);
+  await pump.step(); assert.deepEqual(sentAt, [150, 250]);
+  await pump.step(); assert.deepEqual(sentAt, [150, 250, 350]);
+});
+
+test('negotiated rates avoid adding capture and acknowledgement time to every frame', async () => {
+  for (const [requested, offered, expected] of [[44, 60, 44], [60, 60, 60], [60, 20, 20]]) {
+    let now = 0;
+    const sent = [];
+    const pump = new LeasePump({ fps: requested, fixtureId: 53, width: 2, height: 1, now: () => now,
+      wait: async (ms) => { now += ms; }, target: () => ({ ok: true, key: 'target' }),
+      capture: async () => { now += 8; return image(); },
+      transport: { connected: true, id: 'connection', request: async event => {
+        if (event.endsWith('claim')) return { ...claim(), maxFps: offered };
+        sent.push(now); now += 2; return { ok: true };
+      } },
+    });
+    while (now < 3000) {
+      now = Math.max(now, pump.nextCaptureAt);
+      if (now >= 3000) break;
+      await pump.step();
+    }
+    assert.ok(Math.abs(sent.length / 3 - expected) <= 1, `${requested}/${offered}: ${sent.length / 3} fps`);
+    assert.ok(sent.every((at, i) => !i || at - sent[i - 1] >= 1000 / Math.min(requested, offered) - 1e-6));
+    assert.equal(pump.busy, false);
+  }
+});
+
+test('disconnect during pacing drops the captured frame before transmission', async () => {
+  const waiting = deferred(), h = setup({ wait: () => waiting.promise });
+  await h.pump.step();
+  h.setTime(h.pump.nextCaptureAt);
+  h.pump.nextSendAt = 500;
+  const next = h.pump.step();
+  await Promise.resolve();
+  h.transport.connected = false;
+  waiting.resolve(); await next;
+  assert.equal(h.pump.frames, 1);
+  assert.equal(h.calls.filter(({ event }) => event.endsWith('frame')).length, 1);
 });

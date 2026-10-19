@@ -421,10 +421,28 @@ Music Assistant remains the renderer and audio source. OBS is not required.
 
 The default mode only manages the display: it does not read the lightshow token,
 connect to the lighting server or claim a fixture. Add `--curtain` to stream the
-same canvas to one patched panel. Pixels are downsampled to its logical grid at
-no more than 10 frames per second, with centre-cover cropping by default.
+same canvas to one patched panel. Pixels are downsampled to its logical grid,
+with centre-cover cropping by default. The helper defaults to 44 frames per
+second; `--fps 1` through `--fps 60` selects a requested rate, capped by the
+server's advertised `maxFps`. Older servers continue to work at their lower cap.
 Include gaps in the supplied grid dimensions; WLED applies its physical map once.
 A sparse curtain displays large shapes and colours rather than fine text.
+
+The server accepts up to 60 frames per second per input lease and keeps only
+the latest accepted picture. Its lighting engine currently renders and sends
+at 44 Hz, including DDP: accepting 60 fps can reduce the age of the sampled
+picture, but does not produce 60 hardware updates per second. Slow canvas
+capture or acknowledgements reduce the achieved rate without building a queue.
+Panel and room capture run together, using bounded, reusable sampling canvases.
+
+```mermaid
+flowchart LR
+    Canvas[Music Assistant canvas] --> Capture[Bounded panel and room capture]
+    Capture --> Ack[One frame awaiting acknowledgement per lease]
+    Ack --> Latest[Latest accepted picture per lease, up to 60 fps]
+    Latest --> Engine[44 Hz lighting engine and flash guard]
+    Engine --> Output[DDP and other configured outputs]
+```
 
 On Windows with Node 22.18+, install the helper and use the browser launcher from
 [party-visuals](https://github.com/tyclab/party-visuals). The launcher creates a
@@ -432,6 +450,8 @@ dedicated persistent Chrome profile, waits for the selected TV and supplies an
 ephemeral loopback debugging port. The helper accesses only the configured Music
 Assistant origin, now-playing route and player. Sign in normally in this profile;
 credentials are not passed through the visualizer URL or command arguments.
+Update the paired Party Visuals browser launcher as well: older installed
+launchers explicitly pass `--fps 10`, which overrides this helper's default.
 
 ```powershell
 cd tools/browser-visuals
@@ -465,7 +485,7 @@ Custom senders use the existing authenticated Socket.IO connection, with
 
 | Event | Payload | Successful acknowledgement |
 | --- | --- | --- |
-| `pixel-input:claim` | `{ fixtureId, width, height }` | `{ ok: true, leaseId, ttlMs: 2000, maxFps: 20, format: 'rgb24', order: 'row-major' }` |
+| `pixel-input:claim` | `{ fixtureId, width, height }` | `{ ok: true, leaseId, ttlMs: 2000, maxFps: 60, format: 'rgb24', order: 'row-major' }` |
 | `pixel-input:frame` | `{ fixtureId, leaseId, data }` | `{ ok: true }` |
 | `pixel-input:release` | `{ fixtureId, leaseId }` | `{ ok: true }` |
 
@@ -510,7 +530,7 @@ the helper fetches the units again and claims anew.
 | Event | Payload | Successful acknowledgement |
 | --- | --- | --- |
 | `picture:units` | none | `{ ok: true, signature, units, list: [{ fixture, cell, x, y, grid }] }` |
-| `picture:claim` | `{ signature }` | `{ ok: true, leaseId, units, ttlMs: 2000, maxFps: 20, format: 'rgb24', order: 'units' }` |
+| `picture:claim` | `{ signature }` | `{ ok: true, leaseId, units, ttlMs: 2000, maxFps: 60, format: 'rgb24', order: 'units' }` |
 | `picture:frame` | `{ leaseId, data, image? }` | `{ ok: true }` — `data` is `units * 3` RGB bytes; `image` is the picture itself, `{ width, height, data }` up to 128 × 128 RGB, for the Stage |
 | `picture:release` | `{ leaseId }` | `{ ok: true }` |
 

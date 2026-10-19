@@ -14,8 +14,9 @@ test('display and preview need no lightshow configuration; curtain is explicit',
   assert.equal(preview.preview, true); assert.equal(preview.nodecgConfig, undefined);
   const live = options([...base, '--curtain'], { LOCALAPPDATA: 'local' });
   assert.equal(live.curtain, true);
-  assert.equal(live.fps, 10); assert.equal(live.fixtureId, 53); assert.equal(live.width * live.height * 3, 8568);
-  for (const args of [['--fps', '20'], ['--width', '400'], ['--fixture', '-1'], ['--scene'], ['--token', 'secret'], ['--curtain'], ['--preview', '--curtain'], ['--parent-pid', '0']]) assert.throws(() => options([...base, ...args], {}));
+  assert.equal(live.fps, 44); assert.equal(live.fixtureId, 53); assert.equal(live.width * live.height * 3, 8568);
+  assert.equal(options([...base, '--fps', '60'], {}).fps, 60);
+  for (const args of [['--fps', '61'], ['--width', '400'], ['--fixture', '-1'], ['--scene'], ['--token', 'secret'], ['--curtain'], ['--preview', '--curtain'], ['--parent-pid', '0']]) assert.throws(() => options([...base, ...args], {}));
 });
 test('only explicit player URLs, dedicated absolute profiles and loopback state endpoints pass', () => {
   for (const url of ['http://user:secret@music.invalid/#/now-playing?player=one', 'file:///tmp/source', 'http://music.invalid/#/now-playing', 'http://music.invalid/#/now-playing?player=one&token=secret']) assert.throws(() => options([...base, '--visualizer-url', url], {}), error => !error.message.includes('secret'));
