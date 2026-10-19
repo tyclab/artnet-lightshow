@@ -341,6 +341,16 @@ on the room plan. Positions use `{ x, y }` percentages. Fixture groups are
 length 1–100 stage percent, angle −180–180 degrees; `null` restores defaults.
 Panel geometry describes its top edge. Positions and geometry are saved.
 
+The fixture inspector's **Light shape** independently selects bulb/diffuse,
+strip/panel or directional beam for any output protocol, including Hue.
+Beam pan, tilt and spread are degrees: pan 0 faces the audience, tilt 0 is
+horizontal, positive tilt points upward, and spread is the full cone angle.
+Single-zone strips use the same output colour along their length; segmented
+strips keep their individual cells. Stage and imported room bindings use the
+selected shape and aim. Existing shows keep their default appearance until a
+shape is chosen. Show export/import and fixture undo preserve `emission`
+(`kind`, optional `pan`, `tilt`, `beamAngle`) separately from cell geometry.
+
 **Maximum brightness** is a fixture trim, 0–255, applied after looks and
 masters; it is not a temporary override. A fixture override can set colour,
 dimmer, strobe or blackout. Clear removes the override. Cues capture looks,
@@ -673,6 +683,8 @@ Locked colours are not restored after a restart.
 | Field | Values/default |
 |-------|----------------|
 | `palette` | 1–6 RGBWAUV hex colours; white |
+| `function` | `palette` default; `ramp-up-down`, `ramp-up`, `ramp-down`, their `-rnd` variants, `random`, `break` |
+| `speed` | Program speed 1–255; 128 |
 | `flashesPerSecond` | Integer 1–5; 2 |
 | `continueBetween` | `true`: underlying look between flashes; `false`: black |
 | `clock` | `beat` default, or `wall` |
@@ -683,6 +695,15 @@ Beat clock uses the finest beat division under the configured rate and cycles
 colours; wall clock uses seconds and random palette selection. Bursts accept
 100–30,000 ms. `/api/strobe/off` stops all manual strobe-kind voices, including
 API/pad launches. Latches are capped by `safety.strobeMaxLatchSec`.
+
+Drawn programs use the beat clock and their own speed; `flashesPerSecond` and
+`clock` select the palette-flash behavior. Programs also render Hue bulbs, spots and strip sections within their device
+limits. The same curves drive the legacy look strobe, while Standard
+uses a verified hardware channel or software fallback. Shapes are applied
+before device flash guards, so ramps, random flashes and bursts obey fixture
+limits. Manual programs and palette flashes share admission history across
+voice replacements. The global flash limiter, acknowledgement and blackout
+still apply; older saved strobes default to palette flashes.
 
 ## Sequencer
 
@@ -1292,7 +1313,7 @@ disconnects. A refusal comes back as `error-msg` with `source: 'voice-hold'`.
 kept for the Companion module.
 
 The `fixture` message carries
-`{ id, address?, universe?, label?, profileId?, maxBrightness?, position?, group?, geometry?, output? }`.
+`{ id, address?, universe?, label?, profileId?, maxBrightness?, position?, group?, geometry?, emission?, output? }`.
 `position` is `{ x, y }` in percent of the stage plot, or `null`; `group` is one
 of `front`, `back`, `room`, `floor`, or `null`; `geometry` is an LED bar's line
 (a panel's top edge), `{ length, angle }` (length 1–100 in stage percent, angle

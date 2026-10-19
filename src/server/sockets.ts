@@ -203,7 +203,7 @@ function attachSockets(io: Server, { midi, integrations }: {
 
     socket.on('fixture', (payload) => {
       try {
-        const { id, address, universe, label, profileId, maxBrightness, position, group, geometry, output, productId, hardware, admission } = validate(fixtureMessageSchema, payload, 'fixture-msg');
+        const { id, address, universe, label, profileId, maxBrightness, position, group, geometry, emission, output, productId, hardware, admission } = validate(fixtureMessageSchema, payload, 'fixture-msg');
         const fixture = getFixture(id);
         if (!fixture) return;
 
@@ -291,6 +291,7 @@ function attachSockets(io: Server, { midi, integrations }: {
         }
         if (group !== undefined) fixture.group = group;
         if (geometry !== undefined) fixture.geometry = geometry;
+        if (emission !== undefined) fixture.emission = emission;
         showStore.scheduleSave();
         integrations.broadcast();
       } catch (err) {

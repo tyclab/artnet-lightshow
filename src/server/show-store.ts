@@ -35,6 +35,7 @@ function snapshotShow() {
       position: f.position ? { ...f.position } : null,
       group: f.group || null,
       geometry: f.geometry ? { ...f.geometry } : null,
+      emission: f.emission ? { ...f.emission } : null,
       output: f.output ? { ...f.output } : null,
     })),
   };
@@ -72,6 +73,7 @@ function applyShow(rawShow: unknown): ShowFile {
       position: f.position ? { ...f.position } : null,
       group: f.group || null,
       geometry: f.geometry ? { ...f.geometry } : null,
+      emission: f.emission ? { ...f.emission } : null,
       output: !f.output ? null
         : f.output.protocol === 'hue' ? { protocol: 'hue', channels: [...hueChannels(f.output)], bridge: f.output.bridge || fallback } : { ...f.output },
       productId: f.productId, hardware: f.hardware, admission: f.admission,

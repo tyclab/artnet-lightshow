@@ -106,7 +106,16 @@ export interface Point {
   height?: number;
 }
 
-/** A bar's line on the stage plot: its length, and its angle in degrees. */
+/** Physical light emission, independent of output protocol and cell layout. */
+export interface Emission {
+  kind: 'bulb' | 'strip' | 'beam';
+  /** Degrees: pan around vertical, tilt above the horizon, full beam spread. */
+  pan?: number;
+  tilt?: number;
+  beamAngle?: number;
+}
+
+/** A bar's line on the stage plot: length in percent and angle in degrees. */
 export interface Geometry {
   length: number;
   angle: number;
@@ -134,6 +143,7 @@ export interface StageFixture {
   position?: Point | null;
   group?: string | null;
   geometry?: Geometry | null;
+  emission?: Emission | null;
   profileId?: string;
   /** Where its universes go (a Fixture's `output`): a Hue lamp is never flashed. */
   output?: { protocol: string } | null;

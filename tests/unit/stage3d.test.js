@@ -167,3 +167,33 @@ test('the live frame: a par\'s emitters, each cell of a bar, through their profi
   assert.equal(fixtureLight(fixtures[1], state, { 0: universe }), null, 'a bar is not one light');
   assert.equal(fixtureLight(fixture(2, 'missing'), state, { 0: universe }), null, 'nor is a fixture without its profile');
 });
+
+test('physical beam shape and direction override Hue transport and room grouping', () => {
+  const fixture1 = fixture(0, HUE.id, { group: 'room', output: { protocol: 'hue' },
+    emission: { kind: 'beam', pan: 90, tilt: -30, beamAngle: 40 } });
+  const { room } = placed([fixture1]);
+  const beam = room.lamps[0];
+  assert.equal(beam.kind, 'par');
+  assert.equal(world.hasBeams(room), true);
+  near(beam.aim.x, Math.cos(Math.PI / 6), 'points right');
+  near(beam.aim.y, -.5, 'points below the horizon');
+  near(beam.aim.z, 0, 'no forward component');
+  near(beam.radius, Math.tan(Math.PI / 9) * beam.length, 'full spread is forty degrees');
+});
+
+test('one-channel strips and multi-section Hue strips retain their output unit mapping', () => {
+  const single = placed([fixture(0, HUE.id, { emission: { kind: 'strip' }, geometry: { length: 40, angle: 90 } })]);
+  assert.ok(single.room.cells.length > 1);
+  assert.ok(single.room.cells.every((cell) => cell.unit === 0));
+  assert.ok(single.room.cells[0].position.z < single.room.cells.at(-1).position.z);
+  const multi = placed([fixture(0, BAR.id, { output: { protocol: 'hue' }, emission: { kind: 'strip' } })]);
+  assert.deepEqual(multi.room.cells.map((cell) => cell.unit), [0, 1, 2, 3]);
+});
+
+test('multi-cell fixtures can emit separate beams without changing the rendered cell layout', () => {
+  const { room, rig } = placed([fixture(0, BAR.id, { emission: { kind: 'beam', pan: 0, tilt: -90 } })]);
+  assert.equal(rig.units.length, 4);
+  assert.equal(room.cells.length, 0);
+  assert.equal(room.lamps.length, 4);
+  assert.deepEqual(room.lamps.map((lamp) => lamp.unit), [0, 1, 2, 3]);
+});

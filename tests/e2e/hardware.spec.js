@@ -39,3 +39,36 @@ test('product and device limits save and return to inherited values', async ({ p
     await request.put('/api/settings', { data: { hardware: previous } });
   }
 });
+
+test('physical light shape, beam aim and strip length survive show export and reload', async ({ page, request }) => {
+  const original = await (await request.get('/api/show')).json();
+  const fixture = (await state(request)).fixtures[0];
+  const selectFixture = async () => {
+    await open(page, 'rig');
+    await page.locator(`.plan-surface [data-fixture="${fixture.id}"]`).click();
+  };
+  try {
+    await selectFixture();
+    const panel = page.locator('.inspector');
+    await panel.getByLabel('Light shape', { exact: true }).selectOption('beam');
+    await panel.getByLabel('Beam pan', { exact: true }).fill('75');
+    await panel.getByLabel('Beam pan', { exact: true }).press('Enter');
+    await panel.getByLabel('Beam tilt', { exact: true }).fill('-25');
+    await panel.getByLabel('Beam tilt', { exact: true }).press('Enter');
+    await panel.getByLabel('Beam spread', { exact: true }).fill('38');
+    await panel.getByLabel('Beam spread', { exact: true }).press('Enter');
+    await until(request, (s) => s.fixtures.find((f) => f.id === fixture.id)?.emission?.beamAngle === 38);
+    const show = await (await request.get('/api/show')).json();
+    expect(show.fixtures.find((f) => f.id === fixture.id).emission).toEqual({ kind: 'beam', pan: 75, tilt: -25, beamAngle: 38 });
+    await page.reload();
+    await selectFixture();
+    await expect(panel.getByLabel('Beam pan', { exact: true })).toHaveValue('75');
+    await panel.getByLabel('Light shape', { exact: true }).selectOption('strip');
+    await panel.getByLabel('Length', { exact: true }).fill('35');
+    await panel.getByLabel('Length', { exact: true }).press('Enter');
+    await until(request, (s) => s.fixtures.find((f) => f.id === fixture.id)?.geometry?.length === 35);
+    await expect(panel.getByLabel('Beam pan', { exact: true })).toHaveCount(0);
+  } finally {
+    await request.post('/api/show', { data: original });
+  }
+});

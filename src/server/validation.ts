@@ -34,6 +34,12 @@ const fixtureGeometry = z.object({
   length: z.number().finite().min(1).max(100),
   angle: z.number().finite().min(-180).max(180),
 }).strict();
+const fixtureEmission = z.object({
+  kind: z.enum(['bulb', 'strip', 'beam']),
+  pan: z.number().finite().min(-180).max(180).optional(),
+  tilt: z.number().finite().min(-90).max(90).optional(),
+  beamAngle: z.number().finite().min(1).max(160).optional(),
+}).strict();
 const colorIdx = z.number().int().min(0).max(COLOR_PRESETS.length - 1);
 const unitValue = z.number().min(0).max(1).optional();
 
@@ -181,6 +187,7 @@ const fixtureMessageSchema = z.object({
   profileId: z.string().min(1).max(128).optional(),
   maxBrightness: u8.optional(),
   geometry: fixtureGeometry.nullable().optional(),
+    emission: fixtureEmission.nullable().optional(),
   output: deviceOutput.nullable().optional(),
 }).strict();
 
@@ -194,6 +201,7 @@ const fixtureRestoreSchema = z.object({
     position: fixturePosition.nullable().optional(),
     group: fixtureGroup.nullable().optional(),
     geometry: fixtureGeometry.nullable().optional(),
+    emission: fixtureEmission.nullable().optional(),
     output: fixtureOutput.nullable().optional(),
     label: z.string().max(64),
     address: z.number().int().min(1).max(512).optional(),
@@ -335,6 +343,7 @@ const showSchema = z.object({
     position: fixturePosition.nullable().optional(),
     group: fixtureGroup.nullable().optional(),
     geometry: fixtureGeometry.nullable().optional(),
+    emission: fixtureEmission.nullable().optional(),
     output: fixtureOutput.nullable().optional(),
     label: z.string().max(64).optional(),
     address: z.number().int().min(1).max(512).optional(),

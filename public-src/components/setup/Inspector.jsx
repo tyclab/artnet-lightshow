@@ -1,3 +1,4 @@
+import { emissionOf } from '../../../src/shared/emission.ts';
 import { FixtureHardware } from './Hardware.jsx';
 import { pick, connectedSig, emitFixture } from '../../state.js';
 import { stagePositions } from '../../../src/shared/stage.ts';
@@ -52,8 +53,10 @@ export function Inspector() {
   const point = stagePositions(fixtures)[index];
   const bar = !!rig.cellMaps[index];
   const grid = rig.grids[index];
+  const emission = emissionOf(fix, profile, bar);
+  const linear = bar || emission.kind === 'strip';
   const unplaced = fixtures.filter((f) => !f.position).length;
-  const line = bar ? lineOf(fix, grid ? grid.columns : rig.ranges[index].count, fix.position ? 0 : unplaced) : null;
+  const line = linear ? lineOf(fix, grid ? grid.columns : Math.max(2, rig.ranges[index].count), fix.position ? 0 : unplaced) : null;
   const send = (patch) => emitFixture({ id: fix.id, ...patch });
   const place = (patch) => send({ position: { x: clamp(round1(patch.x ?? point.x)), y: clamp(round1(patch.y ?? point.y)) } });
   const trimPct = Math.round(((fix.maxBrightness ?? 255) / 255) * 100);
@@ -88,7 +91,23 @@ export function Inspector() {
         <FieldInput id="insp-x" type="number" min="0" max="100" step="0.5" value={round1(point.x)} onCommit={(x) => place({ x })} />
         <label for="insp-y">Depth</label>
         <FieldInput id="insp-y" type="number" min="0" max="100" step="0.5" value={round1(point.y)} onCommit={(y) => place({ y })} />
-        {bar && <>
+        <label for="insp-emission">Light shape</label>
+        <select id="insp-emission" value={emission.kind} disabled={!connected}
+          onChange={(e) => send({ emission: { ...emission, kind: e.target.value } })}>
+          <option value="bulb">Bulb / diffuse</option><option value="strip">Strip / panel</option><option value="beam">Directional beam</option>
+        </select>
+        {emission.kind === 'beam' && <>
+          <label for="insp-pan">Beam pan</label>
+          <FieldInput id="insp-pan" type="number" min="-180" max="180" step="5" value={emission.pan ?? (fix.group === 'floor' ? 180 : 0)}
+            onCommit={(pan) => send({ emission: { ...emission, pan } })} />
+          <label for="insp-tilt">Beam tilt</label>
+          <FieldInput id="insp-tilt" type="number" min="-90" max="90" step="5" value={emission.tilt ?? (fix.group === 'floor' ? 78 : -68)}
+            onCommit={(tilt) => send({ emission: { ...emission, tilt } })} />
+          <label for="insp-beam-angle">Beam spread</label>
+          <FieldInput id="insp-beam-angle" type="number" min="1" max="160" step="1" value={emission.beamAngle ?? 22}
+            onCommit={(beamAngle) => send({ emission: { ...emission, beamAngle } })} />
+        </>}
+        {linear && <>
           <label for="insp-length">Length</label>
           <FieldInput id="insp-length" type="number" min="1" max="100" step="0.5" value={round1(line.length)}
             onCommit={(length) => send({ geometry: geometryOf(length, line.angle) })} />
@@ -103,6 +122,7 @@ export function Inspector() {
           <span>{trimPct}%</span>
         </span>
       </div>
+      {emission.kind === 'beam' && <p class="setting-help">Angles are degrees: pan 0 points toward the audience; tilt 0 is horizontal and +90 points upward. Spread is the full cone angle.</p>}
       <FixtureHardware fixture={fix} profile={profile} settings={s.hardware} send={send} />
       {hueLamp && <p class="setting-help">A lamp of the entertainment area of the Hue bridge "{hueBridgeLabel(s.hueBridges, fix.output.bridge)}",
         added from Rig → Outputs → Philips Hue: it takes no DMX channels, and each section is sent its rendered colour.</p>}

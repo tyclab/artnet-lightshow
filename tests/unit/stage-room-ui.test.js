@@ -156,3 +156,14 @@ test('haze has a beam to show in only where a lamp is drawn as a par', () => {
   // A room places lamps as bulbs, so there is no beam for the haze to thicken.
   assert.equal(hasBeams(roomRig(fixtures, rig, { ...model, bindings: [binding('a', 10)] })), false);
 });
+
+test('room bindings preserve explicit beam geometry and clip beams at room boundaries', () => {
+  const beamFixtures = fixtures.map((fixture) => ({ ...fixture, emission: { kind: 'beam', pan: 90, tilt: 0, beamAngle: 30 } }));
+  const placed = roomRig(beamFixtures, rig, { ...model, bindings: [binding('spot', 10)] });
+  const beam = placed.lamps[0];
+  assert.equal(beam.kind, 'par');
+  assert.equal(hasBeams(placed), true);
+  assert.equal(beam.end.x, model.bounds.width / 2);
+  assert.equal(beam.end.y, beam.position.y);
+  assert.equal(beam.length, 2);
+});

@@ -378,7 +378,8 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
       attr.array[k * 3 + 2] = rgb[2] * level;
     };
     pars.forEach((par, k) => {
-      lightRGB(frame[par.unit], rgb);
+      if (par.sources) meanLightRGB(par.sources, frame, rgb, sourceRGB);
+      else lightRGB(frame[par.unit], rgb);
       put(lenses.instanceColor, k, 1);
       glow(beams.instanceColor, k, 1);
       glow(pools.instanceColor, k, 1);
@@ -391,7 +392,8 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
       glow(lampGlow.geometry.attributes.color, pars.length + k, 1);
     });
     cells.forEach((cell, k) => {
-      lightRGB(frame[cell.unit], rgb);
+      if (cell.sources) meanLightRGB(cell.sources, frame, rgb, sourceRGB);
+      else lightRGB(frame[cell.unit], rgb);
       put(cellMesh.instanceColor, k, 1);
       glow(cellGlow.geometry.attributes.color, k, 0.8);
     });
