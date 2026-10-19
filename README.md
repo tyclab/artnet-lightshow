@@ -434,12 +434,19 @@ the latest accepted picture. Its lighting engine currently renders and sends
 at 44 Hz, including DDP: accepting 60 fps can reduce the age of the sampled
 picture, but does not produce 60 hardware updates per second. Slow canvas
 capture or acknowledgements reduce the achieved rate without building a queue.
-Panel and room capture run together, using bounded, reusable sampling canvases.
+Panel and room capture run together. On WebGL2 browsers, each capture size uses
+three reusable GPU readback buffers and checks completion without blocking the
+visualizer. It returns the newest completed picture, discards pictures older than
+250 ms, and does no capture work between requests. Canvas replacement, hiding,
+navigation and cleanup invalidate pending work. Browsers without WebGL2 retain
+the synchronous 2-D fallback. The helper installs its page functions once per
+connection instead of recompiling them for every capture.
 
 ```mermaid
 flowchart LR
-    Canvas[Music Assistant canvas] --> Capture[Bounded panel and room capture]
-    Capture --> Ack[One frame awaiting acknowledgement per lease]
+    Canvas[Music Assistant canvas] --> Capture[GPU downscale / three bounded readback buffers]
+    Capture --> Ready[Non-blocking completion / newest fresh picture]
+    Ready --> Ack[One frame awaiting acknowledgement per lease]
     Ack --> Latest[Latest accepted picture per lease, up to 60 fps]
     Latest --> Engine[44 Hz lighting engine and flash guard]
     Engine --> Output[DDP and other configured outputs]
