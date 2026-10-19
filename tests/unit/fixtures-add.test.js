@@ -9,7 +9,8 @@ import express from 'express';
 import { attachRoutes } from '../../src/server/routes.ts';
 import { state } from '../../src/server/state.ts';
 import { showStore } from '../../src/server/show-store.ts';
-import { registerProfile, unregisterProfile, BUILTIN_PROFILE_ID } from '../../src/server/profiles.ts';
+import { getProfile, registerProfile, unregisterProfile, BUILTIN_PROFILE_ID } from '../../src/server/profiles.ts';
+import { hardwareOf } from '../../src/shared/hardware.ts';
 import { barProfile } from '../../src/server/bar-profile.ts';
 
 showStore.scheduleSave = () => {};   // never the real show file
@@ -31,7 +32,7 @@ async function withApp(fixtures, fn) {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body),
   }).then(async (res) => ({ status: res.status, body: await res.json() }));
   try {
-    await fn({ add, broadcasts: () => broadcasts });
+    await fn({ add, url: `http://127.0.0.1:${server.address().port}`, broadcasts: () => broadcasts });
   } finally {
     await new Promise((r) => server.close(r));
     state.fixtures = saved;
@@ -83,5 +84,29 @@ test('refused: an unknown profile, an address that cannot fit, a bad body', asyn
     assert.strictEqual((await add({ count: 0 })).status, 400);
     assert.strictEqual((await add({ colour: 'red' })).status, 400);
     assert.strictEqual(state.fixtures.length, 1, 'nothing added by a refusal');
+  });
+});
+
+
+test('delete and undo preserve hardware safety, product selection and physical emission', async () => {
+  const protectedFixture = { ...par(1, 13), productId: 'slow-spot', admission: 'hold',
+    hardware: { maxFlashHz: 1, minTransitionMs: 80 },
+    emission: { kind: 'beam', pan: 45, tilt: -30, beamAngle: 36 } };
+  await withApp([par(0, 1), protectedFixture], async ({ url }) => {
+    const removedResponse = await fetch(`${url}/api/fixtures/1`, { method: 'DELETE' });
+    assert.equal(removedResponse.status, 200);
+    const removed = await removedResponse.json();
+    for (const key of ['productId', 'hardware', 'admission', 'emission']) {
+      assert.deepEqual(removed.fixture[key], protectedFixture[key], `undo payload retains ${key}`);
+    }
+    const response = await fetch(`${url}/api/fixtures/restore`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ index: removed.index, fixture: removed.fixture }) });
+    assert.equal(response.status, 200);
+    const restored = state.fixtures.find((fixture) => fixture.id === protectedFixture.id);
+    for (const key of ['productId', 'hardware', 'admission', 'emission']) assert.deepEqual(restored[key], protectedFixture[key]);
+    const limits = hardwareOf(restored, getProfile(restored));
+    assert.equal(limits.maxFlashHz, 1, 'undo never relaxes the device flash cap');
+    assert.equal(limits.minTransitionMs, 80);
+    assert.equal(limits.policy, 'hold');
   });
 });
