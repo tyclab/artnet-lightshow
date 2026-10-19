@@ -22,7 +22,7 @@ let sacn: SacnOutput = {
   enabled: false,
   host: '',
   priority: 100,
-  sourceName: 'ArtNet Lightshow',
+  sourceName: 'Tyclab Lightshow',
   universeOffset: 1,
   cid: '',
   interface: '',

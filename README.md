@@ -1,14 +1,15 @@
-# ArtNet Lightshow — Tyclab
+# Tyclab Lightshow
 
 Lighting controller for Art-Net, sACN, WLED/DDP, OpenRGB and Philips Hue
 Entertainment. Control it from the browser, MIDI, Bitfocus Companion or REST.
 Manual looks, effects, pads and sequences work without Python; analysed shows
 and live audio use the optional analysis environment.
 
-This is the [Tyclab fork](https://github.com/tyclab/artnet-lightshow) of
-[LightD31's controller](https://github.com/LightD31/artnet-lightshow), with its
-own tested deployment revisions. Upstream changes are reviewed before adoption;
-an upstream release is not a release of this fork.
+[Tyclab Lightshow](https://github.com/tyclab/artnet-lightshow) builds on
+[LightD31’s ArtNet Lightshow](https://github.com/LightD31/artnet-lightshow) under
+the [MIT license](LICENSE). It combines reviewed upstream improvements with
+Tyclab’s own workflows and deployment revisions. An upstream release is not
+a Tyclab Lightshow release.
 
 ## Signal flow
 
@@ -53,7 +54,7 @@ start the pattern engine.
 
 ### Packaged builds
 
-This fork has no published release packages yet. Use a pinned source checkout,
+Tyclab Lightshow has no published release packages yet. Use a pinned source checkout,
 or build a package on the target operating system with `npm run package`.
 The [CI workflows](https://github.com/tyclab/artnet-lightshow/actions) test Windows
 and Linux packaging. Packages include Node; install the analysis environment
@@ -61,14 +62,22 @@ separately from the app when needed.
 
 | Package | Start and data location |
 |---------|-------------------------|
-| Windows installer, `*-win32-x64-setup.exe` | Start menu → ArtNet Lightshow; per-user install in `%LOCALAPPDATA%\Programs\ArtNet Lightshow`, data in `%LOCALAPPDATA%\ArtNet Lightshow` |
-| Windows portable, `*-win32-x64.zip` | Run `ArtNet Lightshow.exe`; data in the adjacent `data` folder while the `portable` marker exists |
-| Linux archive, `*-linux-x64.tar.gz` | Run `./artnet-lightshow`; portable data as above, otherwise `~/.local/share/artnet-lightshow` |
+| Windows installer, `*-win32-x64-setup.exe` | Start menu → Tyclab Lightshow; new installs in `%LOCALAPPDATA%\Programs\Tyclab Lightshow`, data in `%LOCALAPPDATA%\ArtNet Lightshow` |
+| Windows portable, `*-win32-x64.zip` | Run `Tyclab Lightshow.exe`; data in the adjacent `data` folder while the `portable` marker exists |
+| Linux archive, `*-linux-x64.tar.gz` | Run `./tyclab-lightshow`; portable data as above, otherwise `~/.local/share/artnet-lightshow` |
 
 Closing the server console stops the show. `--version` prints the version.
 `--no-supervisor` disables the built-in process supervisor.
 `LIGHTSHOW_DATA_DIR` overrides the data location. Updating or uninstalling the
-Windows installer leaves the data directory in place.
+Windows installer leaves the data directory in place. Existing Windows installs
+keep their installation directory when upgraded.
+
+The rebrand preserves existing data and model-cache paths, `ARTNET_*` and
+`LIGHTSHOW_*` environment variables, browser storage keys, API/authentication
+headers, analysis schema identifiers, Hue registration names and Companion and
+browser-extension IDs. The Python package remains `artnet-lightshow-analysis`.
+Existing shows, pairings and integrations continue to
+use those identifiers; no manual data migration is required.
 
 ### Network access
 
@@ -226,7 +235,7 @@ keys; `PUT /api/settings` changes selected fields.
 |---------|---------------------|
 | `server` | `host: '127.0.0.1'`, `port: 3000`, `token: ''`, `publicUrl: ''` |
 | `artnet` | `enabled: true`, `host: '2.255.255.255'`, `port: 6454`, `universe: 0`, `discovery: true`, `sync: false` |
-| `sacn` | `enabled: false`, `host: ''` for multicast, `priority: 100`, `sourceName: 'ArtNet Lightshow'`, `universeOffset: 1`, `interface: ''`; stable generated `cid` |
+| `sacn` | `enabled: false`, `host: ''` for multicast, `priority: 100`, `sourceName: 'Tyclab Lightshow'`, `universeOffset: 1`, `interface: ''`; stable generated `cid` |
 | `hue` | `bridges: []`, `latencyMs: 0`, `strobe: 'flash'`; each paired bridge has an id, address, enabled flag, area and write-only credentials |
 | `outputs` | `armed: false`; always reset to false at startup. `idleDisarmMin: 15`: minutes armed with nothing playing before the outputs disarm themselves; `0` never |
 | `sources` | `prolink: false`, `smtc: true` |
@@ -885,7 +894,7 @@ encoders configured to send relative steps. The actions remain the same.
 
 Use Companion 4.3+ and the module in `companion-module/`. Install its dependencies,
 then place or symlink the module inside the configured Developer modules folder.
-Add an ArtNet Lightshow connection with host, port and access token.
+Add a Tyclab Lightshow connection with host, port and access token.
 
 The **Busk** page browses and randomises patterns and effects, toggles palettes
 over the running show, launches pads, follows or taps tempo, and stops live

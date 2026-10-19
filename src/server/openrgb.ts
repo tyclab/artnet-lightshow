@@ -32,7 +32,7 @@ const HEADER = 16;
 // The protocol this client speaks (a server that speaks less is spoken to
 // at its own). Three is what LedFx speaks, and what every 0.9+ server takes.
 const PROTOCOL_VERSION = 3;
-const CLIENT_NAME = 'ArtNet Lightshow';
+const CLIENT_NAME = 'Tyclab Lightshow';
 
 export const PACKET = {
   REQUEST_CONTROLLER_COUNT: 0,

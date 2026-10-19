@@ -88,7 +88,7 @@ export function Header() {
 
   return (
     <header class="app-header">
-      <h1>ArtNet <span>Lightshow</span></h1>
+      <h1>Tyclab <span>Lightshow</span></h1>
 
       <div class="header-stats">
         {s.armed != null && (

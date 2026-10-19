@@ -9,7 +9,7 @@ function build(overrides = {}, dmx = Buffer.alloc(512)) {
   return buildE131Packet({
     universe: 1,
     cid: CID,
-    sourceName: 'ArtNet Lightshow',
+    sourceName: 'Tyclab Lightshow',
     priority: 100,
     sequence: 1,
     ...overrides,

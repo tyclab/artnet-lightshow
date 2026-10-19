@@ -10,7 +10,7 @@
 }
 
 /* =============================================================
-   ArtNet Lightshow — UI
+   Tyclab Lightshow — UI
    Design system mirrors LightD31/photolive-obs:
    sober zinc surfaces + a single blue-500 accent, Inter + mono,
    small radii, flat surfaces (borders over gradients/glows).
@@ -188,8 +188,9 @@ header {
 .app-header h1::before {
   content: '';
   width: 20px; height: 20px;
+  flex-shrink: 0;
   border-radius: 5px;
-  background: var(--accent-fill);
+  background: url('/icon.svg') center / contain no-repeat;
 }
 .app-header h1 span { color: var(--accent); }
 

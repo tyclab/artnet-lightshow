@@ -1,4 +1,4 @@
-# Lightshow Deezer Bridge (Firefox)
+# Tyclab Lightshow Deezer Bridge (Firefox)
 
 Feeds the **Deezer** auto-source. Deezer's JS SDK is dead (no obtainable
 `DEEZER_APP_ID`), so this extension reads the web player's page state and
@@ -42,7 +42,7 @@ via [AMO](https://addons.mozilla.org) or use Firefox Developer/ESR with
 Open the add-on's **Preferences** (about:addons → this extension → Preferences)
 to set:
 
-- **Lightshow server** — host and port, if you don't run it on
+- **Tyclab Lightshow server** — host and port, if you don't run it on
   `localhost:3000`. Pointing it at a non-loopback address asks for an extra host
   permission at save time; the manifest only grants loopback by default.
 - **Access token** — needed only when the server has one, which it must

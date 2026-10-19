@@ -1,18 +1,8 @@
-; The Windows installer: the packaged build (scripts/package.js), installed
-; for the current user — no administrator needed — in
-; %LOCALAPPDATA%\Programs\ArtNet Lightshow, with a Start menu entry.
-;
-; It leaves out the `portable` file, so the installed app keeps its data
-; (settings, show, analysis cache and environment, logs) in
-; %LOCALAPPDATA%\ArtNet Lightshow (scripts/sea-main.cjs), where an update or
-; an uninstall leaves it be.
-;
-; Built by CI on Windows (.github/workflows/package.yml):
-;
-;   ISCC.exe /DAppVersion=1.0.0 /DSourceDir=<the package folder> /DOutputDir=dist packaging\windows\installer.iss
+; Per-user install. Data stays in %LOCALAPPDATA%\ArtNet Lightshow across updates and uninstall.
+; CI passes /DAppVersion, /DSourceDir and /DOutputDir to ISCC.exe.
 
-#define AppName "ArtNet Lightshow"
-#define AppExe "ArtNet Lightshow.exe"
+#define AppName "Tyclab Lightshow"
+#define AppExe "Tyclab Lightshow.exe"
 #ifndef AppVersion
   #error Pass /DAppVersion=<version>
 #endif
@@ -29,9 +19,11 @@ AppId={{814CF9FC-1830-4C6D-90C1-35FB9F07305F}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
-AppPublisherURL=https://github.com/LightD31/artnet-lightshow
-AppSupportURL=https://github.com/LightD31/artnet-lightshow/issues
+AppPublisher=Tyclab
+AppPublisherURL=https://github.com/tyclab/artnet-lightshow
+AppSupportURL=https://github.com/tyclab/artnet-lightshow/issues
 DefaultDirName={autopf}\{#AppName}
+UsePreviousAppDir=yes
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog commandline
@@ -42,7 +34,7 @@ SetupIconFile={#SourceDir}\app\public\favicon.ico
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
 OutputDir={#OutputDir}
-OutputBaseFilename=ArtNet-Lightshow-{#AppVersion}-win32-x64-setup
+OutputBaseFilename=Tyclab-Lightshow-{#AppVersion}-win32-x64-setup
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -57,6 +49,10 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 ; node_modules lingers. The data is elsewhere and untouched.
 Type: filesandordirs; Name: "{app}\app"
 Type: filesandordirs; Name: "{app}\tools"
+; Remove old branding when upgrading an existing install with the same AppId.
+Type: files; Name: "{app}\ArtNet Lightshow.exe"
+Type: files; Name: "{autoprograms}\ArtNet Lightshow.lnk"
+Type: files; Name: "{autodesktop}\ArtNet Lightshow.lnk"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "\portable,\data"; Flags: recursesubdirs createallsubdirs ignoreversion

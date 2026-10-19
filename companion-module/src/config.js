@@ -6,7 +6,7 @@ export function GetConfigFields() {
 			type: 'static-text',
 			id: 'info',
 			label: 'Information',
-			value: 'Connects to the ArtNet Lightshow server over Socket.IO. Start it with `npm start` in the project root.',
+			value: 'Connects to the Tyclab Lightshow server over Socket.IO. Start it with `npm start` in the project root.',
 			width: 12,
 		},
 		{
