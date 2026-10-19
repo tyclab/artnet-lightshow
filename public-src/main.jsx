@@ -151,8 +151,8 @@ function Root() {
   useTapShortcut();
 
   useEffect(() => {
-    const bars = ['header', 'commands', 'views', 'strip', 'effects'];
-    const elements = ['.app-header', '.command-bar', '.mode-nav', '.show-strip', '.effects-tools'].map((selector) => document.querySelector(selector));
+    const bars = ['header', 'commands', 'views', 'effects'];
+    const elements = ['.app-header', '.command-bar', '.mode-nav', '.effects-tools'].map((selector) => document.querySelector(selector));
     const measure = () => elements.forEach((element, i) => {
       document.documentElement.style.setProperty(`--${bars[i]}-height`, `${element?.getBoundingClientRect().height || 0}px`);
     });

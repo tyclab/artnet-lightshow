@@ -3659,7 +3659,7 @@ input[type=range]::-moz-range-thumb {
 .stage3d-time { font-family: var(--mono); font-size: 11px; color: var(--text-2); white-space: nowrap; }
 .stage3d-wrap {
   position: relative;
-  height: clamp(240px, calc(100dvh - var(--header-height, 47px) - var(--commands-height, 0px) - var(--views-height, 0px) - var(--strip-height, 0px) - 200px), 900px);
+  height: clamp(240px, calc(100dvh - var(--header-height, 47px) - var(--commands-height, 0px) - var(--views-height, 0px) - 200px), 900px);
   background: #030306;
   border: 1px solid var(--border);
   border-radius: var(--radius);
