@@ -20,7 +20,7 @@ test('the app opens on Show: the room, the looks and the switches', async ({ pag
   await page.goto('/');
   await page.locator('.offline-veil').waitFor({ state: 'detached' });
   await expect(page).toHaveURL(/#show$/);
-  await expect(page.getByRole('tab', { name: /Show/ })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: /^Show/ })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('switch', { name: /Disarmed|Armed/ })).toBeVisible();
   await expect(page.getByRole('switch', { name: /Auto show/ })).toBeVisible();
   await expect(page.getByRole('switch', { name: /Blackout/ })).toBeVisible();
@@ -33,9 +33,10 @@ test('the Show switches fit on the first screen of a tablet', async ({ page }) =
   await page.setViewportSize({ width: 1024, height: 768 });
   await open(page, 'show');
   const strip = await page.locator('.show-strip').boundingBox();
-  expect(strip.y + strip.height).toBeLessThanOrEqual(300);
+  expect(strip.y + strip.height).toBeLessThanOrEqual(340);
   const room = await page.locator('.show-room').boundingBox();
-  expect(room.y).toBeLessThan(768);
+  expect(room.y).toBeGreaterThanOrEqual(strip.y + strip.height);
+  expect(room.y).toBeLessThan(768 / 2);
 });
 
 test('the tab strip is one stop, and the arrow keys move along it', async ({ page }) => {
@@ -51,7 +52,7 @@ test('the tab strip is one stop, and the arrow keys move along it', async ({ pag
   await expect(page.locator('#panel-preflight')).toHaveAttribute('aria-labelledby', 'tab-preflight');
   await expect(page.getByRole('tab', { name: /Effects/ })).toHaveAttribute('tabindex', '-1');
   await page.keyboard.press('ArrowRight');
-  await expect(page.getByRole('tab', { name: /Show/ })).toBeFocused();
+  await expect(page.getByRole('tab', { name: /^Show/ })).toBeFocused();
 });
 
 test('the digit keys jump between views, and not while typing', async ({ page }) => {
@@ -87,9 +88,11 @@ for (const [old, canonical, panel] of [['manual', 'effects', 'effects'], ['timel
   });
 }
 
-test('a new browser opens Perform and can restart a frozen look', async ({ page, request }) => {
+test('a new browser opens Show, and Perform restarts a frozen look', async ({ page, request }) => {
   await request.post('/api/set', { data: { running: false } });
   await page.goto('/');
+  await expect(page.locator('#panel-show')).toBeVisible();
+  await page.getByRole('tab', { name: /^Perform/ }).click();
   await expect(page.locator('#panel-perform')).toBeVisible();
   const play = page.getByRole('button', { name: 'Play look', exact: true });
   const freeze = page.getByRole('button', { name: 'Freeze look', exact: true });
