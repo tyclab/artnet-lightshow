@@ -877,8 +877,13 @@ button.cb-bpm-num:focus-visible { outline: 2px solid var(--accent); outline-offs
   .show-strip .perform-arm { grid-column: 1 / -1; }
 }
 @media (max-width: 560px) {
-  .show-strip { grid-template-columns: 1fr; }
-  .show-masters { grid-template-columns: 1fr; }
+  /* A phone keeps the strip to one row that scrolls sideways, like the view tabs:
+     the view below it stays on the first screen. */
+  .show-strip { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .show-strip::-webkit-scrollbar { display: none; }
+  .show-strip > *, .show-masters > * { flex: 0 0 auto; }
+  .show-masters { display: flex; gap: 6px; }
+  .show-master { min-width: 150px; }
   .show-switch { min-height: 48px; }
   .show-switch-hint { display: none; }
 }

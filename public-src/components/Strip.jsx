@@ -113,12 +113,13 @@ function Masters() {
   );
 }
 
+/** A landmark of its own: it sits between the view tabs and the view's panel. */
 export function Strip() {
   return (
-    <div class="show-strip">
+    <section class="show-strip" aria-label="Show controls">
       <ArmSwitch />
       <AutoSwitch />
       <Masters />
-    </div>
+    </section>
   );
 }
