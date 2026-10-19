@@ -875,9 +875,14 @@ Use Companion 4.3+ and the module in `companion-module/`. Install its dependenci
 then place or symlink the module inside the configured Developer modules folder.
 Add an ArtNet Lightshow connection with host, port and access token.
 
-Presets cover busking palettes, energy holds, transport, cues, pads, strobe
-bursts, generated-show controls, sequence transport and fixture controls. Hold buttons renew until
-release; once and loop pads launch once per press. Server catalogs populate
+The **Busk** page browses and randomises patterns and effects, toggles palettes
+over the running show, launches pads, follows or taps tempo, and stops live
+effects. Pattern browsing includes Fire and Ice; rapid effects require the
+server's photosensitivity acknowledgement. **Auto Show** and **Sequence** have
+their own preset pages. Preset variable references use the connection's label.
+
+Presets also cover energy holds, transport, cues, strobe bursts and fixture
+controls. Hold buttons renew until release; once and loop pads launch once per press. Server catalogs populate
 actions and feedback. The module uses Socket.IO protocol 2. See
 [installation](companion-module/INSTALL.md) and
 [action/feedback reference](companion-module/companion/HELP.md).

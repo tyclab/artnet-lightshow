@@ -104,6 +104,31 @@ export function UpdateFeedbacks(self) {
 				&& !!self.liveState.sequence?.[options.state],
 		},
 
+		palette_override_active: {
+			type: 'boolean',
+			name: 'Palette override is on',
+			defaultStyle: { bgcolor: WHITE, color: combineRgb(0, 0, 0) },
+			options: [
+				{
+					type: 'dropdown',
+					id: 'palette',
+					label: 'Palette (empty: any)',
+					default: '',
+					choices: [{ id: '', label: 'Any' }, ...choices(palettesOf(state))],
+					allowCustom: true,
+				},
+			],
+			callback: ({ options }) => (options.palette ? self.liveState.paletteOverrideId === options.palette : !!self.liveState.paletteOverride),
+		},
+
+		tempo_auto: {
+			type: 'boolean',
+			name: 'Tempo follows the music',
+			defaultStyle: { bgcolor: combineRgb(0, 120, 160), color: WHITE },
+			options: [],
+			callback: () => self.liveState.tempoMode !== 'manual',
+		},
+
 		blackout_active: {
 			type: 'boolean',
 			name: 'Master blackout active',
