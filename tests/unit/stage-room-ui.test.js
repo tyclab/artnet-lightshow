@@ -30,6 +30,18 @@ test('shared channels can illuminate several physical positions', () => {
   assert.deepEqual(placed.lamps.map((lamp) => lamp.unit), [0, 0]);
 });
 
+test('surveyed strip paths retain corners and source units instead of bulb markers', () => {
+  const path = [{ x: -1, y: 1, z: 0 }, { x: 1, y: 1, z: 0 }, { x: 1, y: 1, z: 1 }];
+  const placed = roomRig(fixtures, rig, { ...model, bindings: [{ ...binding('strip', 10), path }] });
+  assert.equal(placed.lamps.length, 0);
+  assert.deepEqual(placed.cells.map((cell) => [cell.unit, cell.length, cell.position]),
+    [[0, 2, { x: 0, y: 1, z: 0 }], [0, 1, { x: 1, y: 1, z: 0.5 }]]);
+  const mixed = roomRig(fixtures, rig, { ...model, bindings: [{ ...average([
+    { fixtureId: 10, unit: 0, weight: 1 }, { fixtureId: 20, unit: 1, weight: 3 },
+  ]), path }] });
+  assert.deepEqual(mixed.cells[1].sources, [{ unit: 0, weight: 1 }, { unit: 2, weight: 3 }]);
+});
+
 const average = (sources) => ({ id: 'physical', aggregation: 'weightedMean', sources,
   position: { x: 0, y: 1, z: 0 }, confidence: 'estimated' });
 

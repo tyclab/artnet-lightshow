@@ -23,7 +23,9 @@ const fixtureRef = {
   fixtureId: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER - 1),
   unit: z.number().int().nonnegative().max(65535).default(0),
 };
-const bindingBase = { id, position: vector, label: name.optional(), confidence };
+const stripPath = z.array(vector).min(2).max(128).refine((points) => points.every((point, index) => !index
+  || Math.hypot(point.x - points[index - 1].x, point.y - points[index - 1].y, point.z - points[index - 1].z) > 1e-6), 'Strip edges must have length');
+const bindingBase = { id, position: vector, path: stripPath.optional(), label: name.optional(), confidence };
 const contributors = z.array(z.object({ ...fixtureRef, weight: z.number().finite().positive() }).strict()).min(1).max(64)
   .superRefine((sources, ctx) => {
     if (!Number.isFinite(sources.reduce((sum, source) => sum + source.weight, 0))) {
@@ -62,6 +64,9 @@ export const roomSceneSchema = z.object({
   }).strict()).max(1500).default([]),
   bindings: z.array(binding).max(4096).default([]),
 }).strict().superRefine((room, ctx) => {
+  if (room.bindings.reduce((count, entry) => count + (entry.path?.length ?? 1) - 1, 0) > 8192) {
+    ctx.addIssue({ code: 'custom', path: ['bindings'], message: 'At most 8192 strip edges are allowed' });
+  }
   if (room.bindings.reduce((count, entry) => count + ('sources' in entry ? entry.sources.length : 1), 0) > 8192) {
     ctx.addIssue({ code: 'custom', path: ['bindings'], message: 'At most 8192 source references are allowed' });
   }
@@ -81,6 +86,11 @@ export const roomSceneSchema = z.object({
   room.rooms.forEach((area, index) => {
     if (area.polygon.some(([x, z]) => !withinFloor(x, z))) {
       ctx.addIssue({ code: 'custom', path: ['rooms', index, 'polygon'], message: 'Room polygon is outside the floor bounds' });
+    }
+  });
+  room.bindings.forEach((entry, index) => {
+    if (entry.path?.some((point) => !withinFloor(point.x, point.z) || point.y < -1 || point.y > room.bounds.height + 1)) {
+      ctx.addIssue({ code: 'custom', path: ['bindings', index, 'path'], message: 'Strip path is outside the room bounds' });
     }
   });
   room.objects.forEach((object, index) => {

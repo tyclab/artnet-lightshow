@@ -68,6 +68,12 @@ positions. The placement editor can add, change or remove source units and weigh
 Shared source units are listed explicitly: changing one output can affect several
 physical lights, regardless of their separate preview markers.
 
+A room binding may include a surveyed `path` of 2–128 points in room metres. Stage draws
+its corners as a continuous strip using that binding's source colour, including weighted
+sources. Moving its position translates the whole path. Point-only imports remain markers;
+re-export known strip geometry to give them their physical shape. Room imports accept at most
+8192 strip edges and reject zero-length edges and paths outside the room bounds.
+
 Models accept up to 128 room polygons, 1,500 objects and 4,096 bindings, with up
 to 128 vertices per polygon, 8,192 total source references and a 1 MB JSON
 request limit. External asset URLs, scripts and unrecognised fields are rejected. Keep the original floor-plan
