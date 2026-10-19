@@ -1,13 +1,16 @@
+// Show first: the room, the looks and the switches a party needs. The digits
+// follow the strip, the tenth view on 0.
 export const VIEWS = [
-  { id: 'perform', key: '1', icon: '◉', label: 'Perform', hint: 'Pads · Strobe · Matrix', group: 'live' },
+  { id: 'show', key: '1', icon: '◉', label: 'Show', hint: 'Room · Looks · Arm', group: 'live' },
   { id: 'effects', key: '2', icon: '◧', label: 'Effects', hint: 'Look · Colours · Fixtures', group: 'live' },
-  { id: 'auto', key: '3', icon: '✦', label: 'Auto Show', hint: 'Music · Timeline · Rehearse', group: 'live' },
-  { id: 'sequence', key: '4', icon: '▤', label: 'Sequence', hint: 'Lanes · Patterns · Record', group: 'live' },
-  { id: 'stage', key: '5', icon: '◭', label: 'Stage', hint: 'The rig in 3D', group: 'live' },
-  { id: 'rig', key: '6', icon: '▦', label: 'Rig', hint: 'Plan · Patch · Outputs', group: 'setup' },
-  { id: 'sources', key: '7', icon: '♫', label: 'Sources', hint: 'Players · Spotify · Live input', group: 'setup' },
-  { id: 'settings', key: '8', icon: '⚙', label: 'Settings', hint: 'Show · MIDI · Server', group: 'setup' },
-  { id: 'preflight', key: '9', icon: '✓', label: 'Preflight', hint: 'Pre-show check', group: 'setup' },
+  { id: 'perform', key: '3', icon: '⊞', label: 'Perform', hint: 'Pads · Strobe · Matrix', group: 'live' },
+  { id: 'stage', key: '4', icon: '◭', label: 'Stage', hint: 'The rig in 3D · Room', group: 'live' },
+  { id: 'auto', key: '5', icon: '✦', label: 'Auto Show', hint: 'Music · Timeline · Rehearse', group: 'live' },
+  { id: 'sequence', key: '6', icon: '▤', label: 'Sequence', hint: 'Lanes · Patterns · Record', group: 'live' },
+  { id: 'rig', key: '7', icon: '▦', label: 'Rig', hint: 'Plan · Patch · Outputs', group: 'setup' },
+  { id: 'sources', key: '8', icon: '♫', label: 'Sources', hint: 'Players · Spotify · Live input', group: 'setup' },
+  { id: 'settings', key: '9', icon: '⚙', label: 'Settings', hint: 'Show · MIDI · Server', group: 'setup' },
+  { id: 'preflight', key: '0', icon: '✓', label: 'Preflight', hint: 'Pre-show check', group: 'setup' },
 ];
 export const VIEW_IDS = VIEWS.map((v) => v.id);
 

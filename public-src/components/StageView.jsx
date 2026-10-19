@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { pick, connectedSig, dmxSig, stagePreviewSig } from '../state.js';
+import { api, pick, connectedSig, dmxSig, stagePreviewSig } from '../state.js';
 import { fmtTime, rigLights } from '../utils.js';
 import { useDmxFeed } from '../use-dmx.js';
 import { useTimeline } from '../use-timeline.js';
@@ -23,7 +23,8 @@ const readHaze = () => {
   }
 };
 
-export function StageView() {
+/** `compact`: the stage alone, for the Show view — the room loads here, its panel and the notes stay in Stage. */
+export function StageView({ compact = false } = {}) {
   const s = pick(['fixtures', 'profiles', 'colorPresets', 'autoShow']);
   const connected = connectedSig.value;
   const fixtures = s.fixtures || [];
@@ -40,6 +41,12 @@ export function StageView() {
   const room = roomState.room;
   const canvas = useRef(null);
   const scene = useRef(null);
+  useEffect(() => {
+    if (!compact) return undefined;
+    let live = true;
+    api('/api/stage/room').then((result) => { if (live && result.ok) setRoomState(result); });
+    return () => { live = false; };
+  }, [compact]);
   useRehearsalTrack(s.autoShow);
   useDmxFeed(!rehearsing);
 
@@ -164,8 +171,8 @@ export function StageView() {
     + `${rehearsing ? `rehearsing the track at ${fmtTime(ui.position)}` : connected ? 'showing the live output' : 'offline'}.`;
 
   return (
-    <div class="stage3d-view">
-      <StageRoomPanel snapshot={roomState} coverage={room ? placed : null} fixtures={fixtures} rig={rig} onChange={setRoomState} />
+    <div class={`stage3d-view${compact ? ' compact' : ''}`}>
+      {!compact && <StageRoomPanel snapshot={roomState} coverage={room ? placed : null} fixtures={fixtures} rig={rig} onChange={setRoomState} />}
       <div class="stage3d-tools" role="toolbar" aria-label="Stage view">
         <span class="panel-tag">{rehearsing ? 'Rehearsal' : connected ? 'Live output' : 'Offline'}</span>
         <div class="segmented" role="group" aria-label="Viewpoint">
@@ -204,13 +211,13 @@ export function StageView() {
         {status === 'ready' && !fixtures.length && <p class="stage3d-note">Nothing is patched yet: add fixtures in the Rig view.</p>}
         {status === 'ready' && room && fixtures.length > 0 && !placed.lamps.length && !placed.cells.length && <p class="stage3d-note">This room has no positions for the current fixtures. Review its bindings above.</p>}
       </div>
-      <p class="look-note">
+      {!compact && <p class="look-note">
         Drag to look around, scroll or pinch to move closer; on the stage, the arrow keys turn and tilt and + and − move
         closer. {room ? `${room.name}: imported light positions; missing bindings are listed above. `
           : 'Generic venue: fixture heights follow the plan when set; otherwise groups supply approximate mounting heights. '}{rehearsing
           ? 'Rehearsing: the planned show, as the timeline has it; nothing goes out to the rig.'
           : 'Live: what is going out to the rig now.'}
-      </p>
+      </p>}
     </div>
   );
 }

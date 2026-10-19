@@ -9,7 +9,7 @@ const AXE = createRequire(import.meta.url).resolve('axe-core/axe.min.js');
 test.beforeEach(async ({ request }) => { await reset(request); });
 
 for (const theme of ['dark', 'light', 'red']) {
-  for (const view of ['effects', 'auto', 'perform', 'perform/matrix', 'auto/timeline', 'sequence', 'stage', 'rig', 'rig/profiles', 'rig/outputs', 'sources', 'settings', 'preflight']) {
+  for (const view of ['show', 'effects', 'auto', 'perform', 'perform/matrix', 'auto/timeline', 'sequence', 'stage', 'rig', 'rig/profiles', 'rig/outputs', 'sources', 'settings', 'preflight']) {
     test(`${view}, ${theme} theme`, async ({ page, request }) => {
       // The show's views, with a show to show.
       const withTrack = view === 'auto/timeline' || view === 'stage';

@@ -112,7 +112,7 @@ function PictureSwitch() {
   );
 }
 
-function ArmSwitch() {
+export function ArmSwitch() {
   const s = pick(['armed']);
   const armed = !!s.armed;
   return (

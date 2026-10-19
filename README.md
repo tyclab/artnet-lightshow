@@ -135,10 +135,15 @@ returns 409. If a Deezer ARL is configured, an unsupervised Node process needs
 
 ## Views and controls
 
-For a live session, configure the fixtures and their positions in Rig, choose
-and edit a preset in Effects, then use Perform for pads, colours and transport.
-Use Sequence to arrange clips or run a playlist. Stage shows the current rig
-or a rehearsal. Arming is a separate action from preparing or previewing a look.
+For a live session, configure the fixtures and their positions in Rig, then
+run the night from Show: the room in 3D as the rig paints it, the looks beside
+it, and the switches that matter along the top — armed or not, what paints the
+room (the effects or the visualizer picture), the auto show on or off,
+blackout and the master. Effects holds the full catalogue, colours and fixture
+overrides; Perform is the tablet surface for pads, strobes, the Matrix board
+and tempo tools; Sequence arranges clips or runs a playlist; Stage shows the
+rig in 3D with its room bindings or a rehearsal. Arming is a separate action
+from preparing or previewing a look.
 Import a private floor model and place its lights with the
 [Stage room controls](docs/stage-room.md). Room geometry affects the preview;
 Rig positions still control spatial effects.
@@ -176,18 +181,19 @@ to effects; pad banks launch effects or patterns over the look.
 
 | View | Shortcut | Purpose |
 |------|----------|---------|
-| Perform | 1 | Arm outputs, pads and Matrix, transport, strobe, blackout, tap, colours and faders |
+| Show | 1 | The room in 3D, the looks beside it, and the switches a party needs: arm, picture source, auto show, blackout, master |
 | Effects | 2 | Effects catalogue and inspector, cues, look colours, fixture overrides and stage preview |
-| Auto Show | 3 | Analyse music, choose its source, run the generated show; Timeline tab for rehearsal and edits |
-| Sequence | 4 | Create/load sequences; shared transport and recording; lanes, clips and patterns behind Edit |
-| Stage | 5 | Monitor the rendered rig in 3D |
-| Rig | 6 | Plan, patch, fixture profiles and outputs |
-| Sources | 7 | Playback sources, live input, analysis environment and models |
-| Settings | 8 | Show behaviour, safety, MIDI, engine and server access |
-| Preflight | 9 | Run the pre-show checks |
+| Perform | 3 | Arm outputs, pads and Matrix, transport, strobe, blackout, tap, colours and faders |
+| Stage | 4 | Monitor the rendered rig in 3D, import a room and bind its lights |
+| Auto Show | 5 | Analyse music, choose its source, run the generated show; Timeline tab for rehearsal and edits |
+| Sequence | 6 | Create/load sequences; shared transport and recording; lanes, clips and patterns behind Edit |
+| Rig | 7 | Plan, patch, fixture profiles and outputs |
+| Sources | 8 | Playback sources, live input, analysis environment and models |
+| Settings | 9 | Show behaviour, safety, MIDI, engine and server access |
+| Preflight | 0 | Run the pre-show checks |
 
 Hashes open a view directly, such as `/#perform` or `/#rig/outputs`.
-Perform opens by default. Old `#manual`, `#timeline` and `#matrix` bookmarks redirect
+Show opens by default. Old `#manual`, `#timeline` and `#matrix` bookmarks redirect
 to Effects, Auto Show → Timeline and Perform → Matrix. The shared transport names
 the look, Auto Show or sequence it controls; its Play, Freeze or Pause and Stop
 buttons stay pressed while that state holds, and a status line names it (a

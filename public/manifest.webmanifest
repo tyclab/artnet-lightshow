@@ -15,6 +15,7 @@
     { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
   ],
   "shortcuts": [
+    { "name": "Show", "short_name": "Show", "url": "/#show", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "Perform", "short_name": "Perform", "url": "/#perform", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "Auto show", "short_name": "Auto", "url": "/#auto", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
   ]

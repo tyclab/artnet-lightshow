@@ -16,6 +16,7 @@ import { BottomDrawer } from './components/BottomDrawer.jsx';
 import { ConnectionVeil } from './components/ConnectionVeil.jsx';
 import { ShortcutsOverlay } from './components/Shortcuts.jsx';
 import { Perform } from './components/Perform.jsx';
+import { Show } from './components/Show.jsx';
 import { TimelineView } from './components/TimelineView.jsx';
 import { StageView } from './components/StageView.jsx';
 import { Sequence } from './components/Sequence.jsx';
@@ -37,9 +38,9 @@ function initialView() {
   if (!route) {
     try { route = resolveRoute(localStorage.getItem('lightshow.mode')); } catch { /* private mode */ }
   }
-  const canonical = route?.canonical || 'perform';
+  const canonical = route?.canonical || 'show';
   window.history.replaceState(null, '', `#${canonical}`);
-  return route?.view || 'perform';
+  return route?.view || 'show';
 }
 
 function ModeTabs({ mode, setMode }) {
@@ -121,6 +122,7 @@ function AutoView() {
 }
 
 const PANELS = {
+  show: Show,
   effects: EffectsView,
   auto: AutoView,
   perform: Perform,
@@ -138,6 +140,8 @@ function Root() {
   // actually needs.
   const [mode, setMode] = useState(initialView);
   const Panel = PANELS[mode];
+  // Show and Perform carry their own masters and transport: no command bar, no drawer.
+  const bare = mode === 'show' || mode === 'perform';
   useFirstRun();
   useTapShortcut();
 
@@ -188,7 +192,7 @@ function Root() {
         document.getElementById(`panel-${mode}`)?.focus();
       }}>Skip to the controls</a>
       <Header />
-      {mode !== 'perform' && <CommandBar transport={mode !== 'auto' && mode !== 'sequence'} />}
+      {!bare && <CommandBar transport={mode !== 'auto' && mode !== 'sequence'} />}
       <nav class="mode-nav" aria-label="Views">
         <ModeTabs mode={mode} setMode={setMode} />
       </nav>
@@ -198,7 +202,7 @@ function Root() {
         </div>
       </main>
       <footer class="app-footer">
-        {mode !== 'perform' && <BottomDrawer />}
+        {!bare && <BottomDrawer />}
         <ShortcutsOverlay />
       </footer>
       <Wizard />

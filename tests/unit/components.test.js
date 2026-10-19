@@ -21,6 +21,7 @@ async function load() {
         export { h } from 'preact';
         export { store } from './public-src/state.js';
         export { Perform, sourceHealth } from './public-src/components/Perform.jsx';
+        export { Show } from './public-src/components/Show.jsx';
         export { Header } from './public-src/components/Header.jsx';
         export { StagePreview } from './public-src/components/StagePreview.jsx';
         export { NowPlaying, PlayingVoices } from './public-src/components/NowPlaying.jsx';
@@ -784,6 +785,21 @@ test('pad labels agree between the deck and command bar', () => {
   const rendered = /class="cb-energy-name">([^<]*)</.exec(strip);
   assert.strictEqual(labels[0], rendered[1]);
   assert.strictEqual(labels[0], ui.CATALOGUE.find((row) => row.id === entry.content.id).name);
+});
+
+test('the Show view carries the arm, auto show and blackout switches, the master, the room and the looks', () => {
+  given({ armed: false, picture: { source: 'effects', input: null }, fixtures: [], profiles: {}, patterns: [], families: [],
+    safety: { photosensitivityAcknowledged: true }, showOn: false, autoShow: { status: 'idle', intensity: 70 } });
+  const html = ui.html(ui.h(ui.Show));
+  assert.strictEqual(count(html, 'role="switch"'), 3);
+  for (const text of ['Disarmed', 'Auto show', 'off — the look stays as picked', 'Blackout', 'Master', 'stage3d-canvas', 'effects-deck']) {
+    assert.ok(html.includes(text), text);
+  }
+  assert.ok(!html.includes('stage-room-panel'), 'the room panel stays in Stage');
+
+  given({ showOn: true, autoShow: { status: 'playing', intensity: 70, track: { name: 'Levels', artist: 'Avicii' } } });
+  const running = ui.html(ui.h(ui.Show));
+  assert.ok(running.includes('Avicii — Levels'));
 });
 
 test('shortcut help derives every view chord from the navigation', () => {
