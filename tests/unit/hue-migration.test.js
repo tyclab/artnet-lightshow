@@ -18,6 +18,7 @@ function preservingShow(fn) {
 const legacy = (id, channel, profileId = HUE_COLOR_PROFILE_ID) => ({
   id, profileId, label: `Saved lamp ${id}`, output: { protocol: 'hue', bridge: 'b1', channel },
   position: { x: 12, y: 34, height: 56 }, geometry: { length: 18, angle: 90 }, group: 'back',
+  emission: { kind: 'beam', pan: 30, tilt: -20, beamAngle: 25 },
   maxBrightness: 150, productId: 'saved-product', hardware: { maxFlashHz: 1 }, admission: 'hold',
 });
 
