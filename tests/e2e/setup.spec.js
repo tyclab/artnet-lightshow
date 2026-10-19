@@ -193,6 +193,6 @@ test('a view\'s own tabs follow the arrow keys and the address', async ({ page }
   await expect(page.getByRole('heading', { name: 'Fixture profiles' })).toBeVisible();
   await page.goto('/#rig/outputs');
   await expect(page.getByRole('heading', { name: 'Art-Net' })).toBeVisible();
-  await page.locator('body').press('6');
+  await page.locator('body').press('7');
   await expect(page.locator('#panel-rig')).toBeVisible();
 });

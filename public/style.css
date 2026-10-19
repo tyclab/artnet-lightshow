@@ -882,6 +882,68 @@ button.cb-bpm-num:focus-visible { outline: 2px solid var(--accent); outline-offs
 }
 
 /* =============================================================
+   SHOW VIEW — the room, the looks, the switches a party needs
+   ============================================================= */
+.show-view { display: grid; gap: 12px; padding-bottom: 48px; }
+.show-strip { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1.3fr); gap: 8px; align-items: stretch; }
+.show-strip .perform-arm { min-width: 0; }
+.show-switch {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 56px;
+  padding: 10px 16px;
+  background: var(--card);
+  border: 2px solid var(--border-hi);
+  border-radius: var(--radius-lg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.show-switch:disabled { cursor: progress; opacity: .7; }
+.show-switch.on { border-color: var(--accent); background: rgba(59, 130, 246, .14); }
+.show-switch.blackout.on { border-color: var(--red); background: var(--red); color: #fff; }
+.show-switch-state { font-size: 15px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.show-switch-hint { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.show-switch.on .show-switch-hint { color: var(--text-2); }
+.show-switch.blackout.on .show-switch-hint { color: rgba(255, 255, 255, .9); }
+.show-masters { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; min-width: 0; }
+.show-master {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.show-master-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.show-master input[type=range] { flex: 1; min-width: 60px; accent-color: var(--accent); cursor: pointer; }
+.show-master-value { font: 650 15px var(--mono); min-width: 4ch; text-align: right; }
+.show-body { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: 12px; align-items: start; }
+.show-room { min-width: 0; position: sticky; top: calc(var(--header-height, 47px) + var(--views-height, 0px) + 8px); }
+.show-looks { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+@media (max-width: 1100px) {
+  .show-body { grid-template-columns: 1fr; }
+  .show-room { position: static; }
+}
+@media (max-width: 900px) {
+  .show-strip { grid-template-columns: 1fr 1fr; }
+  .show-strip .perform-arm { grid-column: 1 / -1; }
+}
+@media (max-width: 560px) {
+  .show-strip { grid-template-columns: 1fr; }
+  .show-masters { grid-template-columns: 1fr; }
+  .show-switch { min-height: 48px; }
+  .show-switch-hint { display: none; }
+}
+
+/* =============================================================
    MANUAL VIEW — 3-column working surface
    ============================================================= */
 .manual-view {

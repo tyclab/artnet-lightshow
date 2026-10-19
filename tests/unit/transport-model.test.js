@@ -11,12 +11,13 @@ test('legacy bookmarks retain their instrument', () => {
   assert.equal(resolveRoute(''), null);
 });
 
-test('digit shortcuts follow the nine views and leave typing alone', () => {
-  assert.deepEqual(VIEWS.map((v) => v.id), ['perform', 'effects', 'auto', 'sequence', 'stage', 'rig', 'sources', 'settings', 'preflight']);
-  for (let i = 1; i <= 9; i++) {
-    assert.equal(viewShortcut({ key: String(i) }).id, VIEWS[i - 1].id);
+test('digit shortcuts follow the ten views, the tenth on 0, and leave typing alone', () => {
+  assert.deepEqual(VIEWS.map((v) => v.id), ['show', 'effects', 'perform', 'stage', 'auto', 'sequence', 'rig', 'sources', 'settings', 'preflight']);
+  for (let i = 1; i <= 10; i++) {
+    const key = String(i % 10);
+    assert.equal(viewShortcut({ key }).id, VIEWS[i - 1].id);
     for (const patch of [{ repeat: true }, { ctrlKey: true }, { shiftKey: true }, { defaultPrevented: true }, { target: { tagName: 'INPUT' } }, { target: { isContentEditable: true } }]) {
-      assert.equal(viewShortcut({ key: String(i), ...patch }), null);
+      assert.equal(viewShortcut({ key, ...patch }), null);
     }
   }
 });
