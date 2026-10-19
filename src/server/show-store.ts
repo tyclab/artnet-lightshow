@@ -1,8 +1,9 @@
 import { state, universeOf, maxBrightnessOf, setDefaultUniverse, placeAddresslessFixtures } from './state.ts';
 import { resizeFixtureBuffers } from './engine.ts';
-import { BUILTIN_PROFILE_ID, BUILTIN_PROFILE_IDS, HUE_PROFILE_IDS, isBuiltinProfile, MAX_FIXTURES, universeOverflow, unitCapOverflow, registerProfile, clearNonBuiltinProfiles, listProfiles } from './profiles.ts';
+import { BUILTIN_PROFILE_ID, BUILTIN_PROFILE_IDS, isBuiltinProfile, MAX_FIXTURES, universeOverflow, unitCapOverflow, registerProfile, clearNonBuiltinProfiles, listProfiles } from './profiles.ts';
 import { MAX_UNIVERSES } from './universes.ts';
-import { INTERNAL_UNIVERSE, hasNoAddress, universesOf } from '../shared/placement.ts';
+import { INTERNAL_UNIVERSE, hasNoAddress, isHueLamp, universesOf } from '../shared/placement.ts';
+import { isHueProfile, hueSections, hueChannels } from '../shared/hue-lamp.ts';
 import { ddpConflict } from './ddp-routes.ts';
 import { showSchema, validate } from './validation.ts';
 import { HttpError, messageOf } from '../errors.ts';
@@ -34,6 +35,7 @@ function snapshotShow() {
       position: f.position ? { ...f.position } : null,
       group: f.group || null,
       geometry: f.geometry ? { ...f.geometry } : null,
+      emission: f.emission ? { ...f.emission } : null,
       output: f.output ? { ...f.output } : null,
     })),
   };
@@ -50,7 +52,7 @@ function applyShow(rawShow: unknown): ShowFile {
   const incoming: Record<string, Profile> = Object.create(null);
   for (const id of BUILTIN_PROFILE_IDS) incoming[id] = listProfiles()[id];
   if (Array.isArray(show.profiles)) {
-    for (const p of show.profiles) if (p && p.id) incoming[p.id] = p;
+    for (const p of show.profiles) if (p && p.id && !isBuiltinProfile(p.id)) incoming[p.id] = p;
   }
 
   const showUniverse = (show.artnet && show.artnet.universe !== undefined)
@@ -71,22 +73,27 @@ function applyShow(rawShow: unknown): ShowFile {
       position: f.position ? { ...f.position } : null,
       group: f.group || null,
       geometry: f.geometry ? { ...f.geometry } : null,
+      emission: f.emission ? { ...f.emission } : null,
       output: !f.output ? null
-        : f.output.protocol === 'hue' ? { ...f.output, bridge: f.output.bridge || fallback } : { ...f.output },
+        : f.output.protocol === 'hue' ? { protocol: 'hue', channels: [...hueChannels(f.output)], bridge: f.output.bridge || fallback } : { ...f.output },
       productId: f.productId, hardware: f.hardware, admission: f.admission,
       override: null,
     }));
-    const mixed = next.find((f) => hasNoAddress(f) !== HUE_PROFILE_IDS.has(f.profileId));
+    const mixed = next.find((f) => isHueLamp(f) !== isHueProfile(incoming[f.profileId]));
     if (mixed) {
-      throw badShow(`"${mixed.label}" ${hasNoAddress(mixed) ? 'is a Hue lamp on a profile that is not one' : 'is on a Hue lamp profile but not a Hue lamp'}`);
+      throw badShow(`"${mixed.label}" ${isHueLamp(mixed) ? 'is a Hue lamp on a profile that is not one' : 'is on a Hue lamp profile but not a Hue lamp'}`);
     }
     const channels = new Map<string, string>();
     for (const fix of next) {
       if (fix.output?.protocol !== 'hue') continue;
-      const key = `${fix.output.bridge}:${fix.output.channel}`;
-      const other = channels.get(key);
-      if (other) throw badShow(`"${fix.label}" and "${other}" are both Hue channel ${fix.output.channel} of bridge ${fix.output.bridge}`);
-      channels.set(key, fix.label);
+      const lampChannels = hueChannels(fix.output);
+      if (lampChannels.length !== hueSections(incoming[fix.profileId])) throw badShow(`"${fix.label}" channels do not match its profile sections`);
+      for (const channel of lampChannels) {
+        const key = `${fix.output.bridge}:${channel}`;
+        const other = channels.get(key);
+        if (other) throw badShow(`"${fix.label}" and "${other}" are both Hue channel ${channel} of bridge ${fix.output.bridge}`);
+        channels.set(key, fix.label);
+      }
     }
     placeAddresslessFixtures(next, (fix) => incoming[fix.profileId]);
     for (const fix of next) {
@@ -97,7 +104,7 @@ function applyShow(rawShow: unknown): ShowFile {
     }
     const tooMany = unitCapOverflow(next, (fix) => incoming[fix.profileId]);
     if (tooMany) throw badShow(tooMany);
-    const wled = ddpConflict(next, (fix) => incoming[fix.profileId] as Profile, (fix) => fix.universe as number);
+    const wled = ddpConflict(next, (fix) => incoming[fix.profileId] as Profile);
     if (wled) throw badShow(wled);
     const spanned = new Set([showUniverse, ...next.flatMap((f) => universesOf(f.universe as number, incoming[f.profileId]))]);
     if (spanned.size > MAX_UNIVERSES) {

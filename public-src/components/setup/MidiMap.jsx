@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { pick, socket, toast } from '../../state.js';
 import { post } from '../../setup-state.js';
+import { paletteName } from '../PaletteEditor.jsx';
 
 /**
  * Which MIDI message does what. Defaults to a Behringer X-Touch Compact in
@@ -20,6 +21,11 @@ function paramOptions(kind, s) {
     case 'energy': return (s.energyEffects || []).map((e) => ({ value: e.id, label: e.name }));
     case 'cue': return (s.cues || []).map((c) => ({ value: c.id, label: c.name }));
     case 'palette': return (s.palettes || []).map((p) => ({ value: p.id, label: p.name }));
+    case 'overridePalette': return [...(s.builtinPalettes || []), ...(s.userPalettes || [])].map((p) => ({ value: p.id, label: paletteName(p) }));
+    case 'colorSlot': return ['A', 'B', 'C', 'D'].map((l) => ({ value: `color${l}`, label: `Colour ${l}` }));
+    case 'lookKind': return [{ value: 'pattern', label: 'Patterns' }, { value: 'effect', label: 'Effects' }];
+    case 'bpmFactor': return [{ value: 2, label: '×2' }, { value: 0.5, label: '÷2' }];
+    case 'burstMs': return [500, 1000, 2000, 4000].map((ms) => ({ value: ms, label: `${ms / 1000} s` }));
     case 'fixture': return (s.fixtures || []).map((f) => ({ value: f.id, label: f.label }));
     case 'division': return DIVISIONS.map((d) => ({ value: d, label: d === 1 ? '1/1' : `1/${d}` }));
     default: return [];
@@ -27,19 +33,20 @@ function paramOptions(kind, s) {
 }
 
 /** "CC 12 (fader)" / "Note 40 ch 3". */
-function controlLabel(kind, number, binding) {
+function controlLabel(kind, number, binding, input) {
   const base = kind === 'cc' ? `CC ${number}` : `Note ${number}`;
   const chan = binding.channel !== undefined ? ` ch ${binding.channel + 1}` : '';
-  const type = kind === 'cc' ? ` (${binding.type === 'relative' ? 'encoder' : 'fader'})` : '';
+  const type = kind === 'cc' ? ` (${input === 'encoder' || binding.type === 'relative' ? 'encoder' : 'fader'})` : '';
   return `${base}${chan}${type}`;
 }
 
 export function MidiMap() {
-  const s = pick(['patterns', 'colorPresets', 'energyEffects', 'cues', 'palettes', 'fixtures']);
+  const s = pick(['patterns', 'colorPresets', 'energyEffects', 'cues', 'palettes', 'builtinPalettes', 'userPalettes', 'fixtures']);
   const [data, setData] = useState(null);      // { map, customised, actions }
   const [learning, setLearning] = useState(null);   // banner text
   const [actionId, setActionId] = useState('');
   const [param, setParam] = useState('');
+  const [preset, setPreset] = useState('classic');
 
   useEffect(() => {
     let live = true;
@@ -54,6 +61,7 @@ export function MidiMap() {
   if (!data) return <section class="panel"><p class="panel-empty">Loading the MIDI mapping…</p></section>;
   const actions = data.actions || [];
   const byId = new Map(actions.map((a) => [a.id, a]));
+  const labelOf = (kind, number, binding) => controlLabel(kind, number, binding, byId.get(binding.action)?.input);
   const chosen = byId.get(actionId) || actions[0];
 
   const actionLabel = (binding) => {
@@ -91,7 +99,7 @@ export function MidiMap() {
     if (chosen.param) {
       const options = paramOptions(chosen.param.kind, s);
       const raw = param !== '' ? param : chosen.param.optional ? '' : String(options[0] ? options[0].value : '');
-      if (raw !== '') binding[chosen.param.key] = ['color', 'fixture', 'division'].includes(chosen.param.kind) ? Number(raw) : raw;
+      if (raw !== '') binding[chosen.param.key] = ['color', 'fixture', 'division', 'bpmFactor', 'burstMs'].includes(chosen.param.kind) ? Number(raw) : raw;
     }
     if (chosen.input === 'encoder') binding.type = 'relative';
     if (chosen.input === 'fader') binding.type = 'absolute';
@@ -106,7 +114,7 @@ export function MidiMap() {
   const unbind = async (row) => {
     const res = await putBinding(row.kind, row.number, null);
     if (!res.ok) return;
-    toast.push({ message: `Unbound ${controlLabel(row.kind, row.number, row.binding)}`, action: { label: 'Undo', onClick: () => putBinding(row.kind, row.number, row.binding) } });
+    toast.push({ message: `Unbound ${labelOf(row.kind, row.number, row.binding)}`, action: { label: 'Undo', onClick: () => putBinding(row.kind, row.number, row.binding) } });
   };
   const reset = async () => {
     // A mapping built one control at a time is worth an undo, and the whole
@@ -119,6 +127,17 @@ export function MidiMap() {
       message: 'Reset to the built-in X-Touch mapping',
       action: { label: 'Undo', onClick: async () => { const back = await post('/api/midi/map', before, 'PUT'); if (back.ok) setData((d) => ({ ...d, map: back.map, customised: back.customised })); } },
     });
+  };
+
+  const applyPreset = async () => {
+    const before = data.map;
+    const res = await post(`/api/midi/map/preset/${encodeURIComponent(preset)}`, {});
+    if (!res.ok) return;
+    setData((d) => ({ ...d, map: res.map, customised: res.customised }));
+    toast.push({ message: 'MIDI layout applied', action: { label: 'Undo', onClick: async () => {
+      const back = await post('/api/midi/map', before, 'PUT');
+      if (back.ok) setData((d) => ({ ...d, map: back.map, customised: back.customised }));
+    } } });
   };
 
   const rows = [];
@@ -141,6 +160,13 @@ export function MidiMap() {
         <span class="panel-tag">{data.customised ? 'Your mapping' : 'Built-in X-Touch Compact'}</span>
       </header>
       <p class="section-desc">Which message does what. Pick an action, press <strong>Learn</strong>, then move the control you want it on.</p>
+      {!!data.presets?.length && <div class="midi-add-row">
+        <select aria-label="MIDI layout" value={preset} onChange={(e) => setPreset(e.target.value)}>
+          {data.presets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <button type="button" class="btn sm" onClick={applyPreset}>Apply layout</button>
+        <span class="hint">Show control trims fixture brightness and puts palettes over the show. Applying a layout replaces the current bindings; Undo restores them.</span>
+      </div>}
       {learning && (
         <div class="midi-learn-banner" role="status">
           <span>{learning}</span>
@@ -170,11 +196,11 @@ export function MidiMap() {
           <tbody>
             {rows.map((row) => (
               <tr key={`${row.key}-${row.number}`}>
-                <td class="midi-control">{controlLabel(row.kind, row.number, row.binding)}</td>
+                <td class="midi-control">{labelOf(row.kind, row.number, row.binding)}</td>
                 <td>{actionLabel(row.binding)}</td>
                 <td class="patch-actions-cell">
                   <button type="button" class="btn sm" title="Move this action to another control" onClick={() => learn(row.binding)}>Learn</button>
-                  <button type="button" class="remove-btn" aria-label={`Unbind ${controlLabel(row.kind, row.number, row.binding)}`}
+                  <button type="button" class="remove-btn" aria-label={`Unbind ${labelOf(row.kind, row.number, row.binding)}`}
                     onClick={() => unbind({ ...row, kind: row.key === 'notes' ? 'notes' : 'cc' })}>×</button>
                 </td>
               </tr>

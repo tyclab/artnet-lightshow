@@ -2,10 +2,10 @@
 // BT 1–8 notes 16–23; BT 9–16 notes 24–31; FD 1–9 CC 1–9; all channel 1.
 // LED Note On velocities: 0 off, 1 on, 127 bright; follow the learned binding map.
 
-import { DEFAULT_MAP, ACTIONS } from './server/midi-map.ts';
+import { DEFAULT_MAP, ACTIONS, defaultTypeFor } from './server/midi-map.ts';
 import { createRequire } from 'node:module';
 
-import { ENERGY_EFFECT_IDS, STROBE_FUNCTION_IDS, SYNC_OFFSET_LIMIT_MS } from './server/presets.ts';
+import { COLOR_PRESETS, ENERGY_EFFECT_IDS, STROBE_FUNCTION_IDS, SYNC_OFFSET_LIMIT_MS } from './server/presets.ts';
 import { messageOf } from './errors.ts';
 import type { MidiBinding, MidiMap } from './server/midi-map.ts';
 import type { ShowState } from './server/state.ts';
@@ -46,6 +46,8 @@ export interface LearnCapture {
   number: number;
   channel: number;
   binding: MidiBinding;
+  /** For an encoder: the kind it showed itself to be, as a binding type. */
+  type?: 'relative' | 'absolute';
 }
 
 export type LearnEvent = { status: string; binding: MidiBinding } & Partial<LearnCapture>;
@@ -106,7 +108,149 @@ function relDelta(value: number, mode: RelMode): number {
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
+const OWN_PORT = /^RtMidi (Input|Output) Client:/;
+type EncoderMode = 'position' | 'steps';
+const STEP_REACH = 15;
+const fromLandmark = (value: number): number => Math.min(value, Math.abs(value - 64), 127 - value);
+const ENCODER_ACTIONS = new Set(ACTIONS.filter((a) => a.input === 'encoder').map((a) => a.id));
+const PROBE_HOLD_MS = 3000;
+const LEARN_CONFIRM_MS = 2000;
+const clearRing = (value: number): number => (value >= 64 ? 96 : 32);
+
+export interface LookRow {
+  id: string;
+  pixel?: boolean;
+  app?: string;
+  party?: boolean;
+  rapidFlash?: boolean;
+}
+
+export interface MidiBusk {
+  looks(): readonly LookRow[];
+  palettes(): readonly string[];
+  acknowledged(): boolean;
+  stopEffects(): unknown;
+  strobeBurst(ms: number): unknown;
+  strobeRate(): number;
+  setStrobeRate(hz: number): unknown;
+  strobeMaxRate: number;
+  autoShowOn(): boolean;
+  toggleAutoShow(): unknown;
+}
+
+const DIVISIONS = [1, 2, 4, 8, 16];
+
+const FADE_STEP_MS = 250;
+
+const FADE_MAX_MS = 4000;
+
+const COLOR_SLOTS = ['colorA', 'colorB', 'colorC', 'colorD'] as const;
+
+type ColorSlot = typeof COLOR_SLOTS[number];
+
+const slotOf = (value: unknown): ColorSlot | null => COLOR_SLOTS.find((slot) => slot === value) ?? null;
+
+const LIT_COLORS = COLOR_PRESETS.map((c, i) => ({ c: c as Record<string, unknown>, i }))
+  .filter(({ c }) => ['r', 'g', 'b', 'w', 'a', 'uv'].some((k) => Number(c[k]) > 0)).map(({ i }) => i);
+
+const wrapIndex = (i: number, n: number): number => ((i % n) + n) % n;
+
 class MidiController {
+  declare _positions: Map<string, number>;
+
+  declare _encModes: Map<string, EncoderMode>;
+
+  declare _probes: Map<string, number>;
+
+  _encoderSteps(key: string, controller: number, channel: number, binding: MidiBinding, value: number): number {
+    const at = this._positions.get(key);
+    this._probes.delete(key);
+    const evidence = this._encoderEvidence(at, value);
+    if (evidence) this._encModes.set(key, evidence);
+    this._positions.set(key, value);
+
+    const steps = (): number => {
+      const encoding = relEvidence(value);
+      if (encoding) this._relModes.set(key, encoding);
+      return relDelta(value, this._relModes.get(key) || REL_TWOS);
+    };
+    const mode = this._encModes.get(key);
+    if (mode === 'position') return at === undefined ? 0 : value - at;
+    if (mode === 'steps') return steps();
+
+    // Not shown yet, so the value is next to a landmark: the binding's type is
+    // the guess. With nothing to measure from, a position only says where it is.
+    if (binding.type !== 'relative') return at === undefined ? 0 : value - at;
+    if (at !== undefined) this._probe(key, controller, channel, value);
+    return steps();
+  }
+
+  _encoderEvidence(at: number | undefined, value: number): EncoderMode | null {
+    if (fromLandmark(value) > STEP_REACH) return 'position';
+    if (at === undefined) return null;
+    if (Math.abs(value - at) > STEP_REACH) return 'steps';
+    if (value === at && value !== 0 && value !== 127) return 'steps';
+    return null;
+  }
+
+  _encoderMode(key: string, binding: MidiBinding): EncoderMode {
+    return this._encModes.get(key) ?? (binding.type === 'relative' ? 'steps' : 'position');
+  }
+
+  _probe(key: string, controller: number, channel: number, value: number): void {
+    if (!this.output || !this.controlFeedback) return;
+    const ring = clearRing(value);
+    try {
+      this.output.send('cc', { controller, value: ring, channel });
+    } catch (_) { return; }
+    this._lastCcOut.set(controller, ring);
+    this._positions.set(key, ring);
+    this._probes.set(key, Date.now());
+  }
+
+  _learnEncoder(learn: NonNullable<MidiController['_learn']>, number: number, channel: number, value: number): boolean {
+    const key = `${channel}:${number}`;
+    if (learn.encoder && learn.encoder.key !== key) return false;
+
+    // Where the encoder was before is not to be trusted: it was not ours to follow.
+    const first = !learn.encoder;
+    const evidence = this._encoderEvidence(first ? undefined : this._positions.get(key), value);
+    this._positions.set(key, value);
+    if (first) {
+      learn.encoder = { key, number, channel };
+      clearTimeout(learn.timer);
+      learn.timer = setTimeout(() => this._finishLearnEncoder(learn, null), LEARN_CONFIRM_MS);
+      learn.timer.unref?.();
+    }
+    if (evidence) this._finishLearnEncoder(learn, evidence);
+    else if (first) this._probe(key, number, channel, value);
+    return true;
+  }
+
+  _finishLearnEncoder(learn: NonNullable<MidiController['_learn']>, mode: EncoderMode | null): void {
+    const encoder = learn.encoder;
+    if (!encoder) return;
+    if (mode) this._encModes.set(encoder.key, mode);
+    const type = mode === 'position' ? 'absolute'
+      : mode === 'steps' ? 'relative'
+        : learn.binding.type || defaultTypeFor(learn.binding.action);
+    this._finishLearn(learn, { kind: 'cc', number: encoder.number, channel: encoder.channel, binding: learn.binding, type });
+  }
+
+  _finishLearn(learn: NonNullable<MidiController['_learn']>, captured: LearnCapture): void {
+    // Cancelled or superseded meanwhile: that already answered.
+    if (this._learn !== learn) return;
+    this._learn = null;
+    clearTimeout(learn.timer);
+    learn.resolve(captured);
+    this._emitLearn({ status: 'captured', ...captured });
+  }
+
+  declare setPaletteOverride: ((id: string | null) => unknown) | null;
+  declare busk: MidiBusk | null;
+  declare _fadeMs: number;
+  declare _random: () => number;
+
   declare state: ShowState;
   declare apply: (patch: Record<string, unknown>) => unknown;
   declare tap: () => void;
@@ -115,7 +259,13 @@ class MidiController {
   declare map: MidiMap;
   declare enabled: boolean;
   declare recallCue: ((id: string) => unknown) | null;
-  declare _learn: { binding: MidiBinding; resolve: (capture: LearnCapture | null) => void; timer: ReturnType<typeof setTimeout> } | null;
+  declare _learn: {
+    binding: MidiBinding;
+    resolve: (capture: LearnCapture | null) => void;
+    timer: ReturnType<typeof setTimeout>;
+    // An encoder caught, waiting for the message that says which kind it is.
+    encoder?: { key: string; number: number; channel: number };
+  } | null;
   declare _learnListeners: ((event: LearnEvent) => void)[];
   declare _lastCcOut: Map<number, number>;
   declare _lastCcIn: Map<number, number>;
@@ -146,6 +296,10 @@ class MidiController {
     this.enabled = false;
 
     this.recallCue = null;
+    this.setPaletteOverride = null;
+    this.busk = null;
+    this._fadeMs = 0;
+    this._random = Math.random;
 
     this._learn = null;       // { binding, resolve, timer } while learn is armed
     this._learnListeners = [];
@@ -153,6 +307,9 @@ class MidiController {
     this._lastCcOut = new Map();
     this._lastCcIn = new Map();
     this._relModes = new Map();
+    this._positions = new Map();
+    this._encModes = new Map();
+    this._probes = new Map();
     this.controlFeedback = true;
     this._moved = new Set();
     this._touchDown = new Map();
@@ -175,9 +332,14 @@ class MidiController {
 
   listPorts(): MidiPortList {
     if (!easymidi) return { inputs: [], outputs: [] };
+    // Cache the result — enumerate once, refresh only on explicit connect/close
+    // or when the Settings picker asks (refreshPorts).
     if (this._cachedPorts) return this._cachedPorts;
     try {
-      this._cachedPorts = { inputs: easymidi.getInputs(), outputs: easymidi.getOutputs() };
+      // On ALSA every open port brings an "RtMidi … Client" of ours into the
+      // list, and it outlives close(). Picking one wires our feedback back in.
+      const pickable = (name: string) => !OWN_PORT.test(name);
+      this._cachedPorts = { inputs: easymidi.getInputs().filter(pickable), outputs: easymidi.getOutputs().filter(pickable) };
     } catch (_) {
       this._cachedPorts = { inputs: [], outputs: [] };
     }
@@ -195,6 +357,14 @@ class MidiController {
       return false;
     }
 
+    // Only the ports the operator picked. This used to fall back to the first
+    // port matching /x.?touch/i, then to the first port of all, so any surface
+    // on the bus could take the show over (the e2e server included).
+    if (!inputName) {
+      console.log('[MIDI] No input port picked. Pick one under Settings → MIDI controller.');
+      return false;
+    }
+
     const { inputs, outputs } = this.refreshPorts();
     if (!inputs.length && !outputs.length) {
       console.warn('[MIDI] No MIDI ports available.');
@@ -204,17 +374,15 @@ class MidiController {
     console.log('[MIDI] Available inputs: ', inputs);
     console.log('[MIDI] Available outputs:', outputs);
 
-    const findPort = (list: string[], hint: string | null): string | null => {
-      if (hint) return list.find(n => n === hint) || null;
-      return list.find(n => /x.?touch/i.test(n)) || list[0] || null;
-    };
-
-    const inName  = findPort(inputs,  inputName);
-    const outName = findPort(outputs, outputName);
+    const inName  = inputs.includes(inputName) ? inputName : null;
+    const outName = outputName && outputs.includes(outputName) ? outputName : null;
 
     if (!inName) {
-      console.warn('[MIDI] No input port found. Pick one under Settings → MIDI controller.');
+      console.warn(`[MIDI] Input port "${inputName}" is not available. Plug it in, or pick another under Settings → MIDI controller.`);
       return false;
+    }
+    if (outputName && !outName) {
+      console.warn(`[MIDI] Output port "${outputName}" is not available; connecting without feedback.`);
     }
 
     try {
@@ -230,6 +398,8 @@ class MidiController {
       this._bindInput();
       this.enabled = true;
       this._lastCcOut.clear();
+      // Drive the surface to the current show immediately, rather than waiting
+      // for the first thing to change.
       this.sendFeedback();
       return true;
     } catch (err) {
@@ -248,7 +418,13 @@ class MidiController {
   _bindInput(): void {
     const input = this.input;
     if (!input) return;
+    // this.map is read at dispatch time rather than captured here, so a
+    // relearned binding takes effect immediately instead of on the next
+    // reconnect.
 
+    // MIDI monitor: one line per incoming message. Invaluable when mapping a
+    // controller, unusable during a show — a single encoder sweep is hundreds
+    // of lines. Off unless DEBUG_MIDI=1.
     if (process.env.DEBUG_MIDI === '1') {
       input.on('noteon',  ({ note, velocity, channel }) =>
         console.log(`[MIDI] noteon  ch=${channel + 1} note=${note} vel=${velocity}  → ${this.map.notes[note] ? this.map.notes[note].action : 'unmapped'}`));
@@ -260,7 +436,10 @@ class MidiController {
         console.log(`[MIDI] pitch   ch=${channel + 1} val=${value}`));
     }
 
+    // Note On → button press
     input.on('noteon', ({ note, velocity, channel }) => {
+      // A learn in progress swallows the message: the operator is telling us
+      // which control they mean, not asking for it to fire.
       if (velocity > 0 && this._captureLearn('notes', note, channel)) return;
 
       if (velocity === 0 && this._releasePad(channel, note)) return;
@@ -271,12 +450,14 @@ class MidiController {
         return;
       }
       if (velocity === 0) {
+        // Note-off: release momentary actions
         if (binding.action === 'energyHold') this.apply({ energyOverride: null });
         return;
       }
       this._safely(binding, () => this._dispatch(binding));
     });
 
+    // Explicit Note Off for controllers that send it separately
     input.on('noteoff', ({ note, channel }) => {
       if (this._releasePad(channel, note)) return;
       const binding = this._bindingFor('notes', note, channel);
@@ -286,32 +467,36 @@ class MidiController {
       }
     });
 
+    // CC → encoder (relative) or fader (absolute)
     input.on('cc', ({ controller, value, channel }) => {
       const key = `${channel}:${controller}`;
       const between = value > 0 && value < 127;
       this._trackTouch(key, controller, channel, value, between);
 
+      // Learning a fader: its touch sensor speaks first, and is not the fader.
       if (this._learn && !between && !this._moved.has(key) && this._learnWantsFader()) return;
-      if (this._captureLearn('cc', controller, channel)) return;
+      if (this._captureLearn('cc', controller, channel, value)) return;
 
+      // Note the touch even when unmapped: a fader being moved is a fader we
+      // should not be driving, whatever it is bound to.
       this._lastCcIn.set(controller, Date.now());
 
       const binding = this._bindingFor('cc', controller, channel);
       if (!binding) return;
+      // Only a control that has shown itself to be a fader drives a fader
+      // action: a touch sensor would throw it to the ends.
       if (binding.type !== 'relative' && FADER_ACTIONS.has(binding.action) && !this._moved.has(key)) {
         this._warnSwitch(key, controller, binding);
         return;
       }
-      if (binding.type === 'relative') {
-        const key = `${channel}:${controller}`;
-        const evidence = relEvidence(value);
-        if (evidence) this._relModes.set(key, evidence);
-        const delta = relDelta(value, this._relModes.get(key) || REL_TWOS)
-          * (binding.scale || 1);
+      if (ENCODER_ACTIONS.has(binding.action)) {
+        const delta = this._encoderSteps(key, controller, channel, binding, value) * (binding.scale || 1);
+        // A no-movement message is not an edit: dispatching zero would still
+        // clear the palette label and suppress the control's own feedback.
         if (delta !== 0) {
           this._safely(binding, () => this._dispatchContinuous(binding, delta));
         }
-      } else {
+      } else if (binding.type !== 'relative') {
         this._safely(binding, () => this._dispatchAbsolute(binding, value));
       }
     });
@@ -411,15 +596,13 @@ class MidiController {
 
   get learning(): boolean { return !!this._learn; }
 
-  _captureLearn(kind: 'cc' | 'notes', number: number, channel: number): boolean {
+  _captureLearn(kind: 'cc' | 'notes', number: number, channel: number, value = 0): boolean {
     const learn = this._learn;
     if (!learn) return false;
-    this._learn = null;
-    clearTimeout(learn.timer);
-
-    const captured: LearnCapture = { kind, number, channel, binding: learn.binding };
-    learn.resolve(captured);
-    this._emitLearn({ status: 'captured', ...captured });
+    if (kind === 'cc' && ENCODER_ACTIONS.has(learn.binding.action)) return this._learnEncoder(learn, number, channel, value);
+    // An encoder already caught: the rest of the surface works meanwhile.
+    if (learn.encoder) return false;
+    this._finishLearn(learn, { kind, number, channel, binding: learn.binding });
     return true;
   }
 
@@ -465,11 +648,14 @@ class MidiController {
         this.apply({ beatDivision: Number(binding.value) || 1 });
         break;
       case 'energyHold': {
+        // Momentary: note-on activates, note-off (handled above) deactivates.
+        // A bound effect wins; otherwise this button follows cycleEnergyEffect.
         const effect = binding.value || this._energyEffect || ENERGY_IDS[0];
         this.apply({ energyOverride: effect });
         break;
       }
       case 'cycleEnergyEffect': {
+        // Cycle which effect the energy hold button triggers (without activating it)
         const curIdx = ENERGY_IDS.indexOf(this._energyEffect || ENERGY_IDS[0]);
         this._energyEffect = ENERGY_IDS[(curIdx + 1) % ENERGY_IDS.length];
         break;
@@ -488,6 +674,8 @@ class MidiController {
           this._emitFixOverride(fix.id, null);
           break;
         }
+        // Blackout is a gate, not a replacement look. Clearing it restores the
+        // prior override; if there was none, return to the pattern engine.
         this._emitFixOverride(fix.id, {
           ...(cur || { enabled: false, r: 0, g: 0, b: 0, w: 0, a: 0, uv: 0, dim: 255, strobe: 0 }),
           blackout: newBo,
@@ -495,13 +683,77 @@ class MidiController {
         break;
       }
       case 'recallCue':
+        // Wired up by server.js; a rig with no cue store just does nothing.
         if (this.recallCue && binding.value) this.recallCue(String(binding.value));
         break;
       case 'setPalette':
+        // One press writes all four colour slots from a named look. The server
+        // rejects an id it does not know, which surfaces as a toast rather than
+        // a button that silently does nothing.
         if (binding.value) this.apply({ palette: String(binding.value) });
+        break;
+      case 'togglePaletteOverride': {
+        // Over whatever is playing until pressed again. The auto show never
+        // sets the override, so this colours the show rather than fighting it.
+        if (!binding.value || !this.setPaletteOverride) break;
+        const id = String(binding.value);
+        this.setPaletteOverride(s.paletteOverrideId === id ? null : id);
+        break;
+      }
+      case 'clearPaletteOverride':
+        this.setPaletteOverride?.(null);
+        break;
+      case 'randomLook': {
+        const others = this._lookList(binding.value === 'effect' ? 'effect' : 'pattern').filter((id) => id !== s.pattern);
+        if (others.length) this._look(this._pick(others));
+        break;
+      }
+      case 'randomColor': {
+        const slot = slotOf(binding.value);
+        const others = LIT_COLORS.filter((i) => !slot || i !== s[slot]);
+        if (slot && others.length) this.apply({ [slot]: this._pick(others), ...this._fade() });
+        break;
+      }
+      case 'scaleBpm': {
+        const factor = Number(binding.value);
+        if (factor > 0) this.apply({ bpm: clamp(Math.round(s.bpm * factor * 100) / 100, 20, 300) });
+        break;
+      }
+      case 'stopEffects':
+        this.busk?.stopEffects();
+        break;
+      case 'strobeBurst':
+        this.busk?.strobeBurst(Number(binding.value) || 1000);
+        break;
+      case 'toggleAutoShow':
+        this.busk?.toggleAutoShow();
         break;
     }
     this.sendFeedback();
+  }
+
+  _lookList(kind: 'pattern' | 'effect'): string[] {
+    const rows = this.busk?.looks() ?? [];
+    const acknowledged = !!this.busk?.acknowledged();
+    const eligible = rows.filter((r) => acknowledged || !r.rapidFlash);
+    if (kind === 'pattern') return eligible.filter((r) => !r.pixel && (!r.app || (r.app === 'own' && r.party))).map((r) => r.id);
+    return eligible.filter((r) => r.app === 'hd' || r.app === 'ldj').map((r) => r.id);
+  }
+
+  _barsList(): (string | null)[] {
+    return [null, ...(this.busk?.looks() ?? []).filter((r) => r.pixel && (this.busk?.acknowledged() || !r.rapidFlash)).map((r) => r.id)];
+  }
+
+  _look(id: string): void {
+    this.apply({ pattern: id, ...this._fade() });
+  }
+
+  _fade(): { fadeMs?: number } {
+    return this._fadeMs > 0 ? { fadeMs: this._fadeMs } : {};
+  }
+
+  _pick<T>(list: readonly T[]): T {
+    return list[Math.min(list.length - 1, Math.floor(this._random() * list.length))];
   }
 
   _dispatchContinuous(binding: MidiBinding, delta: number): void {
@@ -533,9 +785,53 @@ class MidiController {
         break;
       }
       case 'adjustAutoIntensity':
+        // 0-100, not 0-255: the auto show's slider is a percentage.
         this.apply({ autoIntensity: clamp(Math.round((s.autoIntensity ?? 50) + delta), 0, 100) });
         break;
+      case 'browsePattern':
+      case 'browseEffect': {
+        const list = this._lookList(binding.action === 'browsePattern' ? 'pattern' : 'effect');
+        if (!list.length) break;
+        const at = list.indexOf(s.pattern);
+        // Not in the list (the other kind is on): the first turn lands on its first or last.
+        this._look(list[at < 0 ? (delta > 0 ? 0 : list.length - 1) : wrapIndex(at + delta, list.length)]);
+        break;
+      }
+      case 'browseColor': {
+        const slot = slotOf(binding.value);
+        if (slot) this.apply({ [slot]: wrapIndex(s[slot] + delta, COLOR_PRESETS.length), ...this._fade() });
+        break;
+      }
+      case 'browseBeatDivision': {
+        const at = Math.max(0, DIVISIONS.indexOf(s.beatDivision));
+        this.apply({ beatDivision: DIVISIONS[clamp(at + delta, 0, DIVISIONS.length - 1)] });
+        break;
+      }
+      case 'browseBarsPattern': {
+        const list = this._barsList();
+        this.apply({ pixelPattern: list[wrapIndex(Math.max(0, list.indexOf(s.pixelPattern)) + delta, list.length)] });
+        break;
+      }
+      case 'browsePalette': {
+        const list = this.busk?.palettes() ?? [];
+        if (!list.length || !this.setPaletteOverride) break;
+        const at = s.paletteOverrideId ? list.indexOf(s.paletteOverrideId) : -1;
+        this.setPaletteOverride(list[at < 0 ? (delta > 0 ? 0 : list.length - 1) : wrapIndex(at + delta, list.length)]);
+        break;
+      }
+      case 'adjustFadeTime':
+        this._fadeMs = clamp(this._fadeMs + delta * FADE_STEP_MS, 0, FADE_MAX_MS);
+        break;
+      case 'adjustStrobeRate': {
+        const busk = this.busk;
+        if (busk) busk.setStrobeRate(clamp(Math.round(busk.strobeRate() + delta), 1, busk.strobeMaxRate));
+        break;
+      }
       case 'adjustAutoSync':
+        // 5 ms a detent. One encoder click of 1 ms would be unusable — you
+        // cannot hear a millisecond — and a whole beat per click would overshoot
+        // the error every time. Five is small enough to creep up on the right
+        // answer and large enough to get there within a song.
         this.apply({
           autoSyncOffsetMs: clamp(
             Math.round((s.autoSyncOffsetMs ?? 0) + delta * SYNC_NUDGE_MS),
@@ -610,7 +906,12 @@ class MidiController {
         case 'setColorD':        lit = binding.value === s.colorD; break;
         case 'setBeatDivision':  lit = Number(binding.value) === s.beatDivision; break;
         case 'setPalette':       lit = binding.value === s.palette; break;
+        case 'togglePaletteOverride': lit = !!binding.value && s.paletteOverrideId === String(binding.value); break;
+        // Lit while there is something for it to do.
+        case 'clearPaletteOverride': lit = !!s.paletteOverride; break;
+        case 'toggleAutoShow':   lit = !!this.busk?.autoShowOn(); break;
         case 'toggleBlackout':   lit = !!s.masterBlackout; break;
+        // Lit while the clock follows the music, as Play is while it runs.
         case 'toggleTempoMode':  lit = s.tempoMode !== 'manual'; break;
         case 'togglePlay':       lit = !!s.running; break;
         case 'energyHold':       lit = !!s.energyOverride; break;
@@ -638,11 +939,14 @@ class MidiController {
         return to127(s.strobeSpeed, 255);
       case 'setBpm':
       case 'adjustBpm':
+        // The inverse of the fader mapping in _dispatchAbsolute: 20-300 BPM.
         return to127(s.bpm - 20, 280);
       case 'setFixtureDim':
       case 'adjustFixtureDim': {
         const fix = s.fixtures.find((fixture) => fixture.id === binding.fixture);
         if (!fix) return null;
+        // No override means the pattern engine owns the fixture and it is at
+        // full — which is where the fader should sit, ready to pull it down.
         const dim = (fix.override && fix.override.enabled) ? fix.override.dim ?? 255 : 255;
         return to127(dim, 255);
       }
@@ -659,6 +963,31 @@ class MidiController {
       case 'adjustAutoSync':
         // Bipolar, so centre the ring rather than parking it at the bottom.
         return to127((s.autoSyncOffsetMs ?? 0) + SYNC_OFFSET_LIMIT_MS, SYNC_OFFSET_LIMIT_MS * 2);
+      case 'browsePattern':
+      case 'browseEffect': {
+        const list = this._lookList(binding.action === 'browsePattern' ? 'pattern' : 'effect');
+        const at = list.indexOf(s.pattern);
+        return at < 0 ? null : to127(at, Math.max(1, list.length - 1));
+      }
+      case 'browseColor': {
+        const slot = slotOf(binding.value);
+        return slot ? to127(s[slot], COLOR_PRESETS.length - 1) : null;
+      }
+      case 'browseBeatDivision':
+        return to127(Math.max(0, DIVISIONS.indexOf(s.beatDivision)), DIVISIONS.length - 1);
+      case 'browseBarsPattern': {
+        const list = this._barsList();
+        return to127(Math.max(0, list.indexOf(s.pixelPattern)), Math.max(1, list.length - 1));
+      }
+      case 'browsePalette': {
+        const list = this.busk?.palettes() ?? [];
+        const at = s.paletteOverrideId ? list.indexOf(s.paletteOverrideId) : -1;
+        return at < 0 ? null : to127(at, Math.max(1, list.length - 1));
+      }
+      case 'adjustFadeTime':
+        return to127(this._fadeMs, FADE_MAX_MS);
+      case 'adjustStrobeRate':
+        return this.busk ? to127(this.busk.strobeRate() - 1, Math.max(1, this.busk.strobeMaxRate - 1)) : null;
       default:
         return null;
     }
@@ -678,9 +1007,18 @@ class MidiController {
       if (now - touchedAt < ECHO_SUPPRESS_MS) continue;
       // A finger on it, by its touch sensor: the motor must not fight it.
       if (this._touched(number)) continue;
-      if (this._lastCcOut.get(number) === value) continue;
+      const encoder = ENCODER_ACTIONS.has(binding.action) ? `${binding.channel || 0}:${number}` : null;
+      // A ring moved off its end stays there until the encoder says what it is.
+      if (encoder !== null && now - (this._probes.get(encoder) ?? -Infinity) < PROBE_HOLD_MS) continue;
+      // An encoder sending its position counts on from where it was turned to,
+      // which is not always where the ring was sent: send it again, so the
+      // ring shows the show and the encoder counts from there.
+      const drifted = encoder !== null && this._encoderMode(encoder, binding) === 'position'
+        && this._positions.get(encoder) !== value;
+      if (this._lastCcOut.get(number) === value && !drifted) continue;
 
       this._lastCcOut.set(number, value);
+      if (encoder !== null) this._positions.set(encoder, value);
       try {
         output.send('cc', { controller: number, value, channel: binding.channel || 0 });
       } catch (_) { /* the port can vanish mid-show; feedback is not worth dying for */ }
@@ -739,9 +1077,14 @@ class MidiController {
       this._releasePad(channel, note);
     }
     this.cancelLearn('disconnected');
+    // Forget what we sent: the next connection has to push the full state so
+    // the faders fly to where the show is rather than staying where they lay.
     this._lastCcOut.clear();
     this._lastCcIn.clear();
     this._touchDown.clear();
+    this._positions.clear();
+    this._encModes.clear();
+    this._probes.clear();
     if (this.input)  { try { this.input.close();  } catch (_) {} }
     if (this.output) { try { this.output.close(); } catch (_) {} }
     this.enabled = false;

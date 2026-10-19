@@ -1,6 +1,6 @@
-# ArtNet Lightshow
+# Tyclab Lightshow
 
-Controls the [ArtNet Lightshow](https://github.com/LightD31/artnet-lightshow) server — a beat-synced light show for DMX fixtures, LED bars, WLED strips and panels and Philips Hue lamps — from a Stream Deck or any Companion surface. Built for busking: palettes, patterns and pixel effects a press away, effects that last as long as a button is held, cues, tempo and the auto show.
+Controls the [Tyclab Lightshow](https://github.com/tyclab/artnet-lightshow) server — a beat-synced light show for DMX fixtures, LED bars, WLED strips and panels and Philips Hue lamps — from a Stream Deck or any Companion surface. Built for busking: palettes, patterns and pixel effects a press away, effects that last as long as a button is held, cues, tempo and the auto show.
 
 ## Configuration
 
@@ -18,18 +18,28 @@ The patterns, colours, palettes, energy effects, fixtures and cues offered in ac
 
 The **Busk** preset page has what a set played by hand needs:
 
-- **Palettes** — every palette on the server, each button in its first colour, lit while it is the look's palette.
-- **Hold** — each energy effect (white strobe, colour strobe, blinder, UV wash, kill, glow) and a blackout, **on only while the button is held**. The server lets go of a held effect on its own a second after it last heard from Companion, so a crash or a dropped network with a button down never leaves the rig strobing. The two strobes wait for the photosensitivity acknowledgement on the server: until it is given, a press (held or latched) is refused and the module's log says why.
-- **Tempo** — tap, the BPM, double and halve, ±5.
-- **Auto show** — start or stop it, its intensity (±10 and a display), a sync nudge (±20 ms) and the track playing.
+- **Looks** — previous, next and random patterns or effects, plus the current look. Pattern browsing includes the gentle Fire and Ice looks. Rapid effects enter the browse list after the server's photosensitivity acknowledgement.
+- **Palettes** — toggle a palette over the whole running show, clear the override, or choose a random palette or four random colour slots. Override buttons light while selected.
+- **Pads** — the server's two banks, following each pad's launch mode.
+- **Hits** — a strobe burst and held blackout alongside the pads.
+- **Tempo** — tap, the BPM, double and halve, beat divisions, and automatic tempo matching on/off.
+- **Show** — auto-show start/stop, current track and stop all live effects. Play/stop is in Looks; output arming is on the Transport page.
 - **Master** — the master level (±10 % and a display) and blackout.
 - **Cues** — one button for each cue saved on the server.
+
+The separate **Auto Show** page has start/stop, intensity (±10 and a display), sync nudges (±20 ms) and the current track. Button variables use this connection's label, including when it has been renamed.
+
+**Energy → Held** has each energy effect (white strobe, colour strobe, blinder, UV wash, kill, glow) and blackout, **on only while held**. The server expires a hold if Companion stops renewing it. Rapid effects require the server's photosensitivity acknowledgement; refusals appear in the module's log.
 
 ## Actions
 
 | Action                            | Description                                                                          |
 | --------------------------------- | ------------------------------------------------------------------------------------ |
 | Set Pattern                       | Switch the running pattern, optionally crossfading over some milliseconds            |
+| Browse / Random Look              | Previous, next or random eligible pattern/effect; random palettes and colours are also available |
+| Palette Override / Off            | Apply or toggle a palette over every effect, or clear the override                    |
+| Stop Every Effect                 | Stop the live voices; the base look and sequence retain their own transport controls  |
+| Tempo Mode                        | Automatic matching on/off/toggle                                                     |
 | Set Bars Pattern                  | The LED bars' own picture (a pixel effect) while the pars run the pattern; or none   |
 | Set Panels Pattern                | The panels' own picture (a WLED matrix: bars, fire, rain…); or none, as the bars     |
 | Set Pixel Map                     | Lay pixel effects across the stage, along each bar, or mirrored                      |
@@ -65,6 +75,8 @@ The **Busk** preset page has what a set played by hand needs:
 | Panels pattern is active       | The panels are running that picture (or none)              |
 | Pixel map is active            | Pixel effects are laid out that way                        |
 | Palette is active              | That palette is the look's                                 |
+| Palette override is active     | The selected palette is overriding the show                |
+| Automatic tempo matching       | Tempo mode is automatic                                    |
 | Colour A/B/C/D selected        | That colour slot matches                                   |
 | Master blackout active         | Blackout is on                                             |
 | Show is playing                | Show is playing                                            |
@@ -77,7 +89,7 @@ The **Busk** preset page has what a set played by hand needs:
 
 ## Variables
 
-`bpm` (to a tenth), `clock_source` (Auto, CDJ, Track or Tap), `beat_division`, `playing`, `outputs_armed`, `pattern`, `pattern_id`, `pixel_pattern`, `panel_pattern`, `pixel_map`, `palette`, `color_a` … `color_d`, `master_dimmer`, `master_dimmer_pct`, `master_blackout`, `strobe_function`, `strobe_speed`, `energy_override`, `auto_show`, `auto_source`, `auto_intensity`, `sync_offset`, `track` (Artist — Title), `cue_count`
+`bpm` (to a tenth), `clock_source` (Auto, CDJ, Track or Tap), `beat_division`, `playing`, `outputs_armed`, `pattern`, `pattern_id`, `pixel_pattern`, `panel_pattern`, `pixel_map`, `palette`, `palette_override` (the overriding palette or "off"), `color_a` … `color_d`, `master_dimmer`, `master_dimmer_pct`, `master_blackout`, `strobe_function`, `strobe_speed`, `energy_override`, `auto_show`, `auto_source`, `auto_intensity`, `sync_offset`, `track` (Artist — Title), `cue_count`
 
 ## Presets
 
@@ -86,3 +98,5 @@ Besides **Busk**: every pattern (the whole-rig ones and the pixel effects apart)
 Load or edit the sequence in the lightshow's Sequence page first. **Sequence: Play / Resume** starts after a stop and resumes after a pause. Pause freezes the transport while its clips keep running; Stop holds the last picture. The optional stop-with-black action blacks only the sequence base, so live voices can still appear above it. These controls never arm outputs. Server refusals, including no loaded sequence or a missing photosensitivity acknowledgement, appear in the connection log.
 
 The Sequence presets reuse the existing BPM display and ±5 actions. Set BPM and Adjust BPM change the shared tempo and end sequence tempo automation; later authored tempo commands can change it again. Pausing and resuming preserves the sequence position and does not reapply its initial tempo.
+
+Tyclab Lightshow builds on [LightD31’s ArtNet Lightshow](https://github.com/LightD31/artnet-lightshow) under the MIT license. The `artnet-lightshow` module ID and `lightshow` variable prefix stay compatible with existing Companion connections.

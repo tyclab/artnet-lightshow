@@ -14,7 +14,7 @@ Default: display only, with no lightshow connection or fixture lease.
   --output PATH         Preview PPM file (default: browser-pixel-preview.ppm)
   --fixture ID          Existing RGB DDP grid fixture (default: 53)
   --width N --height N  Logical grid dimensions (default: 68 x 42)
-  --fps N               1..10 frames/second (default: 10)
+  --fps N               1..60 input frames/second, negotiated with server (default: 44)
   --fit cover|contain   Center crop or black letterbox (default: cover)
   --nodecg-config PATH  Party Visuals config (default: Windows LOCALAPPDATA)
   --parent-pid PID      Stop if the supervising launcher exits
@@ -93,10 +93,9 @@ export async function run(settings, dependencies = {}) {
           if (!settings.curtain && !settings.room) report(!controls.ok ? 'Controls unavailable; display covered' : ready ? controls.visible ? 'Music Assistant visible' : 'Music Assistant covered' : 'Waiting for Music Assistant login or player page');
         } catch { ready = false; await browser.close(); browser = null; browserRetryAt = performance.now() + 1000; }
       } else ready = false;
-      if (curtain) await curtain.pump.step();
-      if (room) await room.pump.step();
+      await Promise.all([curtain, room].filter(Boolean).map((feed) => feed.pump.step()));
       const pumps = [curtain, room].filter(Boolean).map((feed) => feed.pump);
-      await sleep(pumps.length ? Math.max(10, Math.min(...pumps.map((pump) => pump.nextCaptureAt)) - performance.now(), 1000 / settings.fps) : 250);
+      await sleep(pumps.length ? Math.min(250, Math.max(1, Math.min(...pumps.map((pump) => Math.max(pump.nextCaptureAt, pump.retryAt))) - performance.now())) : 250);
     }
   } finally {
     clearInterval(parentTimer); await curtain?.stop(); await room?.stop(); await browser?.close();

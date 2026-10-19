@@ -1,13 +1,4 @@
-// Draws the app's icons (public/icons/*.png) — the lens of a par seen head on,
-// on the app's blue — with nothing but zlib: a PNG is a zlib stream of rows
-// with a CRC per chunk. Run once after changing the design:
-//
-//   node scripts/make-icons.js
-//
-// The SVG (public/icon.svg) is the same picture, for the tab and the browsers
-// that take a vector icon. public/favicon.ico holds it at the sizes Windows
-// wants — for the browsers that ask for /favicon.ico, and as the packaged
-// build's executable icon (scripts/package.js).
+// Run node scripts/make-icons.js to rebuild the SVG, PNG and Windows icons from one design.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -49,15 +40,34 @@ function png(size, rgba) {
   ]);
 }
 
-const BG = [9, 9, 11];          // --bg, zinc-950
-const BLUE = [59, 130, 246];    // --accent
-const LENS = [239, 246, 255];
+const BG = [15, 23, 42];
+const SHAPES = [
+  { colour: [34, 211, 238], points: [[24, 49], [38, 49], [28, 78], [13, 78]] },
+  { colour: [167, 139, 250], points: [[44, 49], [56, 49], [59, 78], [41, 78]] },
+  { colour: [251, 191, 36], points: [[62, 49], [76, 49], [87, 78], [72, 78]] },
+  { colour: [248, 250, 252], points: [[22, 22], [78, 22], [78, 32], [55, 32], [55, 47], [45, 47], [45, 32], [22, 32]] },
+];
+
+function inside(x, y, points) {
+  let hit = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const [xi, yi] = points[i], [xj, yj] = points[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) hit = !hit;
+  }
+  return hit;
+}
+
+const hex = (colour) => `#${colour.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" rx="22" fill="${hex(BG)}"/>
+${SHAPES.map(({ colour, points }) => `  <polygon points="${points.map((p) => p.join(',')).join(' ')}" fill="${hex(colour)}"/>`).join('\n')}
+</svg>
+`;
 
 /** The colour at a point of the picture, 0..1 across; null where it is transparent. */
 function paint(x, y, { maskable }) {
   const cx = x - 0.5;
   const cy = y - 0.5;
-  // The tile: full bleed when the platform masks it, a rounded square otherwise.
   if (!maskable) {
     const half = 0.5;
     const r = 0.22;
@@ -66,13 +76,12 @@ function paint(x, y, { maskable }) {
     const outside = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
     if (outside > 0) return null;
   }
-  const d = Math.hypot(cx, cy) / (maskable ? 0.8 : 1);
-  if (d < 0.16) return LENS;
-  if (d < 0.2) return BG;
-  if (d < 0.25) return LENS;
-  if (d < 0.29) return BG;
-  if (d < 0.34) return BLUE;
-  return maskable ? BLUE : BLUE.map((c, i) => Math.round(c * 0.75 + BG[i] * 0.25));
+  // Maskable platforms crop to a circle: keep the mark inside their 80% safe area.
+  const scale = maskable ? 0.78 : 1;
+  const px = (cx / scale + 0.5) * 100;
+  const py = (cy / scale + 0.5) * 100;
+  for (const { colour, points } of SHAPES) if (inside(px, py, points)) return colour;
+  return BG;
 }
 
 function draw(size, opts) {
@@ -121,6 +130,8 @@ function ico(images) {
 }
 
 fs.mkdirSync(OUT, { recursive: true });
+fs.writeFileSync(path.join(OUT, '..', 'icon.svg'), svg);
+console.log('wrote public/icon.svg');
 for (const [name, size, opts] of [
   ['icon-192.png', 192, { maskable: false }],
   ['icon-512.png', 512, { maskable: false }],

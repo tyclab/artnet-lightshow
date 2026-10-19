@@ -51,9 +51,9 @@ export function StageView({ compact = false } = {}) {
   useRehearsalTrack(s.autoShow);
   useDmxFeed(!rehearsing);
 
-  // The rig changes only when the patch does: compare its signature.
-  const signature = rigSignature(fixtures, JSON.stringify(Object.keys(profiles)));
-  const rig = useMemo(() => buildRig(fixtures, (f) => profiles[f.profileId] || null), [signature]);
+  // A profile refresh can change cells without changing its ID or the fixtures.
+  const signature = rigSignature(fixtures);
+  const rig = useMemo(() => buildRig(fixtures, (f) => profiles[f.profileId] || null), [signature, profiles]);
   const placed = useMemo(() => room ? roomRig(fixtures, rig, room) : placeRig(fixtures, profiles, rig), [rig, room, fixtures, profiles]);
   const sample = useRehearsalSampler(data);
 
@@ -119,6 +119,11 @@ export function StageView({ compact = false } = {}) {
     let raf = 0;
     let lastDmx = null;
     let liveFrame = null;
+    let lastFixtures = null;
+    let lastProfiles = null;
+    let lastRig = null;
+    let rehearsalInputs = null;
+    let rehearsalFrame = null;
     let lastNow = performance.now();
     let lastPublish = 0;
     let position = stagePreviewSig.value.position;
@@ -136,12 +141,20 @@ export function StageView({ compact = false } = {}) {
         } else {
           position = st.position;
         }
-        scene.current.setLights(cur.sample(position, cur.fixtures, cur.presets, cur.rig));
+        const inputs = [position, cur.sample, cur.fixtures, cur.presets, cur.rig];
+        if (!rehearsalInputs || inputs.some((value, i) => value !== rehearsalInputs[i])) {
+          rehearsalInputs = inputs;
+          rehearsalFrame = cur.sample(position, cur.fixtures, cur.presets, cur.rig);
+        }
+        scene.current.setLights(rehearsalFrame);
       } else {
         position = st.position;
         const dmx = dmxSig.value;
-        if (dmx !== lastDmx || !liveFrame) {
+        if (dmx !== lastDmx || cur.fixtures !== lastFixtures || cur.profiles !== lastProfiles || cur.rig !== lastRig) {
           lastDmx = dmx;
+          lastFixtures = cur.fixtures;
+          lastProfiles = cur.profiles;
+          lastRig = cur.rig;
           // What is on the wire, as it is: the feed already carries overrides,
           // the masters and identify.
           const raw = cur.fixtures.map((f) => (f.override ? { ...f, override: null } : f));

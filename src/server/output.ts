@@ -1,6 +1,7 @@
 import { state, universeOf } from './state.ts';
 import { getProfile } from './profiles.ts';
-import { EMITTERS } from '../shared/rig.ts';
+import { isHueProfile, hueChannels } from '../shared/hue-lamp.ts';
+import { hueSectionColour } from '../shared/hue-colour.ts';
 import { channelReader } from '../shared/placement.ts';
 import * as universes from './universes.ts';
 import { createTransmitter, sacnUniverseFor as mapSacnUniverse } from './transmit.ts';
@@ -14,15 +15,12 @@ import { ddpRoutes } from './ddp-routes.ts';
 import { openrgbRoutes } from './openrgb-routes.ts';
 import type { SacnOutput, SendOptions, TransmitConfig, Wire } from './transmit.ts';
 import type { Settings } from './settings.ts';
-import type { ChannelMap } from '../types/rig.ts';
-
-type ChannelReader = (offset: number | undefined) => number;
 
 let sacn: SacnOutput = {
   enabled: false,
   host: '',
   priority: 100,
-  sourceName: 'ArtNet Lightshow',
+  sourceName: 'Tyclab Lightshow',
   universeOffset: 1,
   cid: '',
   interface: '',
@@ -91,33 +89,10 @@ function sacnUniverseFor(universe: number, offset = sacn.universeOffset): number
   return mapSacnUniverse(universe, offset);
 }
 
-const WARM_WHITE_GREEN = 0.66;
-const WARM_WHITE_BLUE = 0.34;
-
-const COOL_WHITE_GREEN = 0.98;
-const COOL_WHITE_BLUE = 0.99;
-
-// Map UV to visible violet so Hue lamps stay lit during UV washes.
-const UV_RED = 0.45;
-const UV_BLUE = 0.85;
-
-function normalizeMix(r: number, g: number, b: number): { r: number; g: number; b: number } {
-  const peak = Math.max(r, g, b);
-  const scale = peak > 255 ? 255 / peak : 1;
-  return {
-    r: clamp255(r * scale),
-    g: clamp255(g * scale),
-    b: clamp255(b * scale),
-  };
-}
-
-function clamp255(value: number): number {
-  return value > 255 ? 255 : (value < 0 ? 0 : Math.round(value));
-}
-
 // Read final DMX so Hue output includes masters, trim, overrides and blackout.
 function hueChannelColors(): Map<string, HueChannelColour[]> {
   const out = new Map<string, HueChannelColour[]>();
+
   const fallback = defaultHueBridgeId(hue.getConfigs());
 
   for (const fix of state.fixtures) {
@@ -129,35 +104,17 @@ function hueChannelColors(): Map<string, HueChannelColour[]> {
       channels = [];
       out.set(bridge, channels);
     }
-    if (channels.some((c) => c.id === lamp.channel)) continue;
-
     const profile = getProfile(fix);
-    const ch = profile.channelMap;
-    const at: ChannelReader = channelReader(universeOf(fix), fix.address, profile, (u) => universes.getBuffer(u));
-
-    if (!EMITTERS.some((name) => ch[name] !== undefined)) {
-      const level = at(ch.dimmer);
-      channels.push({ id: lamp.channel, r: level, g: level, b: level });
-      continue;
-    }
-    const [r, g, b] = emitterMix(ch, at);
-    channels.push({ id: lamp.channel, ...normalizeMix(r, g, b) });
+    const traits = isHueProfile(profile) ? profile.hue : null;
+    const sections = profile.cells ? profile.cells.map((cell) => cell.channelMap) : [profile.channelMap];
+    const at = channelReader(universeOf(fix), fix.address, profile, (u) => universes.getBuffer(u));
+    sections.forEach((ch, c) => {
+      const id = hueChannels(lamp)[c];
+      if (id === undefined || channels.some((sent) => sent.id === id)) return;
+      channels.push({ id, ...hueSectionColour(ch, at, traits) });
+    });
   }
   return out;
-}
-
-function emitterMix(ch: ChannelMap, at: ChannelReader): [number, number, number] {
-  const r = at(ch.red);
-  const g = at(ch.green);
-  const b = at(ch.blue);
-  const uv = at(ch.uv);
-  const ww = at(ch.warmWhite);
-  const cw = at(ch.coolWhite);
-  return [
-    r + ww + cw + uv * UV_RED,
-    g + ww * WARM_WHITE_GREEN + cw * COOL_WHITE_GREEN,
-    b + ww * WARM_WHITE_BLUE + cw * COOL_WHITE_BLUE + uv * UV_BLUE,
-  ];
 }
 
 // Send Hue once per frame because an area can span several DMX universes.

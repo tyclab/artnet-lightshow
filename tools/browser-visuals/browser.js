@@ -99,6 +99,7 @@ export function pageAction(options, matches) {
   const view = doc.querySelector('.now-playing-view');
   if (options.mode === 'cleanup') {
     doc.getElementById(styleId)?.remove(); view?.removeAttribute('data-party-display');
+    if (view) delete view.__tyclabCaptureCanvases;
     return { ok: true };
   }
   if (!view) return { ok: false };
@@ -111,7 +112,8 @@ export function pageAction(options, matches) {
       .now-playing-view[data-party-display="off"]::after { content:""; position:absolute; inset:0; background:#000; z-index:10; pointer-events:none; }`;
     doc.head.append(style);
   }
-  view.setAttribute('data-party-display', options.visible === false ? 'off' : 'on');
+  const display = options.visible === false ? 'off' : 'on';
+  if (view.getAttribute('data-party-display') !== display) view.setAttribute('data-party-display', display);
   if (options.mode !== 'capture') return { ok: true };
   const canvas = view.querySelector('.visualizer-layer__canvas');
   if (!canvas || !canvas.width || !canvas.height || doc.visibilityState !== 'visible') return { ok: false };
@@ -124,7 +126,13 @@ export function pageAction(options, matches) {
       try {
         const layer = canvas.closest('.visualizer-layer');
         if (!canvas.isConnected || !matches(globalThis.location.href, options.expected) || (options.visible && layer && Number(globalThis.getComputedStyle(layer).opacity) <= 0.001)) { resolve({ ok: false }); return; }
-        const { width, height } = options, out = doc.createElement('canvas'); out.width = width; out.height = height;
+        const { width, height } = options, key = `${width}x${height}`;
+        const cache = view.__tyclabCaptureCanvases ??= new Map();
+        let out = cache.get(key);
+        if (!out) {
+          if (cache.size >= 4) cache.clear();
+          out = doc.createElement('canvas'); out.width = width; out.height = height; cache.set(key, out);
+        }
         const ctx = out.getContext('2d', { willReadFrequently: true });
         ctx.fillStyle = '#000'; ctx.fillRect(0, 0, width, height);
         if (options.visible) {

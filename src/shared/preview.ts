@@ -1,5 +1,9 @@
+import { drawnByTheShow, strobeLevel } from './strobe-fx.ts';
 import { outputEmitters } from './emitter-capability.ts';
+import { hueEmitterColour } from './hue-colour.ts';
+import { isHueProfile } from './hue-lamp.ts';
 import { HardwareClock } from './hardware-clock.ts';
+import { hueLightMeasure } from './hue-light.ts';
 import { HardwareGuard } from './hardware-guard.ts';
 import { hardwareStrobe } from './hardware-strobe.ts';
 import { hardwareOf } from './hardware.ts';
@@ -9,7 +13,7 @@ import { fixedColours, colourSlots, resolveGradient } from './palette-model.ts';
 import type { PaletteBody } from './palette-model.ts';
 import { PATTERN_FUNCS, paletteOf } from './patterns.ts';
 import { renderLayer } from './layer.ts';
-import { buildRig, isHueLamp, rigSignature } from './rig.ts';
+import { buildRig, rigSignature, isHueLamp } from './rig.ts';
 import { EXPRESSION_REST, resolveEnergyOverride, blendExpression, blendFixture, HOLD_STROBE, holdStrobeFlash, holdStrobeLook } from './look-math.ts';
 import { gridFromAnalysis, beatPositionAt, localBpm, anchorStep, stepAt, motionAdvance } from './beat-clock.ts';
 import { canonical, effectContentKey, handOverStrobes, hdGuarded, relaunchEffect, renderEffectLayer, renderVoices, voiceAnchor, voiceLaunchKey, voiceLayout } from './effects/layer.ts';
@@ -269,6 +273,7 @@ interface Walk {
   /** The strobe's permit per lamp, as the renderer keeps it. */
   strobeGuard: StrobeLampGuard;
   hardwareGuard: HardwareGuard;
+  emittedGuard: HardwareGuard;
   hardwareStrobeGuard: HardwareGuard;
   hardwareClock: HardwareClock;
   expression: Expression;
@@ -306,6 +311,7 @@ function copyWalk(w: Walk): Walk {
     guard: w.guard.clone(),
     strobeGuard: w.strobeGuard.clone(),
     hardwareGuard: w.hardwareGuard.clone(),
+    emittedGuard: w.emittedGuard.clone(),
     hardwareStrobeGuard: w.hardwareStrobeGuard.clone(),
     hardwareClock: w.hardwareClock.clone(),
     expression: { ...w.expression },
@@ -325,7 +331,7 @@ function copyWalk(w: Walk): Walk {
 interface Checkpoint { walk: Walk; periodic: boolean; used: number }
 
 const emptyWalk = (k: number, intervalMs: number): Walk => ({
-  k, cursor: 0, stepper: new EffectStepper(), guard: new HdFlashGuard(intervalMs), strobeGuard: new StrobeLampGuard(), hardwareGuard: new HardwareGuard(), hardwareStrobeGuard: new HardwareGuard(), hardwareClock: new HardwareClock(), expression: { ...EXPRESSION_REST }, phase: 0,
+  k, cursor: 0, stepper: new EffectStepper(), guard: new HdFlashGuard(intervalMs), strobeGuard: new StrobeLampGuard(), hardwareGuard: new HardwareGuard(), emittedGuard: new HardwareGuard(), hardwareStrobeGuard: new HardwareGuard(), hardwareClock: new HardwareClock(), expression: { ...EXPRESSION_REST }, phase: 0,
   lastBeat: null, lastEpoch: 0, lastNow: null, lastSweep: -Infinity, epoch: 0, base: null, voices: new Map(), records: new Map(), strobes: new Set(),
   compat: null, fadeOf: null, fade: null, shown: [], output: null, seq: newSequenceRun(),
 });
@@ -334,6 +340,13 @@ const emptyWalk = (k: number, intervalMs: number): Walk => ({
 const unitLight = (c: Colour, dim: number, strobe = 0): UnitLight => ({
   r: c.r, g: c.g, b: c.b, w: c.w || 0, a: c.a || 0, uv: c.uv || 0, dim, strobe,
 });
+
+function previewOutput(colour: Colour, scale: number, map: ChannelMap | undefined, profile: Profile | undefined): Colour {
+  const emitters = outputEmitters(colour, scale, map);
+  if (!map || !isHueProfile(profile)) return emitters;
+  const dimmer = Math.round(Math.max(0, Math.min(255, 255 * scale)));
+  return { ...hueEmitterColour(emitters, dimmer, map, profile.hue), w: 0, a: 0, uv: 0 };
+}
 
 function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSource | null = null,
   options: PreviewOptions = {}): PreviewSample {
@@ -532,7 +545,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       : null;
     const palette = hold ? paletteOverride ?? paletteOf({ colors }) : null;
 
-    return layer.map(({ color, dim }, u) => {
+    return layer.map(({ color, dim, strobe }, u) => {
       const { fixture: i, cell } = rig.units[u];
       const fixture = fixtures[i];
       const burst = hold && palette ? holdStrobeLook(palette, hold, hue[i] && hueStrobe === 'pulse') : energy;
@@ -543,8 +556,16 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
         dim *= expr.level;
         if (dyn && dyn.level === 0) dim = 0;
       }
+      const fn = String(frame.look.strobeFunction ?? 'standard');
+      const raw = frame.look.pattern === 'strobe' ? Number(frame.look.strobeSpeed) || 0 : strobe ?? 0;
+      if (!burst && raw > 0 && drawnByTheShow(fn)) {
+        const caps = hardwareOf(fixture, options.profiles?.[fixture.profileId ?? ''], options.hardware);
+        const maxHz = Math.min(caps.maxFlashHz, frame.look.flashLimit ? 3 : Infinity);
+        dim *= strobeLevel(fn, raw, beatAt(positionMs, frame), frame.look.bpm, u, 1000 / maxHz);
+      }
       const scale = (dim / 255) * ((fixture.maxBrightness ?? 255) / 255);
-      return outputEmitters(color, scale, rig.cellMaps[i]?.[cell] ?? options.profiles?.[fixtures[i]?.profileId ?? '']?.channelMap);
+      const profile = options.profiles?.[fixture.profileId ?? ''];
+      return previewOutput(color, scale, rig.cellMaps[i]?.[cell] ?? profile?.channelMap, profile);
     });
   }
 
@@ -572,7 +593,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
     if (!(explicitVoices || anyEffect || sequence || options.hardware)) {
       // Nothing steps: answered straight from the timeline, nothing kept.
       if (env) { env = null; forgetHistory(); }
-      return { key: '', stepped: false, fixtures, presets, rig, specs, hue: fixtures.map(isHueLamp), cells: new Map() };
+      return { key: '', stepped: false, fixtures, presets, rig, specs, hue: rig.hue, cells: new Map() };
     }
     const key = `${effectsKey}\n${fixturesContent(fixtures)}\n${rigContent(rig)}\n${presets.map(contentOf).join(',')}`;
     if (env && env.key === key) {
@@ -580,7 +601,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       env.fixtures = fixtures; env.presets = presets; env.rig = rig;
       return env;
     }
-    env = { key, stepped: true, fixtures, presets, rig, specs, hue: fixtures.map(isHueLamp), cells: new Map(),
+    env = { key, stepped: true, fixtures, presets, rig, specs, hue: rig.hue, cells: new Map(),
       hardware: options.hardware ? fixtures.map((f) => hardwareOf(f, options.profiles?.[f.profileId ?? ''], options.hardware)) : undefined };
     forgetHistory();
     return env;
@@ -798,9 +819,19 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       flashes[u] = voice ? voice.strobe ?? 0 : clip ? clip.strobe : s.pattern === 'strobe' ? Number(s.strobeSpeed) || 0 : below.strobe;
       tops[u] = voice ? voice.kind ?? null : clip ? clipKind[u] : baseKind[u];
       if (hdGuarded(tops[u])) guarded = true;
-      if (tops[u] === 'strobe') strobed = true;
+      if (tops[u] === 'strobe' || tops[u] === 'strobe.program') strobed = true;
     }
     w.shown = shown;
+    const programs = new Array<boolean>(n).fill(false);
+    for (let u = 0; u < n; u++) {
+      const fixture = rig.units[u].fixture;
+      const fn = String(s.strobeFunction ?? 'standard');
+      if (voiceTop?.[u] || clips?.[u] || !drawnByTheShow(fn) || !(flashes[u] > 0)) continue;
+      programs[u] = true;
+      const caps = e.hardware?.[fixture] ?? hardwareOf(fixtures[fixture], options.profiles?.[fixtures[fixture]?.profileId ?? ''], options.hardware);
+      const maxHz = Math.min(caps.maxFlashHz, s.flashLimit ? 3 : Infinity);
+      dims[u] *= strobeLevel(fn, flashes[u], beatPos, bpm, u, maxHz > 0 ? 1000 / maxHz : Infinity);
+    }
     if (e.hardware) for (let u = 0; u < n; u++) {
       const { fixture: i, cell } = rig.units[u];
       const voice = voiceTop?.[u], clip = clips?.[u];
@@ -808,7 +839,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       const cut = tops[u] === 'energy.kill' || !voice && (target?.level === 0 || !!clip && sequence?.transport.stop?.mode === 'black');
       const guardedLight = w.hardwareGuard.light(`${fixtures[i]?.id ?? i}:${cell}`, cols[u], dims[u], t, e.hardware[i], owner, cut);
       cols[u] = guardedLight.colour; dims[u] = guardedLight.dim;
-      if (w.hardwareStrobeGuard.apply(String(fixtures[i]?.id ?? i), hardwareStrobe(flashes[u], e.hardware[i], t).previewLevel, t,
+      if (e.hardware[i].technology !== 'hue' && !programs[u] && w.hardwareStrobeGuard.apply(String(fixtures[i]?.id ?? i), hardwareStrobe(flashes[u], e.hardware[i], t).previewLevel, t,
         { ...e.hardware[i], minTransitionMs: 0 }) === 0) dims[u] = 0;
     }
     // The party flash limit on the hd.* kinds, on what each lamp puts out at its trim (the preview's master is full).
@@ -823,19 +854,34 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
     if (strobed) {
       const frameIndex = strobeFrameOf(t);
       for (let u = 0; u < n; u++) {
-        if (tops[u] !== 'strobe') { w.strobeGuard.clear(u); continue; }
+        if (tops[u] !== 'strobe' && tops[u] !== 'strobe.program') { w.strobeGuard.clear(u); continue; }
         const level = dims[u] / 255;
-        const allowed = w.strobeGuard.apply(u, level, frameIndex);
+        const allowed = w.strobeGuard.apply(u, level, frameIndex, tops[u] === 'strobe.program');
         if (allowed < level) dims[u] = 255 * allowed;
       }
     } else if (w.strobeGuard.liveCount) for (let u = 0; u < n; u++) w.strobeGuard.clear(u);
 
+    if (e.hardware) for (let u = 0; u < n; u++) {
+      const { fixture: i, cell } = rig.units[u], fixture = fixtures[i], caps = e.hardware[i];
+      const profile = options.profiles?.[fixture?.profileId ?? ''];
+      if (caps.technology !== 'hue' || !profile) continue;
+      const voice = voiceTop?.[u], clip = clips?.[u];
+      const owner = voice?.owner ?? (clip ? clipOwner[u] ?? 'sequence:black' : spec ? baseOwner[u] ?? 'base:excluded' : `legacy:${s.pattern}`);
+      const cut = tops[u] === 'energy.kill' || !voice && (target?.level === 0 || !!clip && sequence?.transport.stop?.mode === 'black');
+      const map = rig.cellMaps[i]?.[cell] ?? profile.channelMap;
+      if (!programs[u] && w.hardwareStrobeGuard.apply(String(fixture.id), hardwareStrobe(flashes[u], caps, t).previewLevel, t,
+        { ...caps, minTransitionMs: 0 }) === 0) dims[u] = 0;
+      const guardedLight = w.emittedGuard.light(`${fixture?.id ?? i}:${cell}`, cols[u], dims[u], t, caps, owner, cut,
+        hueLightMeasure(profile, map), (fixture.maxBrightness ?? 255) / 255);
+      cols[u] = guardedLight.colour; dims[u] = guardedLight.dim;
+    }
     if (!lights) return null;
     const out = new Array<Colour>(n);
     for (let u = 0; u < n; u++) {
       const { fixture: i, cell } = rig.units[u];
       const scale = (dims[u] / 255) * ((fixtures[i]?.maxBrightness ?? 255) / 255);
-      out[u] = outputEmitters(cols[u], scale, rig.cellMaps[i]?.[cell] ?? options.profiles?.[fixtures[i]?.profileId ?? '']?.channelMap);
+      const profile = options.profiles?.[fixtures[i]?.profileId ?? ''];
+      out[u] = previewOutput(cols[u], scale, rig.cellMaps[i]?.[cell] ?? profile?.channelMap, profile);
     }
     return out;
   }

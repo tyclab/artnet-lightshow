@@ -93,3 +93,18 @@ test('a disconnect drops only its own lease', () => {
   input.disconnect('a');
   assert.equal(input.status(), null);
 });
+
+test('60 fps room pictures retain only the newest complete frame and image', () => {
+  const { input, tick } = setup();
+  const claim = input.claim('a', { signature: 'rig-a' });
+  assert.equal(claim.maxFps, 60);
+  for (let i = 0; i < 120; i++) {
+    input.frame('a', { leaseId: claim.leaseId, data: bytes(4, i), image: { width: 1, height: 1, data: bytes(1, i) } });
+    assert.equal(input.current().data[0], i);
+    assert.equal(input.image().data[0], i);
+    tick(1000 / 60);
+  }
+  tick(2000);
+  assert.equal(input.current(), null);
+  assert.equal(input.image(), null);
+});

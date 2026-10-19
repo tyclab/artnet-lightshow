@@ -4,26 +4,12 @@
 
 import { test, expect } from '@playwright/test';
 import { open, reset, set, state, until } from './helpers.js';
+import { stageImage } from './stage-image.js';
 
 const BANK = 0;
 const SLOT = 1;
 
-/** The 3D stage's mean colour in one drawn frame, 0–255 per channel, and its luminance. */
-function stageSample(page) {
-  return page.evaluate(() => new Promise((resolve) => window.requestAnimationFrame(() => {
-    const stage = window.document.querySelector('.stage3d-canvas');
-    const copy = window.document.createElement('canvas');
-    copy.width = stage.width;
-    copy.height = stage.height;
-    const ctx = copy.getContext('2d');
-    ctx.drawImage(stage, 0, 0);
-    const px = ctx.getImageData(0, 0, copy.width, copy.height).data;
-    let r = 0; let g = 0; let b = 0;
-    for (let i = 0; i < px.length; i += 4) { r += px[i]; g += px[i + 1]; b += px[i + 2]; }
-    const n = px.length / 4;
-    resolve({ r: r / n, g: g / n, b: b / n, lum: (0.2126 * r + 0.7152 * g + 0.0722 * b) / n });
-  })));
-}
+const stageSample = stageImage;
 
 async function samples(page, count) {
   const out = [];

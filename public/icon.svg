@@ -1,9 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <!-- The lens of a par seen head on, on the app's blue (scripts/make-icons.js draws the PNGs). -->
-  <rect width="100" height="100" rx="22" fill="#2e64bd"/>
-  <circle cx="50" cy="50" r="34" fill="#3b82f6"/>
-  <circle cx="50" cy="50" r="29" fill="#09090b"/>
-  <circle cx="50" cy="50" r="25" fill="#eff6ff"/>
-  <circle cx="50" cy="50" r="20" fill="#09090b"/>
-  <circle cx="50" cy="50" r="16" fill="#eff6ff"/>
+  <rect width="100" height="100" rx="22" fill="#0f172a"/>
+  <polygon points="24,49 38,49 28,78 13,78" fill="#22d3ee"/>
+  <polygon points="44,49 56,49 59,78 41,78" fill="#a78bfa"/>
+  <polygon points="62,49 76,49 87,78 72,78" fill="#fbbf24"/>
+  <polygon points="22,22 78,22 78,32 55,32 55,47 45,47 45,32 22,32" fill="#f8fafc"/>
 </svg>

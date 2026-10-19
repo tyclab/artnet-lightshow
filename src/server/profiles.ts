@@ -63,6 +63,7 @@ const fixtureProfiles: Record<string, Profile> = Object.assign(Object.create(nul
   // Keep white and UV channels so Hue retains show content; fold them to RGB only at transport output.
   [HUE_COLOR_PROFILE_ID]: {
     id: HUE_COLOR_PROFILE_ID,
+    hue: { gamut: 'other', whites: { warm: 2700, cool: 6500 }, legacy: true },
     name: 'Generic Lamp',
     manufacturer: 'Philips Hue',
     modeName: '7-channel (dimmer + RGBWW + UV)',
@@ -86,6 +87,7 @@ const fixtureProfiles: Record<string, Profile> = Object.assign(Object.create(nul
 
   [HUE_WHITE_AMBIANCE_PROFILE_ID]: {
     id: HUE_WHITE_AMBIANCE_PROFILE_ID,
+    hue: { gamut: null, whites: { warm: 2700, cool: 6500 }, legacy: true },
     name: 'Generic White Ambiance Lamp',
     manufacturer: 'Philips Hue',
     modeName: '3-channel (dimmer + tunable white)',
@@ -103,6 +105,7 @@ const fixtureProfiles: Record<string, Profile> = Object.assign(Object.create(nul
 
   [HUE_WHITE_PROFILE_ID]: {
     id: HUE_WHITE_PROFILE_ID,
+    hue: { gamut: null, whites: null, legacy: true },
     name: 'Generic White Lamp',
     manufacturer: 'Philips Hue',
     modeName: '1-channel (dimmer)',
@@ -123,6 +126,8 @@ const BUILTIN_PROFILE_IDS = new Set([
   HUE_WHITE_AMBIANCE_PROFILE_ID,
   HUE_WHITE_PROFILE_ID,
 ]);
+
+const DEVICE_BY_HAND = 'Devices are added from Rig → Outputs and retain their output protocol';
 
 const HUE_BY_HAND = 'A Hue lamp is added from its bridge: Rig → Outputs → Philips Hue, Add to patch';
 
@@ -190,6 +195,7 @@ export {
   HUE_PROFILE_IDS,
   hueProfileFor,
   HUE_BY_HAND,
+  DEVICE_BY_HAND,
   isBuiltinProfile,
   UNIVERSE_SIZE,
   MAX_FIXTURES,

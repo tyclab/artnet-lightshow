@@ -1,8 +1,9 @@
 import { state, getClientState, getFixture, countUniverses, universeOf, placeAddresslessFixtures, voices, legacyEnergy, onVoicesChange } from './state.ts';
 import { applyPatch, applyOverride, processTap } from './patch.ts';
 import { overrideMessageSchema, fixtureMessageSchema, validate } from './validation.ts';
-import { listProfiles, getProfile, universeOverflow, unitCapOverflow, HUE_PROFILE_IDS, HUE_BY_HAND } from './profiles.ts';
-import { INTERNAL_UNIVERSE, hasNoAddress } from '../shared/placement.ts';
+import { listProfiles, getProfile, universeOverflow, unitCapOverflow, HUE_BY_HAND, DEVICE_BY_HAND } from './profiles.ts';
+import { INTERNAL_UNIVERSE, hasNoAddress, isHueLamp } from '../shared/placement.ts';
+import { isHueProfile } from '../shared/hue-lamp.ts';
 import { showStore } from './show-store.ts';
 import { MAX_UNIVERSES } from './universes.ts';
 import { connectMidi } from './midi-connect.ts';
@@ -18,6 +19,7 @@ import { pixelInputs } from './pixel-input-live.ts';
 import { PixelInputError } from './pixel-input.ts';
 import { pictureInput, pictureUnits } from './picture-live.ts';
 import { PictureInputError } from './picture.ts';
+import { VISUAL_INPUT_MESSAGE_BUDGET } from './visual-input-rate.ts';
 import type { Server, Socket } from 'socket.io';
 import type { MidiPorts } from './midi-connect.ts';
 import type { Publisher, Snapshot } from './protocol.ts';
@@ -127,7 +129,7 @@ function attachSockets(io: Server, { midi, integrations }: {
     for (const operation of ['claim', 'frame', 'release'] as const) socket.on(`pixel-input:${operation}`, (payload: unknown, ack?: (answer: unknown) => void) => {
       const now = performance.now();
       if (now - pixelWindow >= 1000) { pixelWindow = now; pixelMessages = 0; }
-      if (++pixelMessages > 60) {
+      if (++pixelMessages > VISUAL_INPUT_MESSAGE_BUDGET) {
         if (typeof ack === 'function') ack({ ok: false, code: 'RATE_LIMIT', error: 'Too many pixel-input messages' });
         socket.disconnect(true); return;
       }
@@ -138,12 +140,12 @@ function attachSockets(io: Server, { midi, integrations }: {
         if (typeof ack === 'function') ack({ ok: false, code: err instanceof PixelInputError ? err.code : 'INVALID', error: messageOf(err) });
       }
     });
-    // The room picture shares the pixel-input budget: one sender, a few frames a second.
+    // One socket may send both a room picture and a panel at their negotiated rate.
     socket.on('picture:units', (ack?: (answer: unknown) => void) => { if (typeof ack === 'function') ack({ ok: true, ...pictureUnits() }); });
     for (const operation of ['claim', 'frame', 'release'] as const) socket.on(`picture:${operation}`, (payload: unknown, ack?: (answer: unknown) => void) => {
       const now = performance.now();
       if (now - pixelWindow >= 1000) { pixelWindow = now; pixelMessages = 0; }
-      if (++pixelMessages > 60) {
+      if (++pixelMessages > VISUAL_INPUT_MESSAGE_BUDGET) {
         if (typeof ack === 'function') ack({ ok: false, code: 'RATE_LIMIT', error: 'Too many picture messages' });
         socket.disconnect(true); return;
       }
@@ -202,7 +204,7 @@ function attachSockets(io: Server, { midi, integrations }: {
 
     socket.on('fixture', (payload) => {
       try {
-        const { id, address, universe, label, profileId, maxBrightness, position, group, geometry, output, productId, hardware, admission } = validate(fixtureMessageSchema, payload, 'fixture-msg');
+        const { id, address, universe, label, profileId, maxBrightness, position, group, geometry, emission, output, productId, hardware, admission } = validate(fixtureMessageSchema, payload, 'fixture-msg');
         const fixture = getFixture(id);
         if (!fixture) return;
 
@@ -215,13 +217,17 @@ function attachSockets(io: Server, { midi, integrations }: {
         // other fixture becomes one, and its output (the channel) is not
         // changed by hand. The schema already refuses a Hue output here.
         const addressless = hasNoAddress(fixture);
-        if ((addressless && output !== undefined) || addressless !== HUE_PROFILE_IDS.has(nextProfileId)) {
+        if (isHueLamp(fixture) ? (output !== undefined || nextProfileId !== fixture.profileId) : isHueProfile(nextProfile)) {
           socket.emit('error-msg', { source: 'fixture', message: HUE_BY_HAND });
           return;
         }
         const nextOutput = output !== undefined ? output : fixture.output ?? null;
-        const nextAddress = address !== undefined ? address : fixture.address;
-        const nextUniverse = universe !== undefined ? universe : universeOf(fixture);
+        if (addressless !== hasNoAddress({ output: nextOutput }) || (nextOutput && nextOutput.protocol !== fixture.output?.protocol)) {
+          socket.emit('error-msg', { source: 'fixture', message: DEVICE_BY_HAND });
+          return;
+        }
+        const nextAddress = addressless || address === undefined ? fixture.address : address;
+        const nextUniverse = addressless || universe === undefined ? universeOf(fixture) : universe;
 
         // A fixture has to fit inside its universe. Past channel 512 the writes
         // land outside the DMX buffer and Node drops them silently, leaving the
@@ -243,9 +249,8 @@ function attachSockets(io: Server, { midi, integrations }: {
         const proposed = state.fixtures.map((f) => (f.id === id
           ? { ...f, address: nextAddress, universe: nextUniverse, profileId: nextProfileId, output: nextOutput } : { ...f }));
         placeAddresslessFixtures(proposed);
-        // A universe that goes to a WLED over DDP goes nowhere else, so nothing
-        // else may be patched on it.
-        const wled = ddpConflict(proposed, getProfile, universeOf);
+        // Two fixtures on one WLED may not share a LED, nor two be one OpenRGB device.
+        const wled = ddpConflict(proposed, getProfile);
         if (wled) {
           socket.emit('error-msg', { source: 'fixture', message: wled });
           return;
@@ -287,6 +292,7 @@ function attachSockets(io: Server, { midi, integrations }: {
         }
         if (group !== undefined) fixture.group = group;
         if (geometry !== undefined) fixture.geometry = geometry;
+        if (emission !== undefined) fixture.emission = emission;
         showStore.scheduleSave();
         integrations.broadcast();
       } catch (err) {
@@ -337,6 +343,11 @@ function attachSockets(io: Server, { midi, integrations }: {
       } catch (err) {
         socket.emit('error-msg', { source: 'midi-connect', message: messageOf(err) });
       }
+    });
+
+    socket.on('midi-ports', () => {
+      const before = JSON.stringify(midi.listPorts());
+      if (JSON.stringify(midi.refreshPorts()) !== before) integrations.broadcast();
     });
 
     socket.on('disconnect', () => {

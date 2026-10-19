@@ -32,7 +32,7 @@ const HEADER = 16;
 // The protocol this client speaks (a server that speaks less is spoken to
 // at its own). Three is what LedFx speaks, and what every 0.9+ server takes.
 const PROTOCOL_VERSION = 3;
-const CLIENT_NAME = 'ArtNet Lightshow';
+const CLIENT_NAME = 'Tyclab Lightshow';
 
 export const PACKET = {
   REQUEST_CONTROLLER_COUNT: 0,
@@ -249,6 +249,9 @@ export interface OpenRgbDeviceRef {
   name?: string;
 }
 
+const deviceKey = (ref: OpenRgbDeviceRef) => `${ref.device}:${ref.name ?? ''}`;
+interface PreparationFailure { until: number; delay: number; run: Promise<ControllerData> }
+
 interface Pending {
   device: number;
   id: number;
@@ -303,19 +306,24 @@ export class OpenRgbConnection {
   described = new Map<number, ControllerData>();
   /** The devices in their Direct mode, ready for frames, by the server's number. */
   devices = new Map<number, ControllerData>();
-  /** The server's number today for each device the patch refers to, by the patch's number. */
-  live = new Map<number, number>();
-  preparing = new Map<number, Promise<ControllerData>>();
+  /** Named references may share an old number while identifying different devices. */
+  live = new Map<string, number>();
+  preparing = new Map<string, Promise<ControllerData>>();
+  failed = new Map<string, PreparationFailure>();
+  refreshing: Promise<void> | null = null;
+  revision = 0;
+  clock: () => number;
   /** The mode a device was in before it was put in Direct, to go back to. */
   wasIn = new Map<number, OpenRgbMode>();
-  wanted = new Map<number, OpenRgbDeviceRef>();
+  wanted = new Map<string, OpenRgbDeviceRef>();
   backoff = 0;
   retry: ReturnType<typeof setTimeout> | null = null;
 
-  constructor({ host, port = OPENRGB_PORT, reconnect = true }: { host: string; port?: number; reconnect?: boolean }) {
+  constructor({ host, port = OPENRGB_PORT, reconnect = true, clock = () => performance.now() }: { host: string; port?: number; reconnect?: boolean; clock?: () => number }) {
     this.host = host;
     this.port = port;
     this.reconnect = reconnect;
+    this.clock = clock;
   }
 
   where(): string { return `OpenRGB at ${this.host}:${this.port}`; }
@@ -339,12 +347,13 @@ export class OpenRgbConnection {
     socket.unref();
     socket.setNoDelay(true);
     socket.setTimeout(CONNECT_TIMEOUT_MS, () => { if (!this.ready) socket.destroy(timedOut(this.where(), CONNECT_TIMEOUT_MS)); });
-    socket.on('data', (chunk: Buffer) => this.onData(chunk));
-    socket.on('error', (err) => this.lost(err));
-    socket.on('close', () => this.lost(new Error(`${this.where()} closed the connection`)));
+    socket.on('data', (chunk: Buffer) => { if (this.socket === socket) this.onData(chunk); });
+    socket.on('error', (err) => { if (this.socket === socket) this.lost(err); });
+    socket.on('close', () => { if (this.socket === socket) this.lost(new Error(`${this.where()} closed the connection`)); });
     socket.once('connect', () => {
+      if (this.socket !== socket || this.ended) { socket.destroy(); return; }
       socket.setTimeout(0);
-      this.handshake().then(() => this.became(), (err) => socket.destroy(err instanceof Error ? err : new Error(messageOf(err))));
+      this.handshake().then(() => { if (this.socket === socket && !this.ended) this.became(); }, (err) => socket.destroy(err instanceof Error ? err : new Error(messageOf(err))));
     });
   }
 
@@ -364,6 +373,7 @@ export class OpenRgbConnection {
 
   became(): void {
     this.ready = true;
+    this.failed.clear();
     this.backoff = 0;
     const settle = this.settleOpen;
     this.settleOpen = null;
@@ -378,6 +388,9 @@ export class OpenRgbConnection {
     if (!socket) return;
     this.socket = null;
     this.ready = false;
+    this.revision++;
+    this.refreshing = null;
+    this.failed.clear();
     this.count = null;
     this.described.clear();
     this.devices.clear();
@@ -460,6 +473,10 @@ export class OpenRgbConnection {
     if (header.id === PACKET.DEVICE_LIST_UPDATED) {
       // The PC's devices came or went: read them again, and find each of
       // ours again, before the next frame.
+      this.revision++;
+      this.refreshing = null;
+      this.failed.clear();
+      this.preparing.clear();
       this.count = null;
       this.described.clear();
       this.devices.clear();
@@ -478,27 +495,67 @@ export class OpenRgbConnection {
   /** How many devices the server has. */
   async controllerCount(): Promise<number> {
     if (this.count !== null) return this.count;
+    const revision = this.revision;
     const reply = await this.request(0, PACKET.REQUEST_CONTROLLER_COUNT);
-    this.count = reply.length >= 4 ? reply.readUInt32LE(0) : 0;
-    return this.count;
+    const count = reply.length >= 4 ? reply.readUInt32LE(0) : 0;
+    if (revision === this.revision) this.count = count;
+    return count;
   }
 
   /** What device `index` is. */
-  async controllerData(index: number): Promise<ControllerData> {
+  async controllerData(index: number, timeoutMs = REQUEST_TIMEOUT_MS): Promise<ControllerData> {
     const count = await this.controllerCount();
     if (index >= count) throw new HttpError(404, `${this.where()} has no device #${index}: it lists ${count}`);
     const version = Buffer.alloc(4);
     version.writeUInt32LE(this.version, 0);
-    return parseControllerData(await this.request(index, PACKET.REQUEST_CONTROLLER_DATA, version), this.version);
+    return parseControllerData(await this.request(index, PACKET.REQUEST_CONTROLLER_DATA, version, timeoutMs), this.version);
   }
 
   /** What device `index` is, read once per connection and device list. */
   async describe(index: number): Promise<ControllerData> {
     const known = this.described.get(index);
     if (known) return known;
+    const revision = this.revision;
     const data = await this.controllerData(index);
-    this.described.set(index, data);
+    if (revision === this.revision) this.described.set(index, data);
     return data;
+  }
+
+  // Compare a fresh list before reusing prepared indices after an unannounced device change.
+  refreshDiscovery(): Promise<void> {
+    if (this.refreshing) return this.refreshing;
+    const revision = ++this.revision, deadline = performance.now() + REQUEST_TIMEOUT_MS;
+    const current = () => { if (revision !== this.revision || this.ended) throw new Error(`${this.where()}: discovery superseded`); };
+    const changed = () => {
+      this.live.clear(); this.devices.clear(); this.wasIn.clear(); this.failed.clear(); this.described.clear();
+    };
+    const run = (async () => {
+      const reply = await this.request(0, PACKET.REQUEST_CONTROLLER_COUNT);
+      current();
+      const count = reply.length >= 4 ? reply.readUInt32LE(0) : 0;
+      if (this.count !== null && count !== this.count) changed();
+      this.count = count;
+      const descriptions = new Map<number, ControllerData>();
+      for (let index = 0; index < Math.min(MAX_DEVICES, count); index++) {
+        const remaining = deadline - performance.now();
+        if (remaining <= 0) throw timedOut(`${this.where()} discovery`, REQUEST_TIMEOUT_MS);
+        const data = await this.controllerData(index, remaining);
+        current();
+        const before = this.described.get(index) ?? this.devices.get(index);
+        if (before && (before.name !== data.name || before.type !== data.type || before.leds !== data.leds)) changed();
+        descriptions.set(index, data);
+      }
+      current();
+      this.described = descriptions;
+    })();
+    this.refreshing = run;
+    run.catch((err) => {
+      if (revision !== this.revision || this.ended) return;
+      this.live.clear(); this.devices.clear(); this.wasIn.clear(); this.described.clear(); this.count = null;
+      // Replies have no request token; a timed-out scan must not contaminate a later retry.
+      if (codeOf(err) === 'ETIMEDOUT') this.lost(err);
+    }).finally(() => { if (this.refreshing === run) this.refreshing = null; });
+    return run;
   }
 
   /**
@@ -511,7 +568,8 @@ export class OpenRgbConnection {
    * that number.
    */
   async resolve(ref: OpenRgbDeviceRef): Promise<number> {
-    const known = this.live.get(ref.device);
+    const key = deviceKey(ref), revision = this.revision;
+    const known = this.live.get(key);
     if (known !== undefined) return known;
     const count = Math.min(MAX_DEVICES, await this.controllerCount());
     let index = ref.device;
@@ -525,7 +583,8 @@ export class OpenRgbConnection {
     } else if (index >= count) {
       throw new HttpError(404, `${this.where()} has no device #${index}: it lists ${count}`);
     }
-    this.live.set(ref.device, index);
+    if (revision !== this.revision) throw new Error(`${this.where()}: device list changed`);
+    this.live.set(key, index);
     return index;
   }
 
@@ -535,17 +594,28 @@ export class OpenRgbConnection {
    * connection drops.
    */
   prepare(ref: OpenRgbDeviceRef): Promise<ControllerData> {
-    const live = this.live.get(ref.device);
+    const key = deviceKey(ref);
+    let revision = this.revision;
+    const live = this.live.get(key);
     const known = live === undefined ? undefined : this.devices.get(live);
-    if (known) return Promise.resolve(known);
-    const inflight = this.preparing.get(ref.device);
+    if (known && !this.refreshing) return Promise.resolve(known);
+    const inflight = this.preparing.get(key);
     if (inflight) return inflight;
+    const failure = this.failed.get(key);
+    if (failure && this.clock() < failure.until) return failure.run;
+    const refresh = this.refreshing ?? (failure && this.ready ? this.refreshDiscovery() : null);
+    revision = this.revision;
     const run = (async () => {
       await this.open();
+      const pendingRefresh = refresh ?? (failure ? this.refreshDiscovery() : this.refreshing);
+      revision = this.revision;
+      if (pendingRefresh) await pendingRefresh;
       const index = await this.resolve(ref);
+      if (revision !== this.revision || this.ended) throw new Error(`${this.where()}: preparation superseded`);
       const ready = this.devices.get(index);
-      if (ready) return ready;
+      if (ready) { this.failed.delete(key); return ready; }
       const data = await this.describe(index);
+      if (revision !== this.revision || this.ended) throw new Error(`${this.where()}: preparation superseded`);
       const direct = directMode(data);
       if (direct && data.activeMode !== direct.index) {
         const before = data.modes[data.activeMode];
@@ -554,11 +624,16 @@ export class OpenRgbConnection {
         data.activeMode = direct.index;
       }
       this.devices.set(index, data);
+      this.failed.delete(key);
       return data;
     })();
-    this.preparing.set(ref.device, run);
-    run.catch((err) => { if (this.reconnect) logFailure(`${this.where()}: ${messageOf(err)}`); })
-      .finally(() => { if (this.preparing.get(ref.device) === run) this.preparing.delete(ref.device); });
+    this.preparing.set(key, run);
+    run.catch((err) => {
+      if (revision !== this.revision || this.ended) return;
+      const delay = failure ? Math.min(failure.delay * 2, BACKOFF_MAX_MS) : BACKOFF_MIN_MS;
+      this.failed.set(key, { until: this.clock() + delay, delay, run });
+      if (this.reconnect) logFailure(`${this.where()}: ${messageOf(err)}`);
+    }).finally(() => { if (this.preparing.get(key) === run) this.preparing.delete(key); });
     return run;
   }
 
@@ -568,17 +643,20 @@ export class OpenRgbConnection {
    * back-off), the device not found or read yet, or the socket too far behind.
    */
   send(ref: OpenRgbDeviceRef, rgb: Uint8Array, leds: number): boolean {
-    this.wanted.set(ref.device, ref);
+    const key = deviceKey(ref);
+    this.wanted.set(key, ref);
     if (this.ended) return false;
     const socket = this.socket;
     if (!socket || !this.ready) {
       if (!socket && !this.retry) this.open().catch(() => {});
       return false;
     }
-    const index = this.live.get(ref.device);
+    if (this.refreshing) return false;
+    const index = this.live.get(key);
     const device = index === undefined ? undefined : this.devices.get(index);
     if (index === undefined || !device) {
-      this.prepare(ref).catch(() => {});
+      const failure = this.failed.get(key);
+      if (!this.preparing.has(key) && (!failure || this.clock() >= failure.until)) this.prepare(ref).catch(() => {});
       return false;
     }
     if (socket.writableLength > HIGH_WATER_BYTES) {
@@ -591,7 +669,8 @@ export class OpenRgbConnection {
 
   /** Put device `ref` back as it was found: its colours, and the mode it was in. */
   restore(ref: OpenRgbDeviceRef): void {
-    const index = this.live.get(ref.device);
+    if (this.refreshing) return;
+    const index = this.live.get(deviceKey(ref));
     const device = index === undefined ? undefined : this.devices.get(index);
     if (index === undefined || !device || !this.socket || !this.ready) return;
     this.socket.write(buildUpdateLeds(index, device.colors, device.leds));

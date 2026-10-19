@@ -63,7 +63,7 @@ export default class ArtnetLightshowInstance extends InstanceBase {
 					this.log('error', 'Lightshow server rejected the token — check the Access token field')
 					return
 				}
-				if (status === 'ok') this.log('info', 'Connected to ArtNet Lightshow')
+				if (status === 'ok') this.log('info', 'Connected to Tyclab Lightshow')
 				this.updateStatus(STATUS[status] ?? InstanceStatus.UnknownWarning, message)
 			},
 			onChange: (keys) => {
@@ -131,5 +131,13 @@ export default class ArtnetLightshowInstance extends InstanceBase {
 
 	armOutputs(mode) {
 		return this.#connected()?.armOutputs(mode)
+	}
+
+	paletteOverride(id) {
+		return this.#connected()?.paletteOverride(id)
+	}
+
+	stopEffects() {
+		return this.#connected()?.stopEffects()
 	}
 }

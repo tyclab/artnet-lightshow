@@ -6,10 +6,10 @@
  *   npm run package                   for this machine
  *   npm run package -- --no-archive   the folder only
  *
- * dist/ArtNet-Lightshow-<version>-<platform>-<arch>/
- *   ArtNet Lightshow.exe   Node (the one running this script), made a single
+ * dist/Tyclab-Lightshow-<version>-<platform>-<arch>/
+ *   Tyclab Lightshow.exe   Node (the one running this script), made a single
  *                          executable application whose script is
- *                          scripts/sea-main.cjs; `artnet-lightshow` on Linux
+ *                          scripts/sea-main.cjs; `tyclab-lightshow` on Linux
  *   app/                   server.js, src/, the built public/, the production
  *                          node_modules, the Python lockfile
  *   tools/uv(.exe)         uv, which sets the analysis environment up
@@ -60,10 +60,10 @@ const DIST = path.resolve(outAt >= 0 ? args[outAt + 1] : path.join(ROOT, 'dist')
 
 const target = `${process.platform}-${process.arch}`;
 const windows = process.platform === 'win32';
-const name = `ArtNet-Lightshow-${PKG.version}-${target}`;
+const name = `Tyclab-Lightshow-${PKG.version}-${target}`;
 const OUT = path.join(DIST, name);
 const APP = path.join(OUT, 'app');
-const EXE = path.join(OUT, windows ? 'ArtNet Lightshow.exe' : 'artnet-lightshow');
+const EXE = path.join(OUT, windows ? 'Tyclab Lightshow.exe' : 'tyclab-lightshow');
 
 function step(what) { console.log(`\n▸ ${what}`); }
 
@@ -121,12 +121,12 @@ function brandWindowsExe(file) {
   info.setFileVersion(major, minor, patch, 0, lang.lang);
   info.setProductVersion(major, minor, patch, 0, lang.lang);
   info.setStringValues(lang, {
-    ProductName: 'ArtNet Lightshow',
-    FileDescription: 'ArtNet Lightshow',
-    InternalName: 'ArtNet Lightshow',
-    OriginalFilename: 'ArtNet Lightshow.exe',
-    CompanyName: '',
-    LegalCopyright: '',
+    ProductName: 'Tyclab Lightshow',
+    FileDescription: 'Tyclab Lightshow',
+    InternalName: 'Tyclab Lightshow',
+    OriginalFilename: 'Tyclab Lightshow.exe',
+    CompanyName: 'Tyclab',
+    LegalCopyright: 'Copyright (c) 2026 Tom DARONDOVAS. MIT license.',
     ProductVersion: PKG.version,
     FileVersion: PKG.version,
   });
@@ -135,9 +135,9 @@ function brandWindowsExe(file) {
   fs.writeFileSync(file, Buffer.from(exe.generate()));
 }
 
-const README = `ArtNet Lightshow ${PKG.version}
+const README = `Tyclab Lightshow ${PKG.version}
 
-Start it: ${windows ? 'double-click "ArtNet Lightshow.exe"' : 'run ./artnet-lightshow'}. It opens the app in your
+Start it: ${windows ? 'double-click "Tyclab Lightshow.exe"' : 'run ./tyclab-lightshow'}. It opens the app in your
 browser (http://localhost:3000); closing its ${windows ? 'window' : 'terminal'} stops it, blacking the rig out first.
 A fresh install opens the setup, which walks through the outputs, the fixtures and the music.
 
@@ -150,16 +150,18 @@ Your settings, show, analysis cache, logs and the analysis environment are kept
 in the "data" folder beside this file, because of the file called "portable".
 Delete "portable" to keep them in your user folder instead${windows ? ' (%LOCALAPPDATA%\\ArtNet Lightshow)' : ' (~/.local/share/artnet-lightshow)'}.
 
-browser-extension/ is the Deezer extension: load it into Chrome or Edge from
-the extensions page (Developer mode -> Load unpacked).
+browser-extension/ is the Firefox Deezer extension: open
+about:debugging#/runtime/this-firefox, choose Load Temporary Add-on and select
+its manifest.json. See browser-extension/README.md for permanent installation.
 
-The full manual: https://github.com/LightD31/artnet-lightshow#readme
+The full manual: https://github.com/tyclab/artnet-lightshow#readme
+Based on LightD31's ArtNet Lightshow; upstream copyright and MIT license are in app/LICENSE.
 `;
 
 async function main() {
   if (!UV_WHEELS[target]) throw new Error(`packaging is for Windows and Linux (x64, arm64); this is ${target}`);
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('package with Node 22 or newer (24 LTS is what it is made for)');
-  console.log(`Packaging ArtNet Lightshow ${PKG.version} for ${target}, with Node ${process.version}, into ${OUT}`);
+  console.log(`Packaging Tyclab Lightshow ${PKG.version} for ${target}, with Node ${process.version}, into ${OUT}`);
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(APP, { recursive: true });
 

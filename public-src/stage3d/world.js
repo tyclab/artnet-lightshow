@@ -1,3 +1,4 @@
+import { emissionOf, beamDirection } from '../../src/shared/emission.ts';
 import { stagePositions } from '../../src/shared/stage.ts';
 import { lineOf } from '../../src/shared/rig.ts';
 
@@ -8,8 +9,6 @@ export const TRUSS_H = 4.6;
 export const FLOOR_H = 0.18;
 export const ROOM_H = 2.2;
 export const BEAM_HALF_ANGLE = (11 * Math.PI) / 180;
-const TILT = (22 * Math.PI) / 180;
-const FLOOR_TILT = (12 * Math.PI) / 180;
 const MAX_BEAM = 14;
 const ROW_GAP = 0.5;
 
@@ -17,16 +16,21 @@ export function planToWorld(p) {
   return { x: (p.x / 100 - 0.5) * STAGE_W, z: (p.y / 100 - 0.5) * STAGE_D };
 }
 
-const isBulb = (fixture, profile) => fixture.group === 'room'
-  || !!(profile && /hue/i.test(`${profile.manufacturer || ''} ${profile.id || ''}`));
-
 /** Haze shows only in a beam: a room of bulbs and strips has nothing for the slider to thicken. */
 export const hasBeams = (placed) => placed.lamps.some((lamp) => lamp.kind === 'par');
 
-function beamLength(from, aim) {
-  if (aim.y < -1e-6) return Math.min(MAX_BEAM, from.y / -aim.y);
-  if (aim.y > 1e-6) return Math.min(MAX_BEAM, (TRUSS_H + 2.5 - from.y) / aim.y);
-  return MAX_BEAM;
+function beamLight(light, emission, floor = false, bounds = null) {
+  const from = light.position, aim = beamDirection(emission, floor);
+  let length = MAX_BEAM;
+  if (aim.y < -1e-6) length = Math.min(length, Math.max(0, from.y / -aim.y));
+  if (aim.y > 1e-6) length = Math.min(length, Math.max(0, ((bounds?.height ?? TRUSS_H + 2.5) - from.y) / aim.y));
+  if (bounds) for (const [axis, size] of [['x', bounds.width], ['z', bounds.depth]]) {
+    if (Math.abs(aim[axis]) > 1e-6) length = Math.min(length, Math.max(0, (Math.sign(aim[axis]) * size / 2 - from[axis]) / aim[axis]));
+  }
+  const end = { x: from.x + aim.x * length, y: from.y + aim.y * length, z: from.z + aim.z * length };
+  const radius = Math.tan((emission.beamAngle ?? 22) * Math.PI / 360) * length;
+  const poolRadius = aim.y < 0 && Math.abs(end.y) < 1e-6 ? radius * 1.35 / Math.max(0.35, -aim.y) : 0;
+  return { ...light, kind: 'par', aim, length, end, radius, poolRadius };
 }
 
 export function placeRig(fixtures, profiles, rig) {
@@ -40,6 +44,7 @@ export function placeRig(fixtures, profiles, rig) {
   fixtures.forEach((fixture, i) => {
     const profile = profiles[fixture.profileId] || null;
     const { start, count } = rig.ranges[i];
+    const emission = emissionOf(fixture, profile, !!rig.cellMaps[i]);
     const floor = fixture.group === 'floor';
     const height = Number.isFinite(fixture.position?.height)
       ? Math.max(0, Math.min(100, fixture.position.height)) * TRUSS_H / 100
@@ -48,17 +53,19 @@ export function placeRig(fixtures, profiles, rig) {
     if (!rig.cellMaps[i]) {
       const at = planToWorld(centres[i]);
       const from = { x: at.x, y: height, z: at.z };
-      if (isBulb(fixture, profile)) {
+      if (emission.kind === 'bulb') {
         lamps.push({ unit: start, fixture: fixture.id, kind: 'bulb', position: from, aim: null, length: 0 });
         return;
       }
       if (height === TRUSS_H) hung.push(at);
-      const aim = floor
-        ? { x: 0, y: Math.cos(FLOOR_TILT), z: -Math.sin(FLOOR_TILT) }
-        : { x: 0, y: -Math.cos(TILT), z: Math.sin(TILT) };
-      const length = beamLength(from, aim);
-      const end = { x: from.x + aim.x * length, y: from.y + aim.y * length, z: from.z + aim.z * length };
-      lamps.push({ unit: start, fixture: fixture.id, kind: 'par', position: from, aim, length, end, radius: Math.tan(BEAM_HALF_ANGLE) * length });
+      if (emission.kind === 'strip') {
+        const line = lineOf(fixture, Math.max(2, count), fixture.position ? 0 : unplaced), rad = line.angle * Math.PI / 180;
+        for (let k = 0; k < 16; k++) {
+          const offset = ((k + 0.5) / 16 - 0.5) * line.length / 100;
+          cells.push({ unit: start, fixture: fixture.id, size: 0.08,
+            position: { x: from.x + offset * Math.cos(rad) * STAGE_W, y: height, z: from.z + offset * Math.sin(rad) * STAGE_D } });
+        }
+      } else lamps.push(beamLight({ unit: start, fixture: fixture.id, position: from }, emission, floor));
       return;
     }
 
@@ -96,7 +103,15 @@ export function placeRig(fixtures, profiles, rig) {
     }
   });
 
-  return { lamps, cells, trusses: trussesFor(hung) };
+  const physical = new Map(fixtures.map((fixture) => [fixture.id, fixture]));
+  const stripCells = [];
+  for (const cell of cells) {
+    const fixture = physical.get(cell.fixture);
+    if (!fixture?.emission || fixture.emission.kind === 'strip') { stripCells.push(cell); continue; }
+    lamps.push(fixture.emission.kind === 'beam' ? beamLight(cell, fixture.emission, fixture.group === 'floor')
+      : { ...cell, kind: 'bulb', aim: null, length: 0 });
+  }
+  return { lamps, cells: stripCells, trusses: trussesFor(hung) };
 }
 
 export const bindingSources = (binding) => binding.sources || [{ fixtureId: binding.fixtureId, unit: binding.unit ?? 0, weight: 1 }];
@@ -127,7 +142,9 @@ export function roomRig(fixtures, rig, model) {
     if (binding.confidence !== 'measured') estimated++;
     const light = { unit: sources[0].unit, fixture: binding.fixtureId, position: binding.position,
       ...(binding.sources ? { sources } : {}) };
-    if (!binding.sources && rig.cellMaps[indices.get(binding.fixtureId)]) cells.push({ ...light, size: 0.08 });
+    const fixture = fixtures[indices.get(binding.fixtureId ?? binding.sources?.[0]?.fixtureId)];
+    if (fixture?.emission?.kind === 'beam') lamps.push(beamLight(light, fixture.emission, fixture.group === 'floor', model.bounds));
+    else if (fixture?.emission?.kind === 'strip' || !fixture?.emission && !binding.sources && rig.cellMaps[indices.get(binding.fixtureId)]) cells.push({ ...light, size: 0.08 });
     else lamps.push({ ...light, kind: 'bulb', aim: null, length: 0 });
   }
   const missing = fixtures.filter((fixture) => !mapped.has(fixture.id));

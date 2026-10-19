@@ -1,14 +1,50 @@
-# ArtNet Lightshow — Tyclab
+# Tyclab Lightshow
 
 Lighting controller for Art-Net, sACN, WLED/DDP, OpenRGB and Philips Hue
 Entertainment. Control it from the browser, MIDI, Bitfocus Companion or REST.
 Manual looks, effects, pads and sequences work without Python; analysed shows
 and live audio use the optional analysis environment.
 
-This is the [Tyclab fork](https://github.com/tyclab/artnet-lightshow) of
-[LightD31's controller](https://github.com/LightD31/artnet-lightshow), with its
-own tested deployment revisions. Upstream changes are reviewed before adoption;
-an upstream release is not a release of this fork.
+[Tyclab Lightshow](https://github.com/tyclab/artnet-lightshow) builds on
+[LightD31’s ArtNet Lightshow](https://github.com/LightD31/artnet-lightshow) under
+the [MIT license](LICENSE). It combines reviewed upstream improvements with
+Tyclab’s own workflows and deployment revisions. An upstream release is not
+a Tyclab Lightshow release.
+
+## Upstream integration
+
+This consolidation was reviewed against LightD31's
+[`b6f7f28`](https://github.com/LightD31/artnet-lightshow/commit/b6f7f2812d28ef1e0d40b19c64d9c59a8ea23a6f)
+(8 October 2026). Tyclab retains its Music Assistant pixel input, Stage rooms
+and screens, hardware capability/admission policies, saved sequences and
+Fire/Ice effect catalogue. New upstream work is reviewed by behavior and
+regression tests before integration; a different commit history does not mean
+a performance fix is missing.
+
+| Upstream work | Consolidated behavior |
+|---------------|-----------------------|
+| `6299390`, `d01c20b`, `e17b3fa` | Existing frame deadlines, whole-frame worker publication and live-input restart cleanup retained |
+| `ba641f5`, `cff5f5e`, `56f7ec9`, `87c66b8`, `b34a3eb` | Existing tempo-follow, manual tempo hold and cross-screen phase fixes retained |
+| `0f72767`, `f69d7cf`, `5ec4c55`, `d2458be` | Proxy authentication/manifest fixes and dependency security updates retained |
+| `86d505e`, `59f4e60`, `60b02cb`, `5ad78c2` | Explicit MIDI ports, encoder detection, MIDI/Companion show controls and UI fixes integrated; classic MIDI mappings retained by default |
+| `a9ea36d`, `a7a1bc9`, `cea505b` | Capability-derived Hue profiles and ordered sections integrated with legacy migration that preserves fixture identities |
+| `64b104b` | WLED and OpenRGB use internal allocation without operator-facing DMX addresses |
+| `89b62d9`, `0f222a1` | Drawn strobe programs integrated with hardware and shared flash guards after program rendering |
+
+Upstream's removal of legacy Hue fixtures and restored comment-heavy files
+are not adopted. Existing shows keep their references; legacy lamp profiles
+remain available until the operator refreshes capabilities. Emission geometry
+is explicit: bulbs, strips and directional beams can use any output protocol.
+Every startup remains disarmed.
+
+```mermaid
+flowchart LR
+  Upstream[Incoming upstream commits] --> Review[Behavior and performance review]
+  Fork[Tyclab workflows and saved shows] --> Review
+  Review --> Adapt[Integrate improvements and preserve migrations]
+  Adapt --> Tests[Safety / protocol / browser regressions]
+  Tests --> Release[Tyclab Lightshow build]
+```
 
 ## Signal flow
 
@@ -53,7 +89,7 @@ start the pattern engine.
 
 ### Packaged builds
 
-This fork has no published release packages yet. Use a pinned source checkout,
+Tyclab Lightshow has no published release packages yet. Use a pinned source checkout,
 or build a package on the target operating system with `npm run package`.
 The [CI workflows](https://github.com/tyclab/artnet-lightshow/actions) test Windows
 and Linux packaging. Packages include Node; install the analysis environment
@@ -61,14 +97,22 @@ separately from the app when needed.
 
 | Package | Start and data location |
 |---------|-------------------------|
-| Windows installer, `*-win32-x64-setup.exe` | Start menu → ArtNet Lightshow; per-user install in `%LOCALAPPDATA%\Programs\ArtNet Lightshow`, data in `%LOCALAPPDATA%\ArtNet Lightshow` |
-| Windows portable, `*-win32-x64.zip` | Run `ArtNet Lightshow.exe`; data in the adjacent `data` folder while the `portable` marker exists |
-| Linux archive, `*-linux-x64.tar.gz` | Run `./artnet-lightshow`; portable data as above, otherwise `~/.local/share/artnet-lightshow` |
+| Windows installer, `*-win32-x64-setup.exe` | Start menu → Tyclab Lightshow; new installs in `%LOCALAPPDATA%\Programs\Tyclab Lightshow`, data in `%LOCALAPPDATA%\ArtNet Lightshow` |
+| Windows portable, `*-win32-x64.zip` | Run `Tyclab Lightshow.exe`; data in the adjacent `data` folder while the `portable` marker exists |
+| Linux archive, `*-linux-x64.tar.gz` | Run `./tyclab-lightshow`; portable data as above, otherwise `~/.local/share/artnet-lightshow` |
 
 Closing the server console stops the show. `--version` prints the version.
 `--no-supervisor` disables the built-in process supervisor.
 `LIGHTSHOW_DATA_DIR` overrides the data location. Updating or uninstalling the
-Windows installer leaves the data directory in place.
+Windows installer leaves the data directory in place. Existing Windows installs
+keep their installation directory when upgraded.
+
+The rebrand preserves existing data and model-cache paths, `ARTNET_*` and
+`LIGHTSHOW_*` environment variables, browser storage keys, API/authentication
+headers, analysis schema identifiers, Hue registration names and Companion and
+browser-extension IDs. The Python package remains `artnet-lightshow-analysis`.
+Existing shows, pairings and integrations continue to
+use those identifiers; no manual data migration is required.
 
 ### Network access
 
@@ -226,7 +270,7 @@ keys; `PUT /api/settings` changes selected fields.
 |---------|---------------------|
 | `server` | `host: '127.0.0.1'`, `port: 3000`, `token: ''`, `publicUrl: ''` |
 | `artnet` | `enabled: true`, `host: '2.255.255.255'`, `port: 6454`, `universe: 0`, `discovery: true`, `sync: false` |
-| `sacn` | `enabled: false`, `host: ''` for multicast, `priority: 100`, `sourceName: 'ArtNet Lightshow'`, `universeOffset: 1`, `interface: ''`; stable generated `cid` |
+| `sacn` | `enabled: false`, `host: ''` for multicast, `priority: 100`, `sourceName: 'Tyclab Lightshow'`, `universeOffset: 1`, `interface: ''`; stable generated `cid` |
 | `hue` | `bridges: []`, `latencyMs: 0`, `strobe: 'flash'`; each paired bridge has an id, address, enabled flag, area and write-only credentials |
 | `outputs` | `armed: false`; always reset to false at startup. `idleDisarmMin: 15`: minutes armed with nothing playing before the outputs disarm themselves; `0` never |
 | `sources` | `prolink: false`, `smtc: true` |
@@ -297,6 +341,16 @@ on the room plan. Positions use `{ x, y }` percentages. Fixture groups are
 length 1–100 stage percent, angle −180–180 degrees; `null` restores defaults.
 Panel geometry describes its top edge. Positions and geometry are saved.
 
+The fixture inspector's **Light shape** independently selects bulb/diffuse,
+strip/panel or directional beam for any output protocol, including Hue.
+Beam pan, tilt and spread are degrees: pan 0 faces the audience, tilt 0 is
+horizontal, positive tilt points upward, and spread is the full cone angle.
+Single-zone strips use the same output colour along their length; segmented
+strips keep their individual cells. Stage and imported room bindings use the
+selected shape and aim. Existing shows keep their default appearance until a
+shape is chosen. Show export/import and fixture undo preserve `emission`
+(`kind`, optional `pan`, `tilt`, `beamAngle`) separately from cell geometry.
+
 **Maximum brightness** is a fixture trim, 0–255, applied after looks and
 masters; it is not a temporary override. A fixture override can set colour,
 dimmer, strobe or blackout. Clear removes the override. Cues capture looks,
@@ -320,7 +374,7 @@ Undo for 12 seconds; restore still checks patch conflicts.
 |--------|------------|-------|
 | Art-Net | UDP 6454, universes from 0 | Broadcast, unicast, or discovered-node routing; optional ArtSync |
 | sACN/E1.31 | UDP 5568, universes from 1 | Multicast `239.255.x.y` or unicast; default offset +1 from the patch |
-| WLED/DDP | Device host, optional port and LED offset | Discover by mDNS or add by address; dedicated fixture universes |
+| WLED/DDP | Device host, optional port and LED offset | Discover by mDNS or add by address; no DMX address |
 | OpenRGB | TCP SDK server, default port 6742 | Enable the SDK server, discover devices and add those with direct LED control |
 | Hue Entertainment | Bridge and entertainment-area channel | Pair bridge, select area, add its lamps |
 
@@ -336,12 +390,17 @@ Entertainment sessions. Master blackout keeps the outputs owned and streaming.
 
 Find WLEDs on the local network or add a host directly. Adding reads its LED
 count, RGB/RGBW layout and panel dimensions; up to 4096 LEDs form one fixture.
-Dedicated WLED universes are not also sent on Art-Net or sACN.
+WLED fixtures have no DMX address. The server allocates internal rendering space
+without consuming Art-Net/sACN universes.
 
 **Add each segment** creates separate fixtures. Segment regions must not
 overlap. A panel rectangle uses its LED offset and row stride; WLED resolves
 its own wiring order. All segments of one device are delivered as one frame.
 LEDs outside patched segments keep their previous values.
+
+RGB and RGBW fixtures can share a controller. RGB sections retain their colour
+with a zero white channel; RGBW sections retain the palette's white value.
+WLED's own auto-white and white-balance settings can still alter received colours.
 
 Removing a fixture or disarming sends darkness and stops updates. WLED resumes
 its own effects after its configured realtime timeout. Set its fallback preset
@@ -362,10 +421,28 @@ Music Assistant remains the renderer and audio source. OBS is not required.
 
 The default mode only manages the display: it does not read the lightshow token,
 connect to the lighting server or claim a fixture. Add `--curtain` to stream the
-same canvas to one patched panel. Pixels are downsampled to its logical grid at
-no more than 10 frames per second, with centre-cover cropping by default.
+same canvas to one patched panel. Pixels are downsampled to its logical grid,
+with centre-cover cropping by default. The helper defaults to 44 frames per
+second; `--fps 1` through `--fps 60` selects a requested rate, capped by the
+server's advertised `maxFps`. Older servers continue to work at their lower cap.
 Include gaps in the supplied grid dimensions; WLED applies its physical map once.
 A sparse curtain displays large shapes and colours rather than fine text.
+
+The server accepts up to 60 frames per second per input lease and keeps only
+the latest accepted picture. Its lighting engine currently renders and sends
+at 44 Hz, including DDP: accepting 60 fps can reduce the age of the sampled
+picture, but does not produce 60 hardware updates per second. Slow canvas
+capture or acknowledgements reduce the achieved rate without building a queue.
+Panel and room capture run together, using bounded, reusable sampling canvases.
+
+```mermaid
+flowchart LR
+    Canvas[Music Assistant canvas] --> Capture[Bounded panel and room capture]
+    Capture --> Ack[One frame awaiting acknowledgement per lease]
+    Ack --> Latest[Latest accepted picture per lease, up to 60 fps]
+    Latest --> Engine[44 Hz lighting engine and flash guard]
+    Engine --> Output[DDP and other configured outputs]
+```
 
 On Windows with Node 22.18+, install the helper and use the browser launcher from
 [party-visuals](https://github.com/tyclab/party-visuals). The launcher creates a
@@ -373,6 +450,8 @@ dedicated persistent Chrome profile, waits for the selected TV and supplies an
 ephemeral loopback debugging port. The helper accesses only the configured Music
 Assistant origin, now-playing route and player. Sign in normally in this profile;
 credentials are not passed through the visualizer URL or command arguments.
+Update the paired Party Visuals browser launcher as well: older installed
+launchers explicitly pass `--fps 10`, which overrides this helper's default.
 
 ```powershell
 cd tools/browser-visuals
@@ -406,7 +485,7 @@ Custom senders use the existing authenticated Socket.IO connection, with
 
 | Event | Payload | Successful acknowledgement |
 | --- | --- | --- |
-| `pixel-input:claim` | `{ fixtureId, width, height }` | `{ ok: true, leaseId, ttlMs: 2000, maxFps: 20, format: 'rgb24', order: 'row-major' }` |
+| `pixel-input:claim` | `{ fixtureId, width, height }` | `{ ok: true, leaseId, ttlMs: 2000, maxFps: 60, format: 'rgb24', order: 'row-major' }` |
 | `pixel-input:frame` | `{ fixtureId, leaseId, data }` | `{ ok: true }` |
 | `pixel-input:release` | `{ fixtureId, leaseId }` | `{ ok: true }` |
 
@@ -451,7 +530,7 @@ the helper fetches the units again and claims anew.
 | Event | Payload | Successful acknowledgement |
 | --- | --- | --- |
 | `picture:units` | none | `{ ok: true, signature, units, list: [{ fixture, cell, x, y, grid }] }` |
-| `picture:claim` | `{ signature }` | `{ ok: true, leaseId, units, ttlMs: 2000, maxFps: 20, format: 'rgb24', order: 'units' }` |
+| `picture:claim` | `{ signature }` | `{ ok: true, leaseId, units, ttlMs: 2000, maxFps: 60, format: 'rgb24', order: 'units' }` |
 | `picture:frame` | `{ leaseId, data, image? }` | `{ ok: true }` — `data` is `units * 3` RGB bytes; `image` is the picture itself, `{ width, height, data }` up to 128 × 128 RGB, for the Stage |
 | `picture:release` | `{ leaseId }` | `{ ok: true }` |
 
@@ -463,13 +542,18 @@ export marks `role: screen` (the TV and the monitors in a house-model export).
 
 ### OpenRGB
 
-Each device is a fixture, with one RGB cell per LED, on dedicated universes.
+Each device is a fixture, with one RGB cell per LED and no DMX address.
+The server allocates its internal rendering space and sends only its own pixels.
 The patch keeps the device name as well as its number so discovery can resolve
 renumbered devices. Devices must support a direct LED colour mode.
 
 Disarm or removal sends darkness and closes the connection. OpenRGB has no
 realtime timeout: another client/profile must restore the desired hardware
-effect. Unavailable PCs generate warnings; other outputs continue.
+effect. Unavailable PCs generate warnings; other outputs continue. Missing devices
+retry after 1 second, doubling to at most 30 seconds. Frames pause briefly while
+discovery validates device numbers, then healthy devices resume at the normal
+frame rate without replaying dropped frames. A device-list update or reconnect
+retries immediately.
 
 ### Philips Hue
 
@@ -483,16 +567,36 @@ entertainment stream; stop another sync client before connecting. Pairing keys
 are stored as secrets. Disconnect refuses while lamps remain patched unless
 `removeFixtures: true` is supplied.
 
-| Profile | Channels |
-|---------|----------|
-| Generic Lamp | Dimmer, RGB, warm white, cool white, UV |
-| Generic White Ambiance Lamp | Dimmer, warm white, cool white |
-| Generic White Lamp | Dimmer |
+Each physical lamp gets a profile built from its bridge capabilities: colour gamut,
+its warm/cool white temperatures, or the fixed white it dims. Gradient strips and
+Play gradients are one fixture with ordered cells, one per entertainment section.
+The profile travels with the saved show. Hue profiles are selected by discovery,
+not imported or changed manually; UV is represented as visible violet.
 
-Hue fixtures have no DMX address; their internal universes start at 60000 and
-are not sent to DMX outputs. UV is represented as violet, warm white as a warm
-tint, cool white as daylight. `hue.latencyMs` delays Art-Net/sACN relative to
-Hue; use `/api/hue/sync-test` to compare them.
+Hue, WLED and OpenRGB fixtures have no DMX address. Internal rendering space starts
+at universe 60000; small devices can share it, and each transport reads only its
+fixture's pixels. It is never transmitted over Art-Net or sACN. `hue.latencyMs`
+delays the other outputs relative to Hue; use `/api/hue/sync-test` to compare them.
+
+Existing Hue fixtures retain their IDs, positions, geometry, hardware limits and
+channel bindings when loaded. Legacy `{ channel }` outputs become `{ channels: [channel] }`;
+their compatibility profiles retain the original colour rendering even when a bridge
+is offline. **Refresh lamp profiles** reads current capabilities while preserving
+fixture and section identities. It keeps old strip sections as separate fixtures so
+sequence, MIDI and room bindings remain valid. Unreadable or ambiguous lamps and
+changed section counts are retained and listed in the response for review.
+
+```mermaid
+flowchart LR
+  Saved[Saved fixtures and stable IDs] --> Load[Load and validate channel bindings]
+  Bridge[Bridge lamp capabilities and ordered sections] --> Add[Add one fixture per physical lamp]
+  Load --> Refresh[Optional profile refresh / retain existing sections]
+  Bridge --> Refresh
+  Add --> Allocate[Allocate internal rendering space]
+  Refresh --> Allocate
+  Allocate --> Render[Renderer / hardware limits / blackout]
+  Render --> Transport[Each device reads its own cells]
+```
 
 ### Hue flash handling
 
@@ -607,6 +711,8 @@ Locked colours are not restored after a restart.
 | Field | Values/default |
 |-------|----------------|
 | `palette` | 1–6 RGBWAUV hex colours; white |
+| `function` | `palette` default; `ramp-up-down`, `ramp-up`, `ramp-down`, their `-rnd` variants, `random`, `break` |
+| `speed` | Program speed 1–255; 128 |
 | `flashesPerSecond` | Integer 1–5; 2 |
 | `continueBetween` | `true`: underlying look between flashes; `false`: black |
 | `clock` | `beat` default, or `wall` |
@@ -617,6 +723,17 @@ Beat clock uses the finest beat division under the configured rate and cycles
 colours; wall clock uses seconds and random palette selection. Bursts accept
 100–30,000 ms. `/api/strobe/off` stops all manual strobe-kind voices, including
 API/pad launches. Latches are capped by `safety.strobeMaxLatchSec`.
+
+Drawn programs use the beat clock and their own speed; `flashesPerSecond` and
+`clock` select the palette-flash behavior. Programs also render Hue bulbs, spots and strip sections within their device
+limits. The same curves drive the legacy look strobe, while Standard
+uses a verified hardware channel or software fallback. Shapes are applied
+before device flash guards, so ramps, random flashes and bursts obey fixture
+limits. Manual programs and palette flashes share admission history across
+voice replacements. Hue admission measures the final RGB sent to each bulb or
+strip section, including mixed RGB/white emitters, master levels and transitions.
+The global flash limiter, acknowledgement and blackout
+still apply; older saved strobes default to palette flashes.
 
 ## Sequencer
 
@@ -824,15 +941,34 @@ otherwise configured defaults apply. `/api/audio` reports detector ownership.
 
 ### MIDI
 
-Select input/output ports in Settings → MIDI. Learn binds the next matching
-control to an action; parameters such as cue, fixture, bank and slot belong
-to that binding. Optional MIDI channel restricts matching. Reset restores the
+Select input/output ports in Settings → MIDI. Only the selected ports open;
+**none** leaves that direction disconnected, and an unavailable port is never
+replaced automatically. The list refreshes every two seconds while Settings
+is visible and excludes the server's own RtMidi ports.
+
+Learn binds the next matching control to an action; parameters such as cue,
+fixture, bank and slot belong to that binding. Optional MIDI channel restricts matching. Reset restores the
 built-in X-Touch Compact map. Custom maps live in `config/midi-map.json`.
+
+The classic layout remains the default, including existing saved mappings.
+Choose **X-Touch show control** and **Apply layout** to use fixture brightness
+trims, palette override buttons and an energy-effect selector on encoder 3's
+push. The fixture faders then limit brightness without taking fixtures out of
+the show. Applying a layout replaces bindings; **Undo** restores the previous
+map. Merely selecting a layout changes nothing.
 
 Actions cover transport, tap/tempo mode, patterns, colour slots, palettes,
 energy holds, pads (`padPress` with bank/slot), cues, fixture controls and
-master/intensity/sync faders. Relative encoders support two's complement and
-binary offset. Button/LED feedback follows the mapping.
+master/intensity/sync faders. Additional actions browse patterns, effects, pixel
+pictures, colour slots, palette overrides and beat divisions; adjust fade time
+and held-strobe rate; choose random looks/colours; double/halve BPM; stop effect
+voices; fire a bounded strobe burst; or toggle the auto show. Flashing actions
+use the same acknowledgement and limits as the browser controls.
+Encoders detect whether the device sends positions
+or relative steps, including two's complement and binary offset. Learn captures
+that mode; keep turning until the capture completes. If the messages remain
+ambiguous for two seconds, the requested binding type is retained. Button/LED
+feedback follows the mapping.
 
 Motorised fader feedback defaults on; disable `midi.controlFeedback` for an
 echoing loopback. Touch sensors do not count as absolute fader values.
@@ -841,15 +977,16 @@ echoing loopback. Touch sensors do not count as absolute fader values.
 
 ### Default mapping — Behringer X-Touch Compact
 
-Set the controller to **Standard MIDI mode** (Layer A). The server auto-detects
-the first port matching `/x.?touch/i`.
+Set the controller to **Standard MIDI mode** (Layer A) and select its ports in
+Settings → MIDI. The built-in map accepts factory encoder positions and detects
+encoders configured to send relative steps. The actions remain the same.
 
 | Control | MIDI | Action |
 |---------|------|--------|
-| Encoder 1 | CC 10 (relative) | BPM ±1 |
-| Encoder 2 | CC 11 (relative) | Master dimmer |
-| Encoders 3–6 | CC 12–15 (relative) | Fixture 1–4 dimmer |
-| Encoder 7 | CC 16 (relative) | Strobe speed |
+| Encoder 1 | CC 10 (absolute position or detected steps) | BPM ±1 |
+| Encoder 2 | CC 11 (absolute position or detected steps) | Master dimmer |
+| Encoders 3–6 | CC 12–15 (absolute position or detected steps) | Fixture 1–4 dimmer |
+| Encoder 7 | CC 16 (absolute position or detected steps) | Strobe speed |
 | Faders 1–4 | CC 1–4 (absolute) | Fixture 1–4 dimmer |
 | Fader 8 | CC 8 (absolute) | Auto-show intensity |
 | Fader 9 | CC 9 (absolute) | Master dimmer |
@@ -865,11 +1002,16 @@ the first port matching `/x.?touch/i`.
 
 Use Companion 4.3+ and the module in `companion-module/`. Install its dependencies,
 then place or symlink the module inside the configured Developer modules folder.
-Add an ArtNet Lightshow connection with host, port and access token.
+Add a Tyclab Lightshow connection with host, port and access token.
 
-Presets cover busking palettes, energy holds, transport, cues, pads, strobe
-bursts, generated-show controls, sequence transport and fixture controls. Hold buttons renew until
-release; once and loop pads launch once per press. Server catalogs populate
+The **Busk** page browses and randomises patterns and effects, toggles palettes
+over the running show, launches pads, follows or taps tempo, and stops live
+effects. Pattern browsing includes Fire and Ice; rapid effects require the
+server's photosensitivity acknowledgement. **Auto Show** and **Sequence** have
+their own preset pages. Preset variable references use the connection's label.
+
+Presets also cover energy holds, transport, cues, strobe bursts and fixture
+controls. Hold buttons renew until release; once and loop pads launch once per press. Server catalogs populate
 actions and feedback. The module uses Socket.IO protocol 2. See
 [installation](companion-module/INSTALL.md) and
 [action/feedback reference](companion-module/companion/HELP.md).
@@ -1032,9 +1174,9 @@ Transport routes answer `{ ok, status }`; with no sequence loaded they answer
 | POST | `/api/profiles/bar` | Build and register an LED bar profile from `{ id, name, cells, firstChannel, order, stride?, dimmer?, strobe? }`; `?dryRun=1` answers with it without registering |
 | GET · POST | `/api/show` | Export / import the patch |
 | GET | `/api/wled/discover` | Ask the network for WLEDs (mDNS): `{ devices: [{ host, name, leds, rgbw, matrix, version, segments, patched }] }` |
-| POST | `/api/wled/add` | Add a WLED to the patch from `{ host, label?, segments? }`: its profile from `/json/info`, on free universes, sent DDP. With `segments: true`, a fixture for each segment in its `/json/state` not patched yet: `{ fixtures, profiles, info, segments }` |
+| POST | `/api/wled/add` | Add a WLED to the patch from `{ host, label?, segments? }`: its profile from `/json/info`, with internal allocation and no DMX address, sent DDP. With `segments: true`, a fixture for each segment in its `/json/state` not patched yet: `{ fixtures, profiles, info, segments }` |
 | GET | `/api/openrgb/discover?host=&port=` | Ask an OpenRGB SDK server for its devices: `{ host, port, devices: [{ index, name, type, leds, direct, patched }] }` |
-| POST | `/api/openrgb/add` | Add devices of an OpenRGB server to the patch from `{ host, port?, devices?: [index], label? }` — those named, or every one with LEDs not patched yet — each a fixture with a cell per LED, on free universes, sent over the SDK: `{ fixtures, profiles, devices }` |
+| POST | `/api/openrgb/add` | Add devices of an OpenRGB server to the patch from `{ host, port?, devices?: [index], label? }` — those named, or every one with LEDs not patched yet — each a fixture with a cell per LED and no DMX address, sent over the SDK: `{ fixtures, profiles, devices }` |
 
 ### Outputs
 
@@ -1054,7 +1196,7 @@ Transport routes answer `{ ok, status }`; with no sequence loaded they answer
 | POST | `/api/identify/stop` | Stop identifying, a streamed WLED or OpenRGB device included |
 | POST | `/api/wled/identify` | `{ host, seconds? }`: through the patch when the WLED is in it (`via: 'patch'`), else its picture streamed over DDP (`via: 'device'`) |
 | POST | `/api/openrgb/identify` | `{ host, port?, device, seconds? }`: through the patch when the device is in it (`via: 'patch'`), else its picture streamed over the SDK (`via: 'device'`, with `leds` and `name`) and the device put back after |
-| POST | `/api/hue/:bridge/identify` | `{ channel, seconds? }`: the lamp on that channel of the bridge's area through the patch (`via: 'fixture'`), else the bridge's own identify (`via: 'bridge'`) |
+| POST | `/api/hue/:bridge/identify` | `{ lamp, seconds? }` (legacy `{ channel, seconds? }` also accepted): the lamp of the bridge's area through the patch (`via: 'fixture'`), else the bridge's own identify (`via: 'bridge'`) |
 
 ### Cues
 
@@ -1104,6 +1246,7 @@ Transport routes answer `{ ok, status }`; with no sequence loaded they answer
 | GET | `/api/midi/map` | The live map, the action catalogue, and whether it is customised |
 | PUT | `/api/midi/map` | Replace the whole map |
 | POST | `/api/midi/map/reset` | Back to the built-in X-Touch layout |
+| POST | `/api/midi/map/preset/:id` | Apply `classic` or `performance`; GET map lists available layouts |
 | PUT | `/api/midi/map/binding` | Bind or clear one message (`{ kind, number, binding }`) |
 | POST | `/api/midi/learn` | Arm learn; the request is held open until a control moves |
 | POST | `/api/midi/learn/cancel` | Disarm learn |
@@ -1126,8 +1269,9 @@ Transport routes answer `{ ok, status }`; with no sequence loaded they answer
 | GET | `/api/hue/discover` | Bridges Philips' cloud service has seen on this network |
 | POST | `/api/hue/pair` | Pair with `{ host, label? }` — the bridge link button must have been pressed in the last 30 seconds. Answers `409` with `pressLink: true` if it has not. A new address is added to `hue.bridges` (as `bridge-1`, `bridge-2`…, on, with no area yet); one already there gets fresh keys. Answers the bridge and its areas |
 | GET | `/api/hue/:bridge/areas` | Entertainment areas on that bridge, with their channel ids and lamp names |
-| GET | `/api/hue/:bridge/lamps` | Its chosen area's channels: each lamp's name, product, devices and what it can show (`kind`: `color`, `ambiance`, `white`, or `null` when the bridge would not say) |
-| POST | `/api/hue/:bridge/add` | `{ channels? }`: patch those channels of its area, or every one not in the patch yet, each a fixture on the profile for its `kind`, with `output: { protocol: 'hue', bridge, channel }` and no DMX address |
+| GET | `/api/hue/:bridge/lamps` | Its chosen area's lamps: id, name, product, devices, ordered `channels`, capabilities and `shows` description |
+| POST | `/api/hue/:bridge/add` | `{ lamps? }`: patch those lamp ids, or every unpatched lamp, with a bridge-derived profile and `output: { protocol: 'hue', bridge, channels }`. Legacy `{ channels? }` selects the lamps containing those channels |
+| POST | `/api/hue/:bridge/refresh` | Refresh existing lamp capabilities without replacing fixture IDs or channel order; returns `refreshed` fixture IDs and `skipped` entries with reasons |
 | POST | `/api/hue/:bridge/disconnect` | Forget that bridge, keys and all. `409` while its lamps are in the patch unless `{ removeFixtures: true }` takes them along |
 | POST | `/api/hue/sync-test` | Flash every fixture white once a second for 10 s, to tune `hue.latencyMs` |
 
@@ -1199,19 +1343,21 @@ disconnects. A refusal comes back as `error-msg` with `source: 'voice-hold'`.
 kept for the Companion module.
 
 The `fixture` message carries
-`{ id, address?, universe?, label?, profileId?, maxBrightness?, position?, group?, geometry?, output? }`.
+`{ id, address?, universe?, label?, profileId?, maxBrightness?, position?, group?, geometry?, emission?, output? }`.
 `position` is `{ x, y }` in percent of the stage plot, or `null`; `group` is one
 of `front`, `back`, `room`, `floor`, or `null`; `geometry` is an LED bar's line
 (a panel's top edge), `{ length, angle }` (length 1–100 in stage percent, angle
 −180–180 degrees clockwise on the plot), or `null` for the default; `output` is
 `{ protocol: 'ddp', host, port?, at?, rowStride? }` to send the fixture's
-universes to a WLED — from its LED `at` for a segment, a row every `rowStride`
+pixels to a WLED — from its LED `at` for a segment, a row every `rowStride`
 LEDs for a rectangle of a panel — `{ protocol: 'openrgb', host, port?, device,
 name?, leds }` to send them to device `device` of the OpenRGB SDK server at
 `host` (found by `name` when the server has renumbered it), `leds` LEDs long
 (as `POST /api/openrgb/add` patches it) — or `null` for
-Art-Net and sACN. A Hue lamp's
-`{ protocol: 'hue', bridge, channel }` is given by `POST /api/hue/:bridge/add`
+Art-Net and sACN. A device's protocol cannot be changed here: only its destination
+within the same protocol can be edited, and supplied DMX addresses are ignored.
+A Hue lamp's
+`{ protocol: 'hue', bridge, channels }` is given by `POST /api/hue/:bridge/add`
 and cannot be set or changed here.
 
 ## Pre-show checks and diagnostics

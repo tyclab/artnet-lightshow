@@ -193,3 +193,14 @@ test('a fixture\'s line on the stage is bounded wherever it is set', () => {
   const show = validate(showSchema, { fixtures: [{ label: 'Bar', address: 1, geometry }] }, 't');
   assert.deepStrictEqual(show.fixtures[0].geometry, geometry, 'a show file keeps it');
 });
+
+test('physical emission survives show and restore schemas independently of cell geometry', () => {
+  const emission = { kind: 'beam', pan: 45, tilt: -30, beamAngle: 36 };
+  const fixture = { label: 'Hue spot', profileId: 'x', address: 1, geometry: { length: 20, angle: 90 }, emission };
+  assert.deepEqual(validate(fixtureMessageSchema, { id: 1, emission }, 'fixture').emission, emission);
+  assert.deepEqual(validate(fixtureRestoreSchema, { index: 0, fixture }, 'restore').fixture.emission, emission);
+  assert.deepEqual(validate(showSchema, { fixtures: [fixture] }, 'show').fixtures[0].emission, emission);
+  for (const invalid of [{ kind: 'unknown' }, { kind: 'beam', tilt: 91 }, { kind: 'beam', beamAngle: 0 }, { kind: 'beam', pan: Infinity }]) {
+    rejects(fixtureMessageSchema, { id: 1, emission: invalid });
+  }
+});

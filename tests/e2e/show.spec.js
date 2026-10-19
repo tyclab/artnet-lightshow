@@ -3,6 +3,7 @@
 
 import { test, expect } from '@playwright/test';
 import { open, reset, set, loadTrack, unloadTrack } from './helpers.js';
+import { stageImage } from './stage-image.js';
 
 test.beforeEach(async ({ request }) => {
   await reset(request);
@@ -14,24 +15,8 @@ test.afterEach(async ({ request }) => {
   await unloadTrack(request);
 });
 
-/**
- * How much of the 3D stage is lit: the share of its pixels brighter than the
- * unlit room. Read in an animation frame after the scene has drawn into it,
- * while the frame is still there to read.
- */
-function litShare(page) {
-  return page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => {
-    const stage = document.querySelector('.stage3d-canvas');
-    const copy = document.createElement('canvas');
-    copy.width = stage.width;
-    copy.height = stage.height;
-    const ctx = copy.getContext('2d');
-    ctx.drawImage(stage, 0, 0);
-    const px = ctx.getImageData(0, 0, copy.width, copy.height).data;
-    let lit = 0;
-    for (let i = 0; i < px.length; i += 4) if (Math.max(px[i], px[i + 1], px[i + 2]) > 100) lit++;
-    resolve(lit / (copy.width * copy.height));
-  })));
+async function litShare(page) {
+  return (await stageImage(page)).litShare;
 }
 
 test('the Stage view draws the live output, and goes dark with the blackout', async ({ page, request }) => {

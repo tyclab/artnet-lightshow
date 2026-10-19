@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isHueProfile } from './hue-lamp.ts';
 import { isHueLamp } from './rig.ts';
 import type { ChannelMap, Profile, StageFixture } from '../types/rig.ts';
 
@@ -50,9 +51,9 @@ export const hardwareSettingsSchema = z.object({
     .refine((products) => Object.keys(products).length <= 128, 'at most 128 products'),
 }).strict();
 
-export function technologyOf(fixture: StageFixture): OutputTechnology {
+export function technologyOf(fixture: StageFixture, profile?: Pick<Profile, 'hue'> | null): OutputTechnology {
   const protocol = fixture.output?.protocol;
-  return protocol === 'ddp' || protocol === 'openrgb' || protocol === 'hue' ? protocol : isHueLamp(fixture) ? 'hue' : 'dmx';
+  return protocol === 'ddp' || protocol === 'openrgb' || protocol === 'hue' ? protocol : isHueProfile(profile) || isHueLamp(fixture) ? 'hue' : 'dmx';
 }
 
 const CHANNELS: Record<Die, readonly string[]> = {
@@ -64,7 +65,7 @@ export function channelsOf(maps: readonly ChannelMap[]): Die[] {
 
 export function hardwareOf(fixture: StageFixture & { productId?: string | null; hardware?: RateOverride | null; admission?: AdmissionPolicy | null },
   profile: Profile | null | undefined, settings: HardwareSettings = DEFAULT_HARDWARE): HardwareCaps {
-  const technology = technologyOf(fixture), productId = fixture.productId || profile?.id || 'unknown';
+  const technology = technologyOf(fixture, profile), productId = fixture.productId || profile?.id || 'unknown';
   const product = settings.products[productId];
   let rates: RateLimits = { ...TECHNOLOGY_LIMITS[technology] }, source: HardwareCaps['source'] = 'technology';
   const apply = (next: RateOverride | null | undefined, level: HardwareCaps['source']) => {

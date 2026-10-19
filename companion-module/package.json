@@ -1,7 +1,7 @@
 {
 	"name": "companion-module-artnet-lightshow",
 	"version": "2.1.0",
-	"description": "Bitfocus Companion module for ArtNet Lightshow: busk a light show from a Stream Deck",
+	"description": "Bitfocus Companion module for Tyclab Lightshow: busk a light show from a Stream Deck",
 	"main": "src/main.js",
 	"type": "module",
 	"scripts": {
@@ -11,7 +11,7 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/LightD31/artnet-lightshow.git"
+		"url": "git+https://github.com/tyclab/artnet-lightshow.git"
 	},
 	"engines": {
 		"node": "^22.20"

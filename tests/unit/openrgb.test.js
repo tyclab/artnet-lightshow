@@ -11,7 +11,7 @@ import express from 'express';
 
 import {
   buildPacket, parseHeader, buildUpdateLeds, buildUpdateMode, parseUpdateLeds, parseControllerData, directMode,
-  closeOpenRgb, OPENRGB_PORT, PACKET,
+  closeOpenRgb, OpenRgbConnection, OPENRGB_PORT, PACKET,
 } from '../../src/server/openrgb.ts';
 import { openrgbProfile } from '../../src/server/openrgb-devices.ts';
 import { openrgbRoutes, openrgbPixels, openrgbConflict } from '../../src/server/openrgb-routes.ts';
@@ -23,7 +23,7 @@ import { state } from '../../src/server/state.ts';
 import { showStore } from '../../src/server/show-store.ts';
 import { stopEngine } from '../../src/server/engine.ts';
 import { checkOpenRgb } from '../../src/server/preflight.ts';
-import { stripOf } from '../../src/shared/placement.ts';
+import { stripOf, INTERNAL_UNIVERSE, isInternalUniverse } from '../../src/shared/placement.ts';
 
 state.artnet.enabled = false;
 state.running = false;
@@ -95,8 +95,11 @@ const rig = () => [
 
 async function fakeServer(devices = rig(), { version = 4, answerVersion = true } = {}) {
   const log = { leds: [], modes: [], names: [], connections: 0, closed: 0 };
+  const sockets = new Set(), heldDescriptions = [];
+  let holdDescriptions = false;
   const server = net.createServer((socket) => {
     log.connections++;
+    sockets.add(socket);
     let buf = Buffer.alloc(0);
     socket.on('data', (chunk) => {
       buf = Buffer.concat([buf, chunk]);
@@ -110,7 +113,12 @@ async function fakeServer(devices = rig(), { version = 4, answerVersion = true }
         else if (header.id === PACKET.SET_CLIENT_NAME) log.names.push(data.toString('utf8').replace(/\0$/, ''));
         else if (header.id === PACKET.REQUEST_CONTROLLER_COUNT) reply(u32(devices.length));
         else if (header.id === PACKET.REQUEST_CONTROLLER_DATA) {
-          if (header.device < devices.length) reply(encodeController(devices[header.device], data.length >= 4 ? data.readUInt32LE(0) : 0));
+          if (header.device < devices.length) {
+            const description = encodeController(devices[header.device], data.length >= 4 ? data.readUInt32LE(0) : 0);
+            const answer = () => reply(description);
+            if (holdDescriptions) heldDescriptions.push(answer);
+            else answer();
+          }
         } else if (header.id === PACKET.RGBCONTROLLER_UPDATELEDS) log.leds.push({ device: header.device, ...parseUpdateLeds(data) });
         else if (header.id === PACKET.RGBCONTROLLER_UPDATEMODE) {
           log.modes.push({ device: header.device, mode: data.readInt32LE(4) });
@@ -118,12 +126,17 @@ async function fakeServer(devices = rig(), { version = 4, answerVersion = true }
         }
       }
     });
-    socket.on('close', () => { log.closed++; });
+    socket.on('close', () => { log.closed++; sockets.delete(socket); });
     socket.on('error', () => {});
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   return {
     port: server.address().port, log, devices,
+    changed: () => { for (const socket of sockets) socket.write(buildPacket(0, PACKET.DEVICE_LIST_UPDATED)); },
+    disconnect: () => { for (const socket of sockets) socket.destroy(); },
+    holdDescriptions: () => { holdDescriptions = true; },
+    heldDescriptions: () => heldDescriptions.length,
+    releaseDescriptions: () => { holdDescriptions = false; for (const answer of heldDescriptions.splice(0)) answer(); },
     close: () => new Promise((resolve) => server.close(() => resolve())),
   };
 }
@@ -257,15 +270,15 @@ test('OpenRGB routes map universe bytes to LED cell colours', () => {
   assert.deepStrictEqual([...openrgbPixels(odd, () => parFrame).subarray(0, 6)], [10, 20, 30, 0, 0, 0]);
 });
 
-test('a device is one fixture\'s, and its universes are its alone', () => {
+test('a device is one fixture\'s', () => {
   assert.strictEqual(openrgbConflict([ram(1, 3, 0), ram(2, 4, 1)]), null);
-  assert.ok(openrgbConflict([ram(1, 3, 0), ram(2, 4, 0)]));
+  assert.match(openrgbConflict([ram(1, 3, 0), ram(2, 4, 0)]), /"RAM 2" and "RAM 1" are both OpenRGB device #0 at 10.0.0.80/);
   const named = (id, device, name) => ({ ...ram(id, id + 2, device), output: { ...ram(id, id + 2, device).output, name } });
   assert.strictEqual(openrgbConflict([named(1, 6, 'Keyboard'), named(2, 6, 'Monitor')]), null, 'two devices patched at one number on different days, under their names');
-  assert.ok(openrgbConflict([named(1, 6, 'Monitor'), named(2, 6, 'Monitor')]));
-  assert.ok(ddpConflict([ram(1, 3, 0), { ...ram(2, 4, 0), output: { ...ram(2, 4, 0).output, port: 6742 } }], profileOf, universeOf));
-  assert.ok(ddpConflict([ram(1, 3, 0), { id: 2, label: 'Par', address: 100, universe: 3, profileId: 'par' }], profileOf, universeOf));
-  assert.ok(ddpConflict([ram(1, 3, 0), ram(2, 3, 1)], profileOf, universeOf));
+  assert.match(openrgbConflict([named(1, 6, 'Monitor'), named(2, 6, 'Monitor')]), /"RAM 2" and "RAM 1" are both OpenRGB device #6 Monitor at 10.0.0.80/);
+  assert.match(ddpConflict([ram(1, 3, 0), { ...ram(2, 4, 0), output: { ...ram(2, 4, 0).output, port: 6742 } }], profileOf), /both OpenRGB device #0/);
+  // It has no DMX address: the server places it, so no par or other device can share its universes.
+  assert.strictEqual(ddpConflict([ram(1, 3, 0), ram(2, 3, 1), { id: 3, label: 'Par', address: 100, universe: 3, profileId: 'par' }], profileOf), null);
 });
 
 // ── The transmitter ─────────────────────────────────────────────────────────
@@ -400,7 +413,7 @@ test('OpenRGB wire sessions enter Direct mode and follow arm changes', async () 
   try {
     const litFrame = (p) => p.device === 5 && p.count === 85 && p.rgb[0] === 200 && p.rgb[1] === 100 && p.rgb[2] === 50 && p.rgb[254] === 3;
     await until(() => server.log.leds.some(litFrame), { each: () => paint(true), what: 'a lit frame at the server' });
-    assert.deepStrictEqual(server.log.names, ['ArtNet Lightshow']);
+    assert.deepStrictEqual(server.log.names, ['Tyclab Lightshow']);
     assert.deepStrictEqual(server.log.modes, [{ device: 5, mode: 0 }], 'the board was in Rainbow: put in Direct first');
     assert.strictEqual(server.log.connections, 1);
 
@@ -454,6 +467,239 @@ test('OpenRGB resolves renumbered devices by name and occurrence', async () => {
   }
 });
 
+test('missing OpenRGB devices back off independently while healthy frames remain unthrottled', async () => {
+  const server = await fakeServer([{ name: 'Keyboard', leds: 1 }]);
+  let now = 0;
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port, clock: () => now });
+  const missing = { device: 6, name: 'Monitor' }, keyboard = { device: 6, name: 'Keyboard' };
+  const rgb = Uint8Array.of(100, 20, 30), attempts = [];
+  const resolve = connection.resolve.bind(connection);
+  connection.resolve = (ref) => { attempts.push({ name: ref.name, now }); return resolve(ref); };
+  try {
+    await connection.open();
+    connection.send(missing, rgb, 1);
+    await until(() => connection.failed.size === 1 && !connection.preparing.size);
+    await connection.prepare(keyboard);
+    const before = server.log.leds.length;
+    for (let frame = 0; frame < 44; frame++) {
+      now = frame * 1000 / 44;
+      assert.strictEqual(connection.send(missing, rgb, 1), false);
+      assert.strictEqual(connection.send(keyboard, rgb, 1), true);
+      await new Promise(setImmediate);
+    }
+    await until(() => server.log.leds.length === before + 44);
+    assert.strictEqual(attempts.filter((a) => a.name === 'Monitor').length, 1, 'no rejected async preparation per frame');
+    assert.ok(server.log.leds.every((p) => p.device === 0 && p.rgb[0] === 100), 'same old number cannot redirect the keyboard to the monitor');
+
+    for (const due of [1000, 3000, 7000, 15000, 31000, 61000]) {
+      now = due;
+      const count = attempts.length;
+      connection.send(missing, rgb, 1);
+      assert.strictEqual(connection.send(keyboard, rgb, 1), false, 'uncertain indices pause only during discovery');
+      await until(() => attempts.length === count + 1 && !connection.preparing.size);
+      assert.strictEqual(connection.send(keyboard, rgb, 1), true, 'unchanged healthy frames resume immediately after discovery');
+      assert.strictEqual([...connection.failed.values()][0].delay, Math.min(due + 1000, 30000));
+    }
+    assert.deepStrictEqual(attempts.filter((a) => a.name === 'Monitor').map((a) => a.now), [0, 1000, 3000, 7000, 15000, 31000, 61000]);
+    server.devices.push({ name: 'Monitor', leds: 1 });
+    now = 91000;
+    await until(() => connection.send(missing, rgb, 1), { what: 'retry discovers a returned monitor without a notification' });
+    assert.strictEqual(connection.failed.size, 0);
+    await until(() => server.log.leds.some((p) => p.device === 1));
+  } finally {
+    connection.end();
+    await server.close();
+  }
+});
+
+for (const replaced of [false, true]) test(`retry discovery rebinds OpenRGB indices when a device ${replaced ? 'replaces another' : 'returns before a healthy device'}`, async () => {
+  const server = await fakeServer([{ name: 'Keyboard', leds: 1 }, ...(replaced ? [{ name: 'Mouse', leds: 1 }] : [])]);
+  let now = 0;
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port, clock: () => now });
+  const keyboard = { device: 6, name: 'Keyboard' }, monitor = { device: 6, name: 'Monitor' };
+  try {
+    await connection.open();
+    connection.send(keyboard, Uint8Array.of(100, 0, 0), 1);
+    connection.send(monitor, Uint8Array.of(0, 0, 200), 1);
+    await until(() => connection.failed.size === 1 && !connection.preparing.size);
+    if (replaced) server.devices.pop();
+    server.devices.unshift({ name: 'Monitor', leds: 1, activeMode: 1 });
+    now = 1000;
+    assert.strictEqual((await connection.prepare(monitor)).name, 'Monitor', 'fresh description replaces the old occupant of index zero');
+    await connection.prepare(keyboard);
+    assert.strictEqual(connection.send(keyboard, Uint8Array.of(100, 0, 0), 1), true);
+    assert.strictEqual(connection.send(monitor, Uint8Array.of(0, 0, 200), 1), true);
+    await until(() => server.log.leds.length === 2);
+    assert.deepStrictEqual(server.log.leds.map((p) => [p.device, ...p.rgb]), [[1, 100, 0, 0], [0, 0, 0, 200]]);
+    assert.deepStrictEqual(server.log.modes, [{ device: 0, mode: 0 }], 'the returned monitor enters Direct mode from its own fresh description');
+  } finally {
+    connection.end();
+    await server.close();
+  }
+});
+
+for (const inserted of [false, true]) test(`OpenRGB pauses uncertain indices during delayed ${inserted ? 'changed' : 'unchanged'} discovery`, async () => {
+  const server = await fakeServer([{ name: 'Keyboard', leds: 1 }]);
+  let now = 0;
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port, clock: () => now });
+  const keyboard = { device: 6, name: 'Keyboard' }, monitor = { device: 6, name: 'Monitor' }, rgb = Uint8Array.of(100, 0, 0);
+  try {
+    await connection.open();
+    connection.send(keyboard, rgb, 1);
+    connection.send(monitor, rgb, 1);
+    await until(() => connection.failed.size === 1 && !connection.preparing.size);
+    if (inserted) server.devices.unshift({ name: 'Monitor', leds: 1 });
+    server.holdDescriptions();
+    now = 1000;
+    connection.send(monitor, rgb, 1);
+    assert.strictEqual(connection.send(keyboard, rgb, 1), false, 'pause begins before the first discovery reply');
+    await until(() => server.heldDescriptions() > 0);
+    const pendingKeyboard = connection.prepare(keyboard);
+    let settled = false;
+    pendingKeyboard.then(() => { settled = true; });
+    for (let frame = 0; frame < 44; frame++) {
+      assert.strictEqual(connection.send(keyboard, rgb, 1), false);
+      connection.restore(keyboard);
+      await new Promise(setImmediate);
+    }
+    assert.strictEqual(settled, false, 'prepare cannot return a cached occupant during validation');
+    assert.strictEqual(server.log.leds.length, 0, 'no frames or restores reach uncertain indices');
+    server.releaseDescriptions();
+    await pendingKeyboard;
+    await until(() => !connection.refreshing && !connection.preparing.size);
+    for (let frame = 0; frame < 44; frame++) assert.strictEqual(connection.send(keyboard, rgb, 1), true);
+    await until(() => server.log.leds.length === 44);
+    assert.ok(server.log.leds.every((p) => p.device === (inserted ? 1 : 0) && p.rgb[0] === 100));
+  } finally {
+    server.releaseDescriptions();
+    connection.end();
+    await server.close();
+  }
+});
+
+for (const timeout of [false, true]) test(`OpenRGB discovery ${timeout ? 'timeout' : 'invalid data'} discards uncertain indices before recovery`, async () => {
+  const server = await fakeServer([{ name: 'Keyboard', leds: 1 }]);
+  let now = 0;
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port, clock: () => now });
+  const keyboard = { device: 6, name: 'Keyboard' }, monitor = { device: 6, name: 'Monitor' }, rgb = Uint8Array.of(100, 0, 0);
+  const request = connection.request.bind(connection);
+  let fail = false;
+  connection.request = (...args) => fail && args[1] === PACKET.REQUEST_CONTROLLER_DATA
+    ? Promise.reject(Object.assign(new Error('description failed'), { code: timeout ? 'ETIMEDOUT' : 'EBADDATA' })) : request(...args);
+  try {
+    await connection.open();
+    connection.send(keyboard, rgb, 1);
+    connection.send(monitor, rgb, 1);
+    await until(() => connection.failed.size === 1 && !connection.preparing.size);
+    server.devices.unshift({ name: 'Monitor', leds: 1 });
+    fail = true; now = 1000;
+    await assert.rejects(connection.prepare(monitor), /description failed/);
+    await until(() => !connection.refreshing && !connection.preparing.size);
+    assert.strictEqual(connection.live.size, 0);
+    assert.strictEqual(connection.devices.size, 0);
+    assert.strictEqual(connection.count, null);
+    if (timeout) assert.strictEqual(connection.socket, null, 'timeout closes the session so late replies cannot match a new request');
+    assert.strictEqual(connection.send(keyboard, rgb, 1), false, 'failed validation cannot resume the cached index');
+    fail = false;
+    await connection.prepare(keyboard);
+    assert.strictEqual(connection.send(keyboard, rgb, 1), true);
+    await until(() => server.log.leds.length === 1);
+    assert.strictEqual(server.log.leds[0].device, 1);
+  } finally {
+    connection.end();
+    await server.close();
+  }
+});
+
+test('OpenRGB refresh shares one timeout budget across controller descriptions', async () => {
+  const server = await fakeServer([{ name: 'Keyboard', leds: 1 }, { name: 'Monitor', leds: 1 }]);
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port });
+  const request = connection.request.bind(connection), budgets = [];
+  connection.request = async (device, id, data, timeoutMs) => {
+    if (id === PACKET.REQUEST_CONTROLLER_DATA) {
+      budgets.push(timeoutMs);
+      if (budgets.length === 1) await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    return request(device, id, data, timeoutMs);
+  };
+  try {
+    await connection.open();
+    await connection.refreshDiscovery();
+    assert.strictEqual(budgets.length, 2);
+    assert.ok(budgets[0] <= 5000 && budgets[1] > 0 && budgets[1] < budgets[0] - 20, 'each next request uses the remaining scan time');
+  } finally {
+    connection.end();
+    await server.close();
+  }
+});
+
+test('OpenRGB device-list updates clear failed preparation without waiting for backoff', async () => {
+  const server = await fakeServer([{ name: 'Keyboard', leds: 1 }]);
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port, clock: () => 0 });
+  const missing = { device: 6, name: 'Monitor' }, rgb = Uint8Array.of(80, 0, 0);
+  try {
+    await connection.open();
+    connection.send(missing, rgb, 1);
+    await until(() => connection.failed.size === 1 && !connection.preparing.size);
+    server.devices.push({ name: 'Monitor', leds: 1 });
+    server.changed();
+    await until(() => connection.send(missing, rgb, 1), { what: 'immediate recovery from the updated device list' });
+    assert.strictEqual(connection.failed.size, 0);
+    await until(() => server.log.leds.some((p) => p.device === 1));
+  } finally {
+    connection.end();
+    await server.close();
+  }
+});
+
+test('OpenRGB reconnect clears device failures and an ended connection never retries', async () => {
+  const server = await fakeServer([]);
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port, clock: () => 0 });
+  const missing = { device: 6, name: 'Monitor' }, rgb = Uint8Array.of(70, 0, 0);
+  try {
+    await connection.open();
+    connection.send(missing, rgb, 1);
+    await until(() => connection.failed.size === 1 && !connection.preparing.size);
+    server.disconnect();
+    await until(() => !connection.socket);
+    assert.strictEqual(connection.failed.size, 0);
+    server.devices.push({ name: 'Monitor', leds: 1 });
+    await connection.open();
+    await until(() => connection.send(missing, rgb, 1), { what: 'device recovery after reconnect' });
+    connection.send(missing, new Uint8Array(3), 1);
+    connection.end();
+    await until(() => server.log.closed === 2);
+    assert.ok(dark(server.log.leds.at(-1).rgb), 'shutdown sends the final dark frame');
+    for (let frame = 0; frame < 44; frame++) assert.strictEqual(connection.send(missing, rgb, 1), false);
+    assert.strictEqual(server.log.connections, 2, 'no reconnect after shutdown');
+  } finally {
+    connection.end();
+    await server.close();
+  }
+});
+
+test('OpenRGB resolves different names sharing their original device number independently', async () => {
+  const server = await fakeServer([{ name: 'Keyboard', leds: 1 }, { name: 'Monitor', leds: 1 }]);
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port });
+  const keyboard = { device: 6, name: 'Keyboard' }, monitor = { device: 6, name: 'Monitor' };
+  try {
+    await connection.open();
+    connection.send(keyboard, Uint8Array.of(100, 0, 0), 1);
+    connection.send(monitor, Uint8Array.of(0, 0, 200), 1);
+    await until(() => connection.devices.size === 2);
+    assert.strictEqual(connection.send(keyboard, Uint8Array.of(100, 0, 0), 1), true);
+    assert.strictEqual(connection.send(monitor, Uint8Array.of(0, 0, 200), 1), true);
+    await until(() => server.log.leds.length === 2);
+    assert.deepStrictEqual(server.log.leds.map((p) => [p.device, ...p.rgb]), [[0, 100, 0, 0], [1, 0, 0, 200]]);
+    connection.restore(monitor);
+    await until(() => server.log.leds.length === 3);
+    assert.strictEqual(server.log.leds.at(-1).device, 1, 'restore addresses the named monitor too');
+  } finally {
+    connection.end();
+    await server.close();
+  }
+});
+
 test('the wire: a server that never says its version is spoken to at protocol 0', { timeout: 10_000 }, async () => {
   const server = await fakeServer(rig(), { answerVersion: false });
   const route = { host: '127.0.0.1', port: server.port, device: 0, leds: 8, parts: [{ universe: 11, from: 0, bytes: 24 }], width: 3, rgb: [0, 1, 2] };
@@ -492,7 +738,7 @@ async function withApp(fn) {
   }
 }
 
-test('OpenRGB discovery adds devices on dedicated universes', async () => {
+test('discover lists the server\'s devices; add patches each with no DMX address, sent over the SDK', async () => {
   const server = await fakeServer();
   try {
     await withApp(async (call) => {
@@ -507,16 +753,16 @@ test('OpenRGB discovery adds devices on dedicated universes', async () => {
       const two = await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, devices: [0, 5] });
       assert.strictEqual(two.status, 200, JSON.stringify(two.body));
       assert.deepStrictEqual(two.body.fixtures.map((f) => [f.label, f.universe, f.address, f.profileId, f.output]), [
-        ['Trident Z A', 1, 1, `openrgb-127-0-0-1-${server.port}-0`, { protocol: 'openrgb', host: '127.0.0.1', port: server.port, device: 0, name: 'Trident Z A', leds: 8 }],
-        ['B650 Board', 2, 1, `openrgb-127-0-0-1-${server.port}-5`, { protocol: 'openrgb', host: '127.0.0.1', port: server.port, device: 5, name: 'B650 Board', leds: 85 }],
-      ], 'from universe 1: the rig\'s default universe 0 stays clear; each under its name, to be found again when OpenRGB renumbers');
+        ['Trident Z A', INTERNAL_UNIVERSE, 1, `openrgb-127-0-0-1-${server.port}-0`, { protocol: 'openrgb', host: '127.0.0.1', port: server.port, device: 0, name: 'Trident Z A', leds: 8 }],
+        ['B650 Board', INTERNAL_UNIVERSE, 25, `openrgb-127-0-0-1-${server.port}-5`, { protocol: 'openrgb', host: '127.0.0.1', port: server.port, device: 5, name: 'B650 Board', leds: 85 }],
+      ], 'one after the other on the server\'s own universes; each under its name, to be found again when OpenRGB renumbers');
       assert.deepStrictEqual(two.body.profiles.map((p) => [p.name, p.modeName]), [['Trident Z A', '8 LEDs, RGB, DRAM'], ['B650 Board', '85 LEDs, RGB, Motherboard']]);
       assert.strictEqual(state.fixtures.length, 3);
 
       const again = await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, devices: [0] });
-      assert.deepStrictEqual([again.status, Boolean(again.body.error)], [409, true]);
+      assert.deepStrictEqual([again.status, again.body.error], [409, 'Trident Z A (#0) is patched already, as "Trident Z A"']);
       assert.strictEqual((await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, devices: [99] })).status, 404);
-      assert.ok((await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, devices: [9] })).body.error);
+      assert.match((await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, devices: [9] })).body.error, /has no LEDs to light/);
 
       const rest = await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, label: 'PC' });
       assert.strictEqual(rest.status, 200, JSON.stringify(rest.body));
@@ -524,9 +770,9 @@ test('OpenRGB discovery adds devices on dedicated universes', async () => {
         ['PC · Trident Z B', 1], ['PC · Trident Z C', 2], ['PC · Trident Z D', 3], ['PC · RTX 4080', 4], ['PC · Keyboard', 6],
         ['PC · Monitor L', 7], ['PC · Monitor R', 8], ['PC · Mouse', 10],
       ], 'every device with LEDs not patched yet; the one with none is skipped');
-      assert.deepStrictEqual(rest.body.fixtures.map((f) => f.universe), [3, 4, 5, 6, 7, 8, 9, 10]);
+      assert.ok(rest.body.fixtures.every((f) => isInternalUniverse(f.universe)), 'none on an Art-Net universe');
       const all = await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port });
-      assert.deepStrictEqual([all.status, Boolean(all.body.error)], [409, true]);
+      assert.deepStrictEqual([all.status, all.body.error], [409, 'Every device of OpenRGB at 127.0.0.1 is patched already']);
 
       const listed = await call(`/api/openrgb/discover?host=127.0.0.1&port=${server.port}`);
       assert.deepStrictEqual(listed.body.devices.map((d) => d.patched).slice(0, 3), ['Trident Z A', 'PC · Trident Z B', 'PC · Trident Z C']);
@@ -539,8 +785,8 @@ test('OpenRGB discovery adds devices on dedicated universes', async () => {
         [6, 'PC · Monitor L'], [7, 'PC · Monitor R'], [8, null], [9, 'PC · Keyboard'],
       ]);
       const none = await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port });
-      assert.deepStrictEqual([none.status, Boolean(none.body.error)], [409, true], 'nothing new, whatever the numbers');
-      assert.ok((await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, devices: [9] })).body.error);
+      assert.deepStrictEqual([none.status, none.body.error], [409, 'Every device of OpenRGB at 127.0.0.1 is patched already'], 'nothing new, whatever the numbers');
+      assert.match((await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, devices: [9] })).body.error, /Keyboard \(#9\) is patched already, as "PC · Keyboard"/);
 
       // Deleted and undone, a device comes back with its output, name and all.
       const keyboard = state.fixtures.find((f) => f.label === 'PC · Keyboard');
@@ -555,7 +801,7 @@ test('OpenRGB discovery adds devices on dedicated universes', async () => {
 
       assert.strictEqual((await call('/api/openrgb/add', { host: 'http://x' })).status, 400);
       const nobody = await call('/api/openrgb/discover?host=127.0.0.1&port=1');
-      assert.deepStrictEqual([nobody.status, Boolean(nobody.body.error)], [502, true], JSON.stringify(nobody.body));
+      assert.deepStrictEqual([nobody.status, /Cannot reach OpenRGB at 127.0.0.1:1/.test(nobody.body.error)], [502, true], JSON.stringify(nobody.body));
     });
   } finally {
     await server.close();

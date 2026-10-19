@@ -1,3 +1,4 @@
+import { HOLD_STROBE_MAX_HZ } from '../look-math.ts';
 import { hardwareDecision, stricterPolicy } from '../hardware.ts';
 import type { HardwareCaps, OutputNeeds } from '../hardware.ts';
 import { MAX_NEST_DEPTH, playingChildren } from './nesting.ts';
@@ -9,7 +10,7 @@ export function effectNeeds(spec: EffectSpec, bpm: number): OutputNeeds {
   if (['energy.blinder', 'energy.glow', 'energy.uvWash', 'energy.kill'].includes(spec.kind)) return { flashHz: 0 };
   const p = spec.params, tempo = Math.max(1, bpm) / 60;
   if (['energy.whiteStrobe', 'energy.colorStrobe'].includes(spec.kind)) return { flashHz: 20 };
-  if (spec.kind === 'strobe') return { flashHz: Number(p.flashesPerSecond) || 1 };
+  if (spec.kind === 'strobe') return { flashHz: p.function && p.function !== 'palette' ? HOLD_STROBE_MAX_HZ : Number(p.flashesPerSecond) || 1 };
   if (kindOf(spec.kind)?.wallClock) return { flashHz: 20, transitionMs: 50 };
   if (typeof p.cadence === 'number') return { flashHz: tempo / p.cadence, transitionMs: p.cadence / tempo * 1000 };
   if (spec.kind.startsWith('hd.')) {

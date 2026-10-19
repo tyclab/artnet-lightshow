@@ -61,12 +61,13 @@ export class StrobeLampGuard {
 
   get liveCount(): number { return this.live; }
 
-  apply(unit: number, level01: number, frameIndex: number): number {
+  apply(unit: number, level01: number, frameIndex: number, continuous = false): number {
     let s = this.units.get(unit);
     if (!s) { s = { raw: 0, out: 0, rises: [], blocked: false }; this.units.set(unit, s); }
     const was = s.raw > 0 || s.blocked;
     const level = level01 > 0 ? level01 : 0;
-    if (level > s.raw + 1e-9) {
+    // Ramps spend one permit when they become bright, sharing history with palette flashes.
+    if (continuous ? level > 0.15 && s.raw <= 0.15 : level > s.raw + 1e-9) {
       const last = s.rises[s.rises.length - 1];
       const fifth = s.rises.length >= HOLD_STROBE_MAX_HZ ? s.rises[s.rises.length - HOLD_STROBE_MAX_HZ] : undefined;
       if (last === frameIndex) s.blocked = false;

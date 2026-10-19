@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
 import { dmxSig, emitOverride, emitFixture, pick } from '../state.js';
-import { fixtureOutputColor, fixtureCellColors, hueBridgeLabel } from '../utils.js';
+import { fixtureOutputColor, fixtureCellColors, patchedAt } from '../utils.js';
 import { useDmxFeed } from '../use-dmx.js';
 import { useDraft, createFrameThrottle, SETTLE_MS } from '../draft.js';
 import { FIXTURE_GROUPS } from '../../src/shared/stage.ts';
@@ -108,7 +108,7 @@ function FixtureCard({ fix, state }) {
           }}
           onBlur={(e) => emitFixture({ id: fix.id, label: e.target.textContent.trim() })}
         >{fix.label}</span>
-        {hasNoAddress(fix) ? <span class="fixture-addr fixture-hue" title={`Channel #${fix.output.channel} of the Hue bridge "${hueBridgeLabel(state.hueBridges, fix.output.bridge)}", never on DMX`}>Hue</span> : (
+        {hasNoAddress(fix) ? <span class="fixture-addr fixture-hue" title={patchedAt(fix, state.hueBridges)}>{fix.output.protocol === 'hue' ? 'Hue' : fix.output.protocol === 'ddp' ? 'WLED' : 'OpenRGB'}</span> : (
         <span class="fixture-addr" title="Universe / DMX address">
           <input
             class="fixture-universe"

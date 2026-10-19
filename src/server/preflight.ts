@@ -5,11 +5,11 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 
 import { state, universeOf, wireUniverses, countUniverses } from './state.ts';
+import { hueChannels } from '../shared/hue-lamp.ts';
 import { getProfile } from './profiles.ts';
 import { fitIssue, footprintOf, overlaps, hasNoAddress } from '../shared/placement.ts';
 import { ddpRoutes } from './ddp-routes.ts';
 import { openrgbRoutes } from './openrgb-routes.ts';
-import type { Fixture } from '../types/rig.ts';
 import { MAX_UNIVERSES } from './universes.ts';
 import { settings } from './settings.ts';
 import type { Settings } from './settings.ts';
@@ -27,7 +27,7 @@ import { openrgbOutputOf } from './openrgb-routes.ts';
 import { unitCount } from '../shared/rig.ts';
 import type { WledClient } from './wled.ts';
 import type { OpenRgbClient } from './openrgb.ts';
-import type { DdpOutput } from '../types/rig.ts';
+import type { DdpOutput, Fixture } from '../types/rig.ts';
 import { cues } from './cues.ts';
 import { midiMap } from './midi-map.ts';
 import * as pythonEnv from '../python-env.ts';
@@ -516,107 +516,115 @@ async function checkHue(): Promise<Check[]> {
 }
 
 /** One bridge: there, its area still there, every lamp of it one of the area's channels. */
-async function checkHueBridge(bridge: Settings['hue']['bridges'][number], lamps: typeof state.fixtures): Promise<Check> {
-  const id = `hue:${bridge.id}`;
-  const name = bridge.label || bridge.id;
-  const label = `Philips Hue — ${name}`;
-  const channelOf = (f: (typeof lamps)[number]) => (f.output?.protocol === 'hue' ? f.output.channel : -1);
-  if (!bridge.enabled) {
-    return lamps.length ? {
-      id, label, status: WARN,
-      detail: `${lamps.length} lamp${lamps.length === 1 ? ' is' : 's are'} in the patch, but the bridge's output is off, so `
-        + `${lamps.length === 1 ? 'it stays' : 'they stay'} dark.`,
-      fix: `Turn "${name}" on in Rig → Outputs → Philips Hue, or remove its lamps from the patch.`,
-    } : {
-      id, label, status: INFO,
-      detail: `Off. Turn "${name}" on in Rig → Outputs → Philips Hue to drive its lamps from the show.`,
-    };
-  }
-
-  const missing = [];
-  if (!bridge.host) missing.push('bridge address');
-  if (!bridge.username || !bridge.clientKey) missing.push('pairing');
-  if (!bridge.entertainmentId) missing.push('entertainment area');
-  if (missing.length) {
-    return {
-      id, label, status: FAIL,
-      detail: `"${name}" is on but the ${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not set up.`,
-      fix: 'Open Rig → Outputs → Philips Hue, press the bridge\'s link button to pair, then pick an area.',
-    };
-  }
-
-  if (!lamps.length) {
-    return {
-      id, label, status: WARN,
-      detail: `Paired with "${name}" at ${bridge.host}, but none of its lamps is in the patch, so nothing of it will light.`,
-      fix: 'Add the area\'s lamps in Rig → Outputs → Philips Hue.',
-    };
-  }
-
-  const seen = new Map<number, string>();
-  for (const lamp of lamps) {
-    const other = seen.get(channelOf(lamp));
-    if (other) {
-      return {
-        id, label, status: WARN,
-        detail: `"${lamp.label}" and "${other}" are both channel ${channelOf(lamp)} of "${name}"; only "${other}" is shown.`,
-        fix: 'Remove one of them from the patch.',
-      };
+async function checkHueBridge(bridge: Settings['hue']['bridges'][number], lamps: typeof state.fixtures, listAreas = listEntertainmentConfigs): Promise<Check> {
+    const id = `hue:${bridge.id}`;
+    const name = bridge.label || bridge.id;
+    const label = `Philips Hue — ${name}`;
+    const channelsOf = (f: (typeof lamps)[number]) => (f.output?.protocol === 'hue' ? hueChannels(f.output) : []);
+    if (!bridge.enabled) {
+        return lamps.length ? {
+            id, label, status: WARN,
+            detail: `${lamps.length} lamp${lamps.length === 1 ? ' is' : 's are'} in the patch, but the bridge's output is off, so `
+                + `${lamps.length === 1 ? 'it stays' : 'they stay'} dark.`,
+            fix: `Turn "${name}" on in Rig → Outputs → Philips Hue, or remove its lamps from the patch.`,
+        } : {
+            id, label, status: INFO,
+            detail: `Off. Turn "${name}" on in Rig → Outputs → Philips Hue to drive its lamps from the show.`,
+        };
     }
-    seen.set(channelOf(lamp), lamp.label);
-  }
-
-  // A bridge that does not answer is a warning rather than a failure: the
-  // rest of the rig, and the other bridges, still run, and it is named so the
-  // operator knows which one to go and look at.
-  let areas;
-  try {
-    areas = await listEntertainmentConfigs(bridge.host, bridge.username);
-  } catch (err) {
+    const missing = [];
+    if (!bridge.host)
+        missing.push('bridge address');
+    if (!bridge.username || !bridge.clientKey)
+        missing.push('pairing');
+    if (!bridge.entertainmentId)
+        missing.push('entertainment area');
+    if (missing.length) {
+        return {
+            id, label, status: FAIL,
+            detail: `"${name}" is on but the ${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not set up.`,
+            fix: 'Open Rig → Outputs → Philips Hue, press the bridge\'s link button to pair, then pick an area.',
+        };
+    }
+    if (!lamps.length) {
+        return {
+            id, label, status: WARN,
+            detail: `Paired with "${name}" at ${bridge.host}, but none of its lamps is in the patch, so nothing of it will light.`,
+            fix: 'Add the area\'s lamps in Rig → Outputs → Philips Hue.',
+        };
+    }
+    const seen = new Map<number, string>();
+    for (const lamp of lamps) {
+        for (const channel of channelsOf(lamp)) {
+            const other = seen.get(channel);
+            if (other) {
+                return {
+                    id, label, status: WARN,
+                    detail: `"${lamp.label}" and "${other}" are both on channel ${channel} of "${name}"; only "${other}" is shown there.`,
+                    fix: 'Remove one of them from the patch.',
+                };
+            }
+            seen.set(channel, lamp.label);
+        }
+    }
+    let areas;
+    try {
+        areas = await listAreas(bridge.host, bridge.username);
+    }
+    catch (err) {
+        return {
+            id, label, status: WARN,
+            detail: `Cannot reach "${name}" at ${bridge.host} — ${messageOf(err)}`,
+            fix: 'Check the bridge is powered and on this network, and that its IP has not changed.',
+        };
+    }
+    const area = areas.find((a) => a.id === bridge.entertainmentId);
+    if (!area) {
+        return {
+            id, label, status: FAIL,
+            detail: `"${name}" at ${bridge.host} has no entertainment area ${bridge.entertainmentId} any more.`,
+            fix: 'It was probably renamed or rebuilt in the Hue app. Pick the area again in Rig → Outputs → Philips Hue.',
+        };
+    }
+    const areaChannels = new Set(area.channels.map((c) => c.id));
+    const stray = lamps.filter((f) => channelsOf(f).some((ch) => !areaChannels.has(ch)));
+    if (stray.length) {
+        const absent = (f: (typeof lamps)[number]) => channelsOf(f).filter((ch) => !areaChannels.has(ch)).map((ch) => `#${ch}`).join(', ');
+        return {
+            id, label, status: WARN,
+            detail: `"${area.name}" has no channel ${stray.map((f) => `${absent(f)} for "${f.label}"`).join('; ')}, `
+                + `so ${stray.length === 1 ? 'that stays' : 'those stay'} dark.`,
+            fix: 'The area was probably changed in the Hue app. Remove those lamps and add them again from Rig → Outputs → Philips Hue.',
+        };
+    }
+    const resectioned = lamps.filter((f) => {
+        if (getProfile(f).hue?.legacy || getProfile(f).hue?.partial || f.output?.protocol === 'hue' && f.output.channel !== undefined) return false;
+        const channels = channelsOf(f);
+        const lamp = area.lamps?.find((l) => l.channels.includes(channels[0]));
+        return lamp && (lamp.channels.length !== channels.length || lamp.channels.some((ch, k) => ch !== channels[k]));
+    });
+    if (resectioned.length) {
+        return {
+            id, label, status: WARN,
+            detail: `${resectioned.map((f) => `"${f.label}"`).join(', ')} ${resectioned.length === 1 ? 'has' : 'have'} different sections `
+                + `in "${area.name}" now than when ${resectioned.length === 1 ? 'it was' : 'they were'} patched.`,
+            fix: 'Remove those lamps and add them again from Rig → Outputs → Philips Hue.',
+        };
+    }
+    const live = output.getHueStatus().find((s) => s.id === bridge.id);
+    if (live && live.status === 'failed') {
+        return {
+            id, label, status: WARN,
+            detail: `"${area.name}" on "${name}" is set up correctly, but the last stream attempt failed — ${live.error}.`,
+            fix: 'A bridge only allows one entertainment stream at a time. Close the Hue app\'s sync or any other tool streaming to it.',
+        };
+    }
+    const left = (area.lamps || []).filter((l) => !l.channels.some((ch) => seen.has(ch))).length;
     return {
-      id, label, status: WARN,
-      detail: `Cannot reach "${name}" at ${bridge.host} — ${messageOf(err)}`,
-      fix: 'Check the bridge is powered and on this network, and that its IP has not changed.',
+        id, label, status: OK,
+        detail: `"${area.name}" on "${name}" at ${bridge.host}: ${lamps.map((f) => f.label).join(', ')}`
+            + `${left > 0 ? `; ${left} of its lamp${left === 1 ? ' is' : 's are'} not in the patch` : ''}.`,
     };
-  }
-
-  const area = areas.find((a) => a.id === bridge.entertainmentId);
-  if (!area) {
-    return {
-      id, label, status: FAIL,
-      detail: `"${name}" at ${bridge.host} has no entertainment area ${bridge.entertainmentId} any more.`,
-      fix: 'It was probably renamed or rebuilt in the Hue app. Pick the area again in Rig → Outputs → Philips Hue.',
-    };
-  }
-
-  // A channel the area does not define is accepted by the bridge and quietly
-  // ignored, so it would never surface as an error at show time.
-  const areaChannels = new Set(area.channels.map((c) => c.id));
-  const stray = lamps.filter((f) => !areaChannels.has(channelOf(f)));
-  if (stray.length) {
-    return {
-      id, label, status: WARN,
-      detail: `"${area.name}" has no channel for ${stray.map((f) => `"${f.label}" (#${channelOf(f)})`).join(', ')}, `
-        + `so ${stray.length === 1 ? 'it stays' : 'they stay'} dark.`,
-      fix: 'The area was probably changed in the Hue app. Remove those lamps and add them again from Rig → Outputs → Philips Hue.',
-    };
-  }
-
-  const live = output.getHueStatus().find((s) => s.id === bridge.id);
-  if (live && live.status === 'failed') {
-    return {
-      id, label, status: WARN,
-      detail: `"${area.name}" on "${name}" is set up correctly, but the last stream attempt failed — ${live.error}.`,
-      fix: 'A bridge only allows one entertainment stream at a time. Close the Hue app\'s sync or any other tool streaming to it.',
-    };
-  }
-
-  const left = area.channels.length - lamps.length;
-  return {
-    id, label, status: OK,
-    detail: `"${area.name}" on "${name}" at ${bridge.host}: ${lamps.map((f) => f.label).join(', ')}`
-      + `${left > 0 ? `; ${left} of its channel${left === 1 ? ' is' : 's are'} not in the patch` : ''}.`,
-  };
 }
 
 function checkPatch(): Check {
@@ -639,7 +647,7 @@ function checkPatch(): Check {
   }
 
   const universes = wireUniverses();
-  const hueOnly = state.fixtures.filter(hasNoAddress).length;
+  const devices = state.fixtures.filter(hasNoAddress);
   const spanned = countUniverses(state.fixtures);
   if (spanned > MAX_UNIVERSES) {
     problems.push(`the patch spans ${spanned} universes, more than the ${MAX_UNIVERSES} rendered`);
@@ -655,10 +663,20 @@ function checkPatch(): Check {
 
   return {
     id: 'patch', label: 'Fixture patch', status: OK,
-    detail: `${state.fixtures.length - hueOnly} fixture${state.fixtures.length - hueOnly === 1 ? '' : 's'} `
+    detail: `${state.fixtures.length - devices.length} fixture${state.fixtures.length - devices.length === 1 ? '' : 's'} `
       + `on universe${universes.length === 1 ? '' : 's'} ${universes.join(', ')}, no overlaps`
-      + `${hueOnly ? `, and ${hueOnly} Hue lamp${hueOnly === 1 ? '' : 's'} with no DMX address` : ''}.`,
+      + `${devices.length ? `, and ${deviceCounts(devices)} with no DMX address` : ''}.`,
   };
+}
+
+/** The fixtures sent to devices of their own, counted by kind: "2 Hue lamps and 1 WLED". */
+function deviceCounts(fixtures: readonly Fixture[]): string {
+  const kinds: [string, string, string][] = [['hue', 'Hue lamp', 'Hue lamps'], ['ddp', 'WLED', 'WLEDs'], ['openrgb', 'OpenRGB device', 'OpenRGB devices']];
+  const parts = kinds.map(([protocol, one, many]) => {
+    const n = fixtures.filter((f) => f.output?.protocol === protocol).length;
+    return n ? `${n} ${n === 1 ? one : many}` : null;
+  }).filter((part): part is string => part !== null);
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0];
 }
 
 function checkPython(): Check {

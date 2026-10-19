@@ -24,6 +24,7 @@ import { meanLightRGB, roomViews, STAGE_FOV } from './world.js';
 
 const BG = 0x050507;
 const OFF = 0.035;      // what an unlit lens or cell shows: its shape, not a light
+const DAMPING = 0.08;
 
 const BEAM_VERTEX = /* glsl */`
   varying vec3 vColor;
@@ -118,14 +119,18 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
   renderer.setClearColor(BG, 1);
 
   const scene = new THREE.Scene();
+  let dirty = true;
+  let lastLights = null;
+  const invalidate = () => { dirty = true; };
   scene.fog = new THREE.FogExp2(BG, 0.03);
   const camera = new THREE.PerspectiveCamera(STAGE_FOV, 1, 0.1, 200);
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
-  controls.dampingFactor = 0.08;
+  controls.dampingFactor = DAMPING;
   controls.maxPolarAngle = Math.PI / 2 - 0.02;
   controls.minDistance = 2;
   controls.maxDistance = 45;
+  controls.addEventListener('change', invalidate);
 
   // ── The room ──
   const disposables = [];
@@ -164,6 +169,7 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
   }
 
   function setCutaway(value) {
+    invalidate();
     cutaway = value;
     for (const { mesh, model } of roomWalls) {
       const height = value ? Math.min(0.9, model.size.y) : model.size.y;
@@ -173,6 +179,7 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
   }
 
   function setRoom(model) {
+    invalidate();
     if (roomGroup) scene.remove(roomGroup);
     for (const resource of roomDisposables) resource.dispose();
     roomDisposables = [];
@@ -255,7 +262,9 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
   const glowMap = keep(glowTexture());
   const glowMaterial = (size) => keep(new THREE.PointsMaterial({
     size, map: glowMap, vertexColors: true, transparent: true, depthWrite: false,
-    blending: THREE.AdditiveBlending, sizeAttenuation: true,
+    // Bound overlapping halos so adding strip sections cannot turn their colour white.
+    blending: THREE.CustomBlending, blendEquation: THREE.MaxEquation,
+    blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, premultipliedAlpha: true, sizeAttenuation: true,
   }));
   const lampGlowMaterial = glowMaterial(1.1);
   const cellGlowMaterial = glowMaterial(0.5);
@@ -301,6 +310,8 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
 
   /** Build the rig from placeRig(): its lamps, beams, pools, cells and trusses. */
   function setRig(placed, unitCount) {
+    invalidate();
+    lastLights = null;
     if (rigGroup) {
       scene.remove(rigGroup);
       rigGroup.traverse((o) => { if (o.isInstancedMesh) o.dispose(); });
@@ -331,7 +342,7 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
       lenses.setMatrixAt(k, tmpM);
       tmpM.compose(new THREE.Vector3(par.position.x, par.position.y, par.position.z), tmpQ, tmpS.set(par.radius, par.length, par.radius));
       beams.setMatrixAt(k, tmpM);
-      const poolRadius = par.radius * (par.aim.y < 0 ? 1.35 / Math.max(0.35, -par.aim.y) : 0);
+      const poolRadius = par.poolRadius;
       tmpM.compose(new THREE.Vector3(par.end.x, 0.006, par.end.z), new THREE.Quaternion(), tmpS.set(poolRadius || 0.0001, 1, poolRadius || 0.0001));
       pools.setMatrixAt(k, tmpM);
       lampGlow.geometry.attributes.position.setXYZ(k, par.position.x + aim.x * 0.05, par.position.y + aim.y * 0.05, par.position.z + aim.z * 0.05);
@@ -365,20 +376,27 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
   const sourceRGB = new Float32Array(3);
   /** Colour every light from a frame: one emitter set per unit of the rig. */
   function setLights(frame) {
-    if (!parts || !frame) return;
+    if (!parts || !frame || frame === lastLights) return;
+    lastLights = frame;
     const { pars, bulbs, cells, lenses, beams, pools, bulbMesh, cellMesh, lampGlow, cellGlow } = parts;
+    const changed = new Set();
+    const write = (attr, k, r, g, b) => {
+      const at = k * 3;
+      r = Math.fround(r); g = Math.fround(g); b = Math.fround(b);
+      if (attr.array[at] === r && attr.array[at + 1] === g && attr.array[at + 2] === b) return;
+      attr.array[at] = r; attr.array[at + 1] = g; attr.array[at + 2] = b;
+      changed.add(attr);
+    };
     const put = (attr, k, level) => {
-      attr.array[k * 3] = Math.max(OFF, rgb[0] * level);
-      attr.array[k * 3 + 1] = Math.max(OFF, rgb[1] * level);
-      attr.array[k * 3 + 2] = Math.max(OFF, rgb[2] * level);
+      const off = Math.max(rgb[0], rgb[1], rgb[2]) === 0;
+      write(attr, k, off ? OFF : rgb[0] * level, off ? OFF : rgb[1] * level, off ? OFF : rgb[2] * level);
     };
     const glow = (attr, k, level) => {
-      attr.array[k * 3] = rgb[0] * level;
-      attr.array[k * 3 + 1] = rgb[1] * level;
-      attr.array[k * 3 + 2] = rgb[2] * level;
+      write(attr, k, rgb[0] * level, rgb[1] * level, rgb[2] * level);
     };
     pars.forEach((par, k) => {
-      lightRGB(frame[par.unit], rgb);
+      if (par.sources) meanLightRGB(par.sources, frame, rgb, sourceRGB);
+      else lightRGB(frame[par.unit], rgb);
       put(lenses.instanceColor, k, 1);
       glow(beams.instanceColor, k, 1);
       glow(pools.instanceColor, k, 1);
@@ -391,16 +409,17 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
       glow(lampGlow.geometry.attributes.color, pars.length + k, 1);
     });
     cells.forEach((cell, k) => {
-      lightRGB(frame[cell.unit], rgb);
+      if (cell.sources) meanLightRGB(cell.sources, frame, rgb, sourceRGB);
+      else lightRGB(frame[cell.unit], rgb);
       put(cellMesh.instanceColor, k, 1);
       glow(cellGlow.geometry.attributes.color, k, 0.8);
     });
-    for (const mesh of [lenses, beams, pools, bulbMesh, cellMesh]) mesh.instanceColor.needsUpdate = true;
-    lampGlow.geometry.attributes.color.needsUpdate = true;
-    cellGlow.geometry.attributes.color.needsUpdate = true;
+    for (const attr of changed) attr.needsUpdate = true;
+    if (changed.size) invalidate();
   }
 
   function setHaze(value) {
+    invalidate();
     const v = Math.max(0, Math.min(1, value));
     beamMaterial.uniforms.uHaze.value = v * 0.55;
     scene.fog.density = 0.012 + v * 0.03;
@@ -429,6 +448,7 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
   }
 
   function resize() {
+    invalidate();
     const box = canvas.parentElement ? canvas.parentElement.getBoundingClientRect() : canvas.getBoundingClientRect();
     const w = Math.max(1, Math.round(box.width));
     const h = Math.max(1, Math.round(box.height));
@@ -443,11 +463,13 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
     if (!image) {
       for (const screen of screens) {
         if (!screen.material.map) continue;
+        invalidate();
         screen.material.map = null; screen.material.color.set(screen.color); screen.material.needsUpdate = true;
       }
       return;
     }
     if (!screens.length) return;
+    invalidate();
     const { width, height, data } = image;
     if (!screenTexture || screenTexture.image.width !== width || screenTexture.image.height !== height) {
       if (screenTexture) screenTexture.dispose();
@@ -468,8 +490,16 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
     }
   }
 
+  let lastRenderAt = performance.now();
   function render() {
+    const now = performance.now();
+    // Preserve the 60 Hz decay per elapsed millisecond; pointer updates keep their normal factor.
+    controls.dampingFactor = 1 - (1 - DAMPING) ** ((now - lastRenderAt) * 60 / 1000);
     controls.update();
+    controls.dampingFactor = DAMPING;
+    lastRenderAt = now;
+    if (!dirty) return;
+    dirty = false;
     renderer.render(scene, camera);
   }
 

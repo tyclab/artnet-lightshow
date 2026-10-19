@@ -1,20 +1,21 @@
 const acceptedCodes = new Set(['DISARMED', 'BUSY', 'INVALID', 'RATE_LIMIT', 'NO_LEASE', 'ACKNOWLEDGEMENT_REQUIRED', 'STALE']);
+const sleep = ms => new Promise(resolve => setTimeout(resolve, Math.ceil(ms)));
 
 /** The curtain panel's wire protocol: one fixture, a row-major RGB grid. */
 export const panelProtocol = {
   events: { claim: 'pixel-input:claim', frame: 'pixel-input:frame', release: 'pixel-input:release' },
   claim: (pump) => ({ fixtureId: pump.fixtureId, width: pump.width, height: pump.height }),
-  accepts: (pump, response) => response.format === 'rgb24' && response.order === 'row-major' && response.ttlMs === 2000 && Number.isFinite(response.maxFps) && response.maxFps >= 10,
+  accepts: (pump, response) => response.format === 'rgb24' && response.order === 'row-major' && response.ttlMs === 2000 && Number.isFinite(response.maxFps) && response.maxFps >= 1,
   frame: (pump, lease, data) => ({ fixtureId: pump.fixtureId, leaseId: lease.id, data }),
   release: (pump, lease) => ({ fixtureId: pump.fixtureId, leaseId: lease.id }),
   image: (pump, image) => image && image.width === pump.width && image.height === pump.height && image.data instanceof Uint8Array && image.data.length === pump.width * pump.height * 3 ? image.data : null,
 };
 
 export class LeasePump {
-  constructor({ transport, capture, target, fixtureId, width, height, fps = 10, now = () => performance.now(), report = () => {}, protocol = panelProtocol }) {
-    Object.assign(this, { transport, capture, target, fixtureId, width, height, fps, now, report, protocol });
+  constructor({ transport, capture, target, fixtureId, width, height, fps = 44, now = () => performance.now(), wait = sleep, report = () => {}, protocol = panelProtocol }) {
+    Object.assign(this, { transport, capture, target, fixtureId, width, height, fps, now, wait, report, protocol });
     this.generation = 0; this.lease = null; this.busy = false; this.retryAt = 0; this.failures = 0; this.frames = 0; this.stopped = false;
-    this.nextCaptureAt = 0;
+    this.nextCaptureAt = 0; this.nextSendAt = 0;
   }
   async release(lease, connectionId) {
     if (!lease || !this.transport.connected || this.transport.id !== connectionId) return;
@@ -40,6 +41,7 @@ export class LeasePump {
     const target = this.target();
     if (!this.transport.connected || !target.ok) {
       await this.invalidate();
+      this.nextCaptureAt = this.now() + 250;
       this.report(this.transport.connected ? target.reason : 'Lightshow disconnected');
       return;
     }
@@ -66,6 +68,12 @@ export class LeasePump {
       if (this.now() - captureStarted > 500) throw new Error('Captured frame is stale');
       const data = this.protocol.image(this, image, this.lease);
       if (!data) throw new Error('Invalid captured pixels');
+      const delay = this.nextSendAt - this.now();
+      if (delay > 0) await this.wait(delay);
+      if (!this.valid(generation, connectionId, key)) { await this.invalidate(); return; }
+      if (this.now() - captureStarted > 500) throw new Error('Captured frame is stale');
+      const period = 1000 / Math.min(this.fps, this.lease.claim.maxFps);
+      this.nextSendAt = this.now() + period;
       const response = await this.transport.request(this.protocol.events.frame, this.protocol.frame(this, this.lease, data));
       if (!this.valid(generation, connectionId, key)) { await this.invalidate(); return; }
       if (!response?.ok) {
@@ -73,7 +81,7 @@ export class LeasePump {
         this.backoff(acceptedCodes.has(response?.code) ? response.code : 'Pixel frame rejected');
         return;
       }
-      this.nextCaptureAt = this.now() + 1000 / this.fps;
+      this.nextCaptureAt = Math.max(captureStarted + period, this.now());
       this.failures = 0; this.frames++; this.report('Streaming');
     } catch {
       await this.invalidate();

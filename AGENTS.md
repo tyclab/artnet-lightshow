@@ -1,6 +1,6 @@
 # Repository instructions
 
-ArtNet Lightshow runs a Node/TypeScript lighting server, a Preact browser client
+Tyclab Lightshow runs a Node/TypeScript lighting server, a Preact browser client
 and an optional Python audio-analysis pipeline. Read README.md for operator
 controls, protocols and deployment; keep it consistent with the implementation.
 

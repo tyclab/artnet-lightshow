@@ -155,8 +155,12 @@ function createTransmitter({ wires = DEFAULT_WIRES, now = () => performance.now(
   function send(universe: number, frame: Buffer, config: TransmitConfig,
     { immediate = false, terminate = false }: SendOptions = {}): Wire[] {
     const sent: Wire[] = [];
+
     if (!syncArmed(config)) return sent;
-    if (isInternalUniverse(universe)) return sent;
+
+    const toWled = ddpUniverses(config.ddp)?.has(universe) ?? false;
+    const toOpenRgb = openrgbUniverses(config.openrgb)?.has(universe) ?? false;
+    if (!toWled && !toOpenRgb && isInternalUniverse(universe)) return sent;
     if (!immediate && config.delayMs > 0) {
       const ready = delayedFrame(universe, frame, config.delayMs);
       if (!ready) return sent;
@@ -165,16 +169,15 @@ function createTransmitter({ wires = DEFAULT_WIRES, now = () => performance.now(
       delayLine.delete(universe);
     }
 
-    const toWled = ddpUniverses(config.ddp);
-    if (toWled && toWled.has(universe)) {
-      ddpFrames.set(universe, frame);
-      sent.push('ddp');
-      return sent;
-    }
-    const toOpenRgb = openrgbUniverses(config.openrgb);
-    if (toOpenRgb && toOpenRgb.has(universe)) {
-      openrgbFrames.set(universe, frame);
-      sent.push('openrgb');
+    if (toWled || toOpenRgb) {
+      if (toWled) {
+        ddpFrames.set(universe, frame);
+        sent.push('ddp');
+      }
+      if (toOpenRgb) {
+        openrgbFrames.set(universe, frame);
+        sent.push('openrgb');
+      }
       return sent;
     }
 
@@ -302,7 +305,10 @@ function createTransmitter({ wires = DEFAULT_WIRES, now = () => performance.now(
     }
     for (const group of byWled.values()) {
       if (!group.every((route) => route.parts.every((part) => ddpFrames.has(part.universe)))) continue;
-      const data = new Uint8Array(group.reduce((sum, route) => sum + ledBytes(route), 0));
+      // One frame has one pixel format; RGB sections keep their colours with an unlit white die.
+      const rgbw = group.some((route) => route.rgbw);
+      const width = rgbw ? 4 : 3;
+      const data = new Uint8Array(group.reduce((sum, route) => sum + ledBytes(route, width), 0));
       const runs: DdpRun[] = [];
       let at = 0;
       for (const route of group) {
@@ -313,12 +319,16 @@ function createTransmitter({ wires = DEFAULT_WIRES, now = () => performance.now(
           own.set(frame.subarray(part.from, part.from + part.bytes), cursor);
           cursor += part.bytes;
         }
-        const leds = route.spread ? spreadPixels(own, route.rgbw ? 4 : 3, route.spread) : own;
-        data.set(leds, at);
-        runs.push(...byteRuns(route, at));
-        at += leds.length;
+        const nativeWidth = route.rgbw ? 4 : 3;
+        const leds = route.spread ? spreadPixels(own, nativeWidth, route.spread) : own;
+        if (nativeWidth === width) data.set(leds, at);
+        else for (let from = 0, to = at; from < leds.length; from += 3, to += 4) {
+          data[to] = leds[from]; data[to + 1] = leds[from + 1]; data[to + 2] = leds[from + 2];
+        }
+        runs.push(...byteRuns(route, at, width));
+        at += leds.length / nativeWidth * width;
       }
-      sendToWled(group[0], data, runs);
+      sendToWled({ ...group[0], rgbw }, data, runs);
     }
     for (const [key, gone] of ddpSent) {
       if (!now.has(key)) sendToWled(gone.route, new Uint8Array(gone.bytes), byteRuns(gone.route, 0));
@@ -357,13 +367,12 @@ function createTransmitter({ wires = DEFAULT_WIRES, now = () => performance.now(
     }
   }
 
-  function ledBytes(route: DdpRoute): number {
-    if (route.spread) return route.spread.leds * (route.rgbw ? 4 : 3);
-    return route.parts.reduce((sum, part) => sum + part.bytes, 0);
+  function ledBytes(route: DdpRoute, width = route.rgbw ? 4 : 3): number {
+    if (route.spread) return route.spread.leds * width;
+    return route.parts.reduce((sum, part) => sum + part.bytes, 0) / (route.rgbw ? 4 : 3) * width;
   }
 
-  function byteRuns(route: DdpRoute, from: number): DdpRun[] {
-    const width = route.rgbw ? 4 : 3;
+  function byteRuns(route: DdpRoute, from: number, width = route.rgbw ? 4 : 3): DdpRun[] {
     const out: DdpRun[] = [];
     let cursor = from;
     for (const run of route.runs) {

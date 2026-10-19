@@ -4,15 +4,15 @@
 	"id": "artnet-lightshow",
 	"name": "artnet-lightshow",
 	"shortname": "lightshow",
-	"description": "Busk the ArtNet Lightshow server: palettes, patterns and pixel effects, momentary holds, cues, tempo and the auto show",
+	"description": "Busk the Tyclab Lightshow server: palettes, patterns and pixel effects, momentary holds, cues, tempo and the auto show",
 	"version": "0.0.0",
 	"license": "MIT",
-	"repository": "git+https://github.com/LightD31/artnet-lightshow.git",
-	"bugs": "https://github.com/LightD31/artnet-lightshow/issues",
+	"repository": "git+https://github.com/tyclab/artnet-lightshow.git",
+	"bugs": "https://github.com/tyclab/artnet-lightshow/issues",
 	"maintainers": [
 		{
-			"name": "LightD31",
-			"github": "LightD31"
+			"name": "Tyclab",
+			"github": "tyclab"
 		}
 	],
 	"legacyIds": [],
@@ -22,7 +22,7 @@
 		"apiVersion": "0.0.0",
 		"entrypoint": "../src/main.js"
 	},
-	"manufacturer": "LightD31",
-	"products": ["ArtNet Lightshow"],
+	"manufacturer": "Tyclab",
+	"products": ["Tyclab Lightshow"],
 	"keywords": ["artnet", "dmx", "lighting", "lightshow", "par", "busking", "wled"]
 }

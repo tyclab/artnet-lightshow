@@ -3,13 +3,21 @@ import type { ZodType } from 'zod';
 import type { Colour } from '../../types/rig.ts';
 import type { Room } from '../room.ts';
 import { HOLD_BLACK_MS, HOLD_FLASH_MS, HOLD_STROBE_MAX_HZ, HUE_PULSE_FLOOR, HUE_PULSE_MS, holdStrobeDivision, holdStrobeFlash, huePulseLevel } from '../look-math.ts';
+import { DRAWN_STROBE_FUNCTIONS, strobeLevel } from '../strobe-fx.ts';
 import { hash01 } from './hash.ts';
 import { registerKind } from './registry.ts';
 import type { EffectFrame, EffectSlot } from './types.ts';
 
 export { hdAutoStrobeFlash } from './disco.ts';
 
+export const STROBE_FUNCTION_IDS = ['palette', ...DRAWN_STROBE_FUNCTIONS] as [
+    string,
+    ...string[]
+];
+
 export interface StrobeParams {
+  function: string;
+  speed: number;
   flashesPerSecond: number;
   continueBetween: boolean;
   clock: 'wall' | 'beat';
@@ -18,7 +26,7 @@ export interface StrobeParams {
   blackMs: typeof HOLD_BLACK_MS;
 }
 
-export const STROBE_DEFAULTS: StrobeParams = { flashesPerSecond: 2, continueBetween: true, clock: 'beat', brightness: 1, onMs: HOLD_FLASH_MS, blackMs: HOLD_BLACK_MS };
+export const STROBE_DEFAULTS: StrobeParams = { function: 'palette', speed: 128, flashesPerSecond: 2, continueBetween: true, clock: 'beat', brightness: 1, onMs: HOLD_FLASH_MS, blackMs: HOLD_BLACK_MS };
 
 export const STROBE_FRAME_MS = 1000 / 44;
 const CLOCK_SLACK_MS = 1e-6;
@@ -30,6 +38,8 @@ export const WINDOW_FRAMES = Math.round(1000 / STROBE_FRAME_MS);
 export const strobeFrameOf = (nowMs: number): number => Math.round(nowMs / STROBE_FRAME_MS);
 
 export const STROBE_PARAMS_SCHEMA = z.object({
+  function: z.enum(STROBE_FUNCTION_IDS).default('palette'),
+  speed: z.number().int().min(1).max(255).default(128),
   flashesPerSecond: z.number().int().min(1).max(HOLD_STROBE_MAX_HZ),
   continueBetween: z.boolean(),
   clock: z.enum(['wall', 'beat']),
@@ -37,6 +47,17 @@ export const STROBE_PARAMS_SCHEMA = z.object({
   onMs: z.literal(HOLD_FLASH_MS),
   blackMs: z.literal(HOLD_BLACK_MS),
 }).strict();
+export const STROBE_PARAMS_EDIT_SCHEMA = z.object({
+  function: z.enum(STROBE_FUNCTION_IDS),
+  speed: z.number().int().min(1).max(255),
+  flashesPerSecond: z.number().int().min(1).max(HOLD_STROBE_MAX_HZ),
+  continueBetween: z.boolean(),
+  clock: z.enum(['wall', 'beat']),
+  brightness: z.number().min(0).max(1),
+  onMs: z.literal(HOLD_FLASH_MS),
+  blackMs: z.literal(HOLD_BLACK_MS),
+}).partial().strict();
+
 const schema: ZodType<StrobeParams> = STROBE_PARAMS_SCHEMA;
 
 const BLACK: Colour = { r: 0, g: 0, b: 0, w: 0, a: 0, uv: 0 };
@@ -77,8 +98,29 @@ function gridFlash(p: StrobeParams, s: StrobeState, frame: EffectFrame, fps: num
     colour: palette[((flash.index % n) + n) % n] };
 }
 
+export const STROBE_PROGRAM_KIND = 'strobe.program';
+
+const PROGRAM_MIN_MS = 1000 / HOLD_STROBE_MAX_HZ;
+
+function renderProgram(p: StrobeParams, room: Room, frame: EffectFrame, out: EffectSlot[]): void {
+  if (!Number.isFinite(frame.beatPos))
+    return;
+  const palette = frame.palette.length ? frame.palette : [WHITE];
+  for (let i = 0; i < room.n; i++) {
+    const level = strobeLevel(p.function, p.speed, frame.beatPos, frame.bpm, i, PROGRAM_MIN_MS) * p.brightness;
+    if (level > 0)
+      out[i] = { colour: { ...palette[i % palette.length] }, level, strength: 1, kind: STROBE_PROGRAM_KIND };
+    else if (!p.continueBetween)
+      out[i] = { colour: { ...BLACK }, level: 0, strength: 1, kind: STROBE_PROGRAM_KIND };
+  }
+}
+
 function renderStrobe(p: StrobeParams, s: StrobeState, room: Room, frame: EffectFrame, out: EffectSlot[]): void {
   if (!Number.isFinite(frame.nowMs)) return;
+  if (p.function !== 'palette') {
+    renderProgram(p, room, frame, out);
+    return;
+  }
   const fps = rateOf(p.flashesPerSecond);
   const pulse = frame.hueStrobe === 'pulse';
   const frameIndex = strobeFrameOf(frame.nowMs), atMs = frameIndex * STROBE_FRAME_MS;

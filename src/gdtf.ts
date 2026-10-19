@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import { XMLParser } from 'fast-xml-parser';
 import { EMITTERS, MAX_CELLS_PER_FIXTURE } from './shared/rig.ts';
-import { STROBE_FUNCTIONS } from './server/presets.ts';
+import { STANDARD_STROBE } from './server/presets.ts';
 import type { ChannelDefault, ChannelListEntry, ChannelMap, ImportedFixture, ImportedMode } from './types/rig.ts';
 
 type XmlNode = { [key: string]: unknown };
@@ -260,7 +260,7 @@ function describeChannel(ch: XmlDmxChannel, fallbackName: string): { attrName: s
   return { attrName, displayName };
 }
 
-const STANDARD_STROBE = STROBE_FUNCTIONS.find((f) => f.id === 'standard') || STROBE_FUNCTIONS[0];
+
 
 function dmxValue(raw: unknown, width: number): number | null {
   if (raw === undefined || raw === null) return null;

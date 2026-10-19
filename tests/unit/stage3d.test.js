@@ -167,3 +167,62 @@ test('the live frame: a par\'s emitters, each cell of a bar, through their profi
   assert.equal(fixtureLight(fixtures[1], state, { 0: universe }), null, 'a bar is not one light');
   assert.equal(fixtureLight(fixture(2, 'missing'), state, { 0: universe }), null, 'nor is a fixture without its profile');
 });
+
+test('physical beam shape and direction override Hue transport and room grouping', () => {
+  const fixture1 = fixture(0, HUE.id, { group: 'room', output: { protocol: 'hue' },
+    emission: { kind: 'beam', pan: 90, tilt: -30, beamAngle: 40 } });
+  const { room } = placed([fixture1]);
+  const beam = room.lamps[0];
+  assert.equal(beam.kind, 'par');
+  assert.equal(world.hasBeams(room), true);
+  near(beam.aim.x, Math.cos(Math.PI / 6), 'points right');
+  near(beam.aim.y, -.5, 'points below the horizon');
+  near(beam.aim.z, 0, 'no forward component');
+  near(beam.radius, Math.tan(Math.PI / 9) * beam.length, 'full spread is forty degrees');
+});
+
+test('one-channel strips and multi-section Hue strips retain their output unit mapping', () => {
+  const single = placed([fixture(0, HUE.id, { emission: { kind: 'strip' }, geometry: { length: 40, angle: 90 } })]);
+  assert.ok(single.room.cells.length > 1);
+  assert.ok(single.room.cells.every((cell) => cell.unit === 0));
+  assert.ok(single.room.cells[0].position.z < single.room.cells.at(-1).position.z);
+  const multi = placed([fixture(0, BAR.id, { output: { protocol: 'hue' }, emission: { kind: 'strip' } })]);
+  assert.deepEqual(multi.room.cells.map((cell) => cell.unit), [0, 1, 2, 3]);
+});
+
+test('a single-zone strip uses the inspector\'s default length', () => {
+  const strip = fixture(0, HUE.id, { position: { x: 50, y: 50 }, emission: { kind: 'strip' } });
+  const initial = placed([strip]).room.cells;
+  const edited = placed([{ ...strip, geometry: { length: 8, angle: 0 } }]).room.cells;
+  assert.equal(initial.length, 16, 'one output still draws a continuous strip');
+  assert.deepEqual(initial, edited, 'the inspector displays the same default length as Stage');
+});
+
+test('floor pools appear only when a beam reaches the floor', () => {
+  const low = fixture(0, PAR.id, { position: { x: 50, y: 50 }, emission: { kind: 'beam', tilt: -10 } });
+  const distant = placed([low]).room.lamps[0];
+  assert.ok(distant.end.y > 0, 'the shallow ray stops at its range limit');
+  assert.equal(distant.poolRadius, 0);
+
+  const fixtures = [{ ...low, emission: { kind: 'beam', pan: 90, tilt: -10 } }];
+  const rig = buildRig(fixtures, () => PAR);
+  const room = { bounds: { width: 4, depth: 4, height: 3 },
+    bindings: [{ fixtureId: 0, position: { x: 0, y: 2, z: 0 } }] };
+  const wall = world.roomRig(fixtures, rig, room).lamps[0];
+  near(wall.end.x, 2, 'the ray meets the wall');
+  assert.ok(wall.end.y > 1);
+  assert.equal(wall.poolRadius, 0, 'no detached glow beneath the wall hit');
+
+  fixtures[0].emission.tilt = -60;
+  const floor = world.roomRig(fixtures, rig, room).lamps[0];
+  near(floor.end.y, 0, 'the steep ray meets the floor first');
+  assert.ok(floor.poolRadius > 0);
+});
+
+test('multi-cell fixtures can emit separate beams without changing the rendered cell layout', () => {
+  const { room, rig } = placed([fixture(0, BAR.id, { emission: { kind: 'beam', pan: 0, tilt: -90 } })]);
+  assert.equal(rig.units.length, 4);
+  assert.equal(room.cells.length, 0);
+  assert.equal(room.lamps.length, 4);
+  assert.deepEqual(room.lamps.map((lamp) => lamp.unit), [0, 1, 2, 3]);
+});

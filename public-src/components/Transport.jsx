@@ -44,7 +44,7 @@ export function Transport({ initial, compact = false, prefer = null } = {}) {
   const loadedId = status?.loaded?.id || '';
   const revision = status?.revision || 0;
   useEffect(() => {
-    if (initial || compact || driver !== 'sequence') return;
+    if (initial?.sequence || compact || driver !== 'sequence') return;
     if (!loadedId) { setSequence(null); return; }
     let live = true;
     api('/api/sequence').then((res) => { if (live && res.ok) setSequence(res.sequence || null); });

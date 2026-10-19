@@ -1,3 +1,4 @@
+import { hueChannels } from '../../shared/hue-lamp.ts';
 import net from 'node:net';
 import { z } from 'zod';
 
@@ -83,7 +84,8 @@ const openrgbIdentifySchema = z.object({
 }).strict();
 
 const hueIdentifySchema = z.object({
-  channel: z.number().int().min(0).max(255),
+  channel: z.number().int().min(0).max(255).optional(),
+  lamp: z.string().min(1).max(128).optional(),
   seconds,
 }).strict();
 
@@ -233,16 +235,20 @@ function attachIdentifyRoutes(app: Express, deps: IdentifyRouteDeps): void {
     try {
       const body = validate(hueIdentifySchema, req.body || {}, 'Hue identify');
       const secs = identifySeconds(body.seconds);
+      if ((body.channel === undefined) === (body.lamp === undefined)) return res.status(400).json({ ok: false, error: 'Choose one lamp or legacy channel' });
       const bridge = resolveHueBridge(req, res);
       if (!bridge) return;
       if (!bridge.host || !bridge.username) return res.status(409).json({ ok: false, error: `Pair with "${bridge.label || bridge.id}" first.` });
-      const lamp = state.fixtures.find((f) => f.output?.protocol === 'hue' && f.output.bridge === bridge.id && f.output.channel === body.channel);
-      if (lamp) return res.json({ ok: true, via: 'fixture', ...start([lamp.id], secs) });
+      const patched = body.channel === undefined ? null : state.fixtures.find((f) => f.output?.protocol === 'hue' && f.output.bridge === bridge.id && hueChannels(f.output).includes(body.channel!));
+      if (patched) return res.json({ ok: true, via: 'fixture', ...start([patched.id], secs) });
       const areas = await hueAreas(bridge.host, bridge.username);
       const area = areas.find((a) => a.id === bridge.entertainmentId) || null;
-      const channel = area ? area.channels.find((c) => c.id === body.channel) : null;
-      if (!channel) return res.status(404).json({ ok: false, error: `Channel ${body.channel} is not in the entertainment area of "${bridge.label || bridge.id}"` });
-      const lamps = secs > 0 ? await hueIdentify(bridge.host, bridge.username, channel.devices || []) : 0;
+      const found = body.lamp ? area?.lamps.find((lamp) => lamp.id === body.lamp) : area?.channels.find((channel) => channel.id === body.channel);
+      if (!found) return res.status(404).json({ ok: false, error: `Lamp or channel is not in the entertainment area of "${bridge.label || bridge.id}"` });
+      const channels = 'channels' in found ? found.channels : [found.id];
+      const fixtures = state.fixtures.filter((f) => f.output?.protocol === 'hue' && f.output.bridge === bridge.id && hueChannels(f.output).some((channel) => channels.includes(channel)));
+      if (fixtures.length) return res.json({ ok: true, via: 'fixture', ...start(fixtures.map((f) => f.id), secs) });
+      const lamps = secs > 0 ? await hueIdentify(bridge.host, bridge.username, found.devices || []) : 0;
       res.json({ ok: true, via: 'bridge', lamps });
     } catch (err) {
       fail(res, err, 502);

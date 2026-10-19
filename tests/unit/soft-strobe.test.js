@@ -77,18 +77,12 @@ test('a strobing burst flashes it too', () => {
   assert.ok(onsets(lit) >= 5, `${onsets(lit)} flashes in a colour-strobe second`);
 });
 
-test('the random strobe flashes each fixture on its own at the same average rate', () => {
-  const realRandom = Math.random;
-  let seed = 7;
-  Math.random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-  try {
-    const [a, b] = run([fixture(0, 1, BAR.id), fixture(1, 20, BAR.id)], { strobeFunction: 'random' }, 4);
-    const rate = onsets(a) / 4;
-    assert.ok(rate >= 6 && rate <= 20, `${rate} random flashes a second`);
-    assert.notDeepStrictEqual(a, b, 'not in lockstep');
-  } finally {
-    Math.random = realRandom;
-  }
+test('the random strobe flashes each fixture on its own, the same way every time', () => {
+  const [a, b] = run([fixture(0, 1, BAR.id), fixture(1, 20, BAR.id)], { strobeFunction: 'random' }, 4);
+  const rate = onsets(a) / 4;
+  assert.ok(rate >= 4 && rate <= 12, `${rate} random flashes a second`);
+  assert.notDeepStrictEqual(a, b, 'not in lockstep');
+  assert.deepStrictEqual(run([fixture(0, 1, BAR.id)], { strobeFunction: 'random' }, 4)[0], a, 'the dice are the music\'s');
 });
 
 test('without a strobe asked for, nothing is gated', () => {

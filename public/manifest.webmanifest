@@ -1,7 +1,7 @@
 {
-  "name": "ArtNet Lightshow",
-  "short_name": "Lightshow",
-  "description": "Drive an Art-Net, sACN and WLED lighting rig from the music.",
+  "name": "Tyclab Lightshow",
+  "short_name": "Tyclab",
+  "description": "Music-driven control for Art-Net, sACN, WLED, OpenRGB and Philips Hue.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
