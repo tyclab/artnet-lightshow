@@ -1,6 +1,7 @@
 import { transitionFor } from '../show/transition.ts';
 import { presetById } from '../shared/effects/catalogue.ts';
-import { state, getLiveState, getDmxSnapshot, getDmxUniverses, setExtrasProvider, setSequenceProvider, setSequenceRuns, reconcileFreeClock, voices, strobe } from './state.ts';
+import { state, getLiveState, getCatalogs, getDmxSnapshot, getDmxUniverses, setExtrasProvider, setSequenceProvider, setSequenceRuns, reconcileFreeClock, voices, strobe } from './state.ts';
+import { HOLD_STROBE_MAX_HZ } from '../shared/look-math.ts';
 import { createPublisher, ROOM } from './protocol.ts';
 import { encodeDmxFrame } from '../shared/dmx-frame.ts';
 import { setHooks, applyPatch } from './patch.ts';
@@ -116,6 +117,19 @@ function setupIntegrations({ io, midi, spotify, nowPlaying, deezerSource, prolin
       resolve: (id) => library.effects.resolve(id),
     }),
   });
+  midi.setPaletteOverride = (id) => {
+    if (id === null) {
+      applyPatch({ paletteOverride: null });
+      return;
+    }
+    const body = library.palettes.materializeBody(id);
+    if (!body) {
+      console.warn(`[MIDI] palette override: no palette ${id} — it may have been deleted`);
+      return;
+    }
+    applyPatch({ overridePalette: body }, { paletteOverrideId: id });
+  };
+
   midi.pads = {
     press: (bank, slot, owner, token) => pads.press(bank, slot, owner, token),
     renew: (_bank, _slot, owner, token) => voices.renew(owner, token),
@@ -412,6 +426,30 @@ function setupIntegrations({ io, midi, spotify, nowPlaying, deezerSource, prolin
     if (drive && !liveDirector.active) liveDirector.start();
     else if (!drive && liveDirector.active) liveDirector.stop();
   }
+
+  midi.busk = {
+    looks: () => getCatalogs().patterns,
+    palettes: () => [...ALL_PALETTES.map((p) => p.id), ...library.palettes.list().map((p) => p.id)],
+    acknowledged: () => safety.acknowledged(),
+    stopEffects: () => { voices.stopAll(); broadcast(); },
+    strobeBurst: (ms) => { strobe.burst(ms); broadcast(); },
+    strobeRate: () => strobe.status().settings.flashesPerSecond,
+    setStrobeRate: (hz) => { strobe.update({ flashesPerSecond: hz }); broadcast(); },
+    strobeMaxRate: HOLD_STROBE_MAX_HZ,
+    autoShowOn: () => showWanted,
+    toggleAutoShow: () => {
+      if (showWanted) {
+        autoShow.startPending = null;
+        stopAutoShow();
+      } else if (!autoShow.analysis && resolveAutoSource() !== 'live') {
+        console.warn('[MIDI] auto show: no analysis loaded. Analyze a track first, or turn on the live input to play by ear.');
+        return;
+      } else {
+        startAutoShow();
+      }
+      broadcast();
+    },
+  };
 
   function detectors(): Detectors {
     const nowMs = performance.now();

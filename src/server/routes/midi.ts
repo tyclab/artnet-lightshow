@@ -1,4 +1,4 @@
-import { midiMap, ACTIONS, defaultTypeFor, mapSchema, learnSchema, bindingWriteSchema } from '../midi-map.ts';
+import { midiMap, ACTIONS, MIDI_PRESETS, defaultTypeFor, mapSchema, learnSchema, bindingWriteSchema } from '../midi-map.ts';
 import { validate } from '../validation.ts';
 import { connectMidi } from '../midi-connect.ts';
 import { messageOf, statusOf } from '../../errors.ts';
@@ -22,6 +22,7 @@ export function attachMidiRoutes(app: Express, ctx: RouteContext): void {
       ok: true,
       ...midiMap.snapshot(),
       actions: ACTIONS,
+      presets: MIDI_PRESETS.map(({ id, name }) => ({ id, name })),
       learning: midi.learning,
     });
   });
@@ -36,6 +37,15 @@ export function attachMidiRoutes(app: Express, ctx: RouteContext): void {
   app.post('/api/midi/map/reset', (_req, res) => {
     midiMap.reset();
     res.json({ ok: true, ...midiMap.snapshot() });
+  });
+
+  app.post('/api/midi/map/preset/:id', (req, res) => {
+    const preset = MIDI_PRESETS.find((p) => p.id === req.params.id);
+    if (!preset) return res.status(404).json({ ok: false, error: 'Unknown MIDI layout' });
+    try {
+      midiMap.replace(preset.map);
+      res.json({ ok: true, ...midiMap.snapshot() });
+    } catch (err) { res.status(statusOf(err) || 400).json({ ok: false, error: messageOf(err) }); }
   });
 
   app.put('/api/midi/map/binding', (req, res) => {

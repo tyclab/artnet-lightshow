@@ -12,39 +12,53 @@ export interface MidiAction {
 }
 
 const ACTIONS: MidiAction[] = [
-  { id: 'tap',                 label: 'Tap tempo',                   input: 'button' },
-  { id: 'toggleTempoMode',     label: 'Automatic tempo match on / off', input: 'button' },
-  { id: 'togglePlay',          label: 'Play / freeze look',          input: 'button' },
-  { id: 'toggleBlackout',      label: 'Master blackout',             input: 'button' },
-  { id: 'setPattern',          label: 'Select pattern',              input: 'button', param: { key: 'value', kind: 'pattern', label: 'Pattern' } },
-  { id: 'setColorA',           label: 'Set colour slot A',           input: 'button', param: { key: 'value', kind: 'color', label: 'Colour' } },
-  { id: 'setColorB',           label: 'Set colour slot B',           input: 'button', param: { key: 'value', kind: 'color', label: 'Colour' } },
-  { id: 'setColorC',           label: 'Set colour slot C',           input: 'button', param: { key: 'value', kind: 'color', label: 'Colour' } },
-  { id: 'setColorD',           label: 'Set colour slot D',           input: 'button', param: { key: 'value', kind: 'color', label: 'Colour' } },
-  { id: 'setBeatDivision',     label: 'Set beat division',           input: 'button', param: { key: 'value', kind: 'division', label: 'Division' } },
-  { id: 'energyHold',          label: 'Energy override (hold)',      input: 'button', param: { key: 'value', kind: 'energy', label: 'Effect', optional: true } },
-  { id: 'cycleEnergyEffect',   label: 'Cycle the held energy effect', input: 'button' },
-  { id: 'padPress',            label: 'Pad (held while the note is)', input: 'button' },
-  { id: 'cycleStrobeFunction', label: 'Cycle strobe function',       input: 'button' },
-  { id: 'toggleFixBlackout',   label: 'Fixture blackout',            input: 'button', param: { key: 'fixture', kind: 'fixture', label: 'Fixture' } },
-  { id: 'recallCue',           label: 'Recall cue',                  input: 'button', param: { key: 'value', kind: 'cue', label: 'Cue' } },
-  { id: 'setPalette',          label: 'Select palette',              input: 'button', param: { key: 'value', kind: 'palette', label: 'Palette' } },
-
-  { id: 'adjustBpm',           label: 'Nudge BPM',                   input: 'encoder' },
-  { id: 'adjustMasterDimmer',  label: 'Nudge master dimmer',         input: 'encoder' },
-  { id: 'adjustStrobeSpeed',   label: 'Nudge strobe speed',          input: 'encoder' },
-  { id: 'adjustFixtureDim',    label: 'Nudge fixture dimmer',        input: 'encoder', param: { key: 'fixture', kind: 'fixture', label: 'Fixture' } },
-  { id: 'adjustFixtureMax',    label: 'Nudge fixture max brightness', input: 'encoder', param: { key: 'fixture', kind: 'fixture', label: 'Fixture' } },
-  { id: 'adjustAutoIntensity', label: 'Nudge auto-show intensity',   input: 'encoder' },
-  { id: 'adjustAutoSync',      label: 'Nudge light/music sync',       input: 'encoder' },
-
-  { id: 'setMasterDimmer',     label: 'Master dimmer',               input: 'fader' },
-  { id: 'setStrobeSpeed',      label: 'Strobe speed',                input: 'fader' },
-  { id: 'setBpm',              label: 'BPM',                         input: 'fader' },
-  { id: 'setFixtureDim',       label: 'Fixture dimmer',              input: 'fader', param: { key: 'fixture', kind: 'fixture', label: 'Fixture' } },
-  { id: 'setFixtureMax',       label: 'Fixture max brightness',      input: 'fader', param: { key: 'fixture', kind: 'fixture', label: 'Fixture' } },
-  { id: 'setAutoIntensity',    label: 'Auto-show intensity',         input: 'fader' },
-  { id: 'setAutoSync',         label: 'Light/music sync offset',     input: 'fader' },
+  { id: 'tap', label: 'Tap tempo', input: 'button' },
+  { id: 'toggleTempoMode', label: 'Automatic tempo match on / off', input: 'button' },
+  { id: 'togglePlay', label: 'Play / stop', input: 'button' },
+  { id: 'toggleBlackout', label: 'Master blackout', input: 'button' },
+  { id: 'setPattern', label: 'Select pattern', input: 'button', param: { key: 'value', kind: 'pattern', label: 'Pattern' } },
+  { id: 'setColorA', label: 'Set colour slot A', input: 'button', param: { key: 'value', kind: 'color', label: 'Colour' } },
+  { id: 'setColorB', label: 'Set colour slot B', input: 'button', param: { key: 'value', kind: 'color', label: 'Colour' } },
+  { id: 'setColorC', label: 'Set colour slot C', input: 'button', param: { key: 'value', kind: 'color', label: 'Colour' } },
+  { id: 'setColorD', label: 'Set colour slot D', input: 'button', param: { key: 'value', kind: 'color', label: 'Colour' } },
+  { id: 'setBeatDivision', label: 'Set beat division', input: 'button', param: { key: 'value', kind: 'division', label: 'Division' } },
+  { id: 'energyHold', label: 'Energy override (hold)', input: 'button', param: { key: 'value', kind: 'energy', label: 'Effect', optional: true } },
+  { id: 'cycleEnergyEffect', label: 'Cycle the held energy effect', input: 'button' },
+  { id: 'padPress', label: 'Pad (held while the note is)', input: 'button' },
+  { id: 'cycleStrobeFunction', label: 'Cycle strobe function', input: 'button' },
+  { id: 'toggleFixBlackout', label: 'Fixture blackout', input: 'button', param: { key: 'fixture', kind: 'fixture', label: 'Fixture' } },
+  { id: 'recallCue', label: 'Recall cue', input: 'button', param: { key: 'value', kind: 'cue', label: 'Cue' } },
+  { id: 'setPalette', label: 'Select palette', input: 'button', param: { key: 'value', kind: 'palette', label: 'Palette' } },
+  { id: 'togglePaletteOverride', label: 'Palette override on / off', input: 'button', param: { key: 'value', kind: 'overridePalette', label: 'Palette' } },
+  { id: 'randomLook', label: 'Random pattern or effect', input: 'button', param: { key: 'value', kind: 'lookKind', label: 'Of' } },
+  { id: 'randomColor', label: 'Random colour', input: 'button', param: { key: 'value', kind: 'colorSlot', label: 'Slot' } },
+  { id: 'clearPaletteOverride', label: 'Palette override off', input: 'button' },
+  { id: 'scaleBpm', label: 'Double / halve BPM', input: 'button', param: { key: 'value', kind: 'bpmFactor', label: 'By' } },
+  { id: 'stopEffects', label: 'Stop every effect', input: 'button' },
+  { id: 'strobeBurst', label: 'Strobe burst', input: 'button', param: { key: 'value', kind: 'burstMs', label: 'Length', optional: true } },
+  { id: 'toggleAutoShow', label: 'Auto show on / off', input: 'button' },
+  { id: 'adjustBpm', label: 'Nudge BPM', input: 'encoder' },
+  { id: 'adjustMasterDimmer', label: 'Nudge master dimmer', input: 'encoder' },
+  { id: 'adjustStrobeSpeed', label: 'Nudge strobe speed', input: 'encoder' },
+  { id: 'adjustFixtureDim', label: 'Nudge fixture dimmer', input: 'encoder', param: { key: 'fixture', kind: 'fixture', label: 'Fixture' } },
+  { id: 'adjustFixtureMax', label: 'Nudge fixture max brightness', input: 'encoder', param: { key: 'fixture', kind: 'fixture', label: 'Fixture' } },
+  { id: 'adjustAutoIntensity', label: 'Nudge auto-show intensity', input: 'encoder' },
+  { id: 'adjustAutoSync', label: 'Nudge light/music sync', input: 'encoder' },
+  { id: 'browsePattern', label: 'Browse patterns', input: 'encoder' },
+  { id: 'browseEffect', label: 'Browse effects', input: 'encoder' },
+  { id: 'browseColor', label: 'Browse colours', input: 'encoder', param: { key: 'value', kind: 'colorSlot', label: 'Slot' } },
+  { id: 'browseBeatDivision', label: 'Browse beat division', input: 'encoder' },
+  { id: 'browseBarsPattern', label: 'Browse the bars\' picture', input: 'encoder' },
+  { id: 'browsePalette', label: 'Browse palette override', input: 'encoder' },
+  { id: 'adjustFadeTime', label: 'Fade time of look changes', input: 'encoder' },
+  { id: 'adjustStrobeRate', label: 'Nudge strobe flashes per second', input: 'encoder' },
+  { id: 'setMasterDimmer', label: 'Master dimmer', input: 'fader' },
+  { id: 'setStrobeSpeed', label: 'Strobe speed', input: 'fader' },
+  { id: 'setBpm', label: 'BPM', input: 'fader' },
+  { id: 'setFixtureDim', label: 'Fixture dimmer', input: 'fader', param: { key: 'fixture', kind: 'fixture', label: 'Fixture' } },
+  { id: 'setFixtureMax', label: 'Fixture max brightness', input: 'fader', param: { key: 'fixture', kind: 'fixture', label: 'Fixture' } },
+  { id: 'setAutoIntensity', label: 'Auto-show intensity', input: 'fader' },
+  { id: 'setAutoSync', label: 'Light/music sync offset', input: 'fader' },
 ];
 
 const ACTION_IDS = ACTIONS.map((a) => a.id);
@@ -135,6 +149,29 @@ const DEFAULT_MAP: MidiMap = {
     31: { action: 'setColorA', value: 5 },
   },
 };
+
+const PERFORMANCE_MAP: MidiMap = {
+  cc: {
+    ...DEFAULT_MAP.cc,
+    ...Object.fromEntries([0, 1, 2, 3].flatMap((fixture) => [
+      [12 + fixture, { action: 'adjustFixtureMax', type: 'absolute', scale: 4, fixture }],
+      [1 + fixture, { action: 'setFixtureMax', type: 'absolute', fixture }],
+    ])),
+  },
+  notes: {
+    ...DEFAULT_MAP.notes,
+    2: { action: 'cycleEnergyEffect' },
+    ...Object.fromEntries([
+      'redCyan', 'orangeBlue', 'yellowPurple', 'greenPink', 'redYellow', 'greenBlue', 'rocketPop', 'hdDefault',
+      'redOrangeYellow', 'greenCyanBlue', 'cyanBluePurple', 'bluePurplePink', 'purplePinkRed', 'blueDream', 'electricSummer', 'rainbow',
+    ].map((value, index) => [16 + index, { action: 'togglePaletteOverride', value }])),
+  },
+};
+
+const MIDI_PRESETS = [
+  { id: 'classic', name: 'X-Touch classic', map: DEFAULT_MAP },
+  { id: 'performance', name: 'X-Touch show control', map: PERFORMANCE_MAP },
+] as const;
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
@@ -250,6 +287,7 @@ export {
   ACTIONS,
   ACTION_IDS,
   DEFAULT_MAP,
+  MIDI_PRESETS,
   defaultTypeFor,
   sameControl,
   bindingSchema,

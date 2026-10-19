@@ -833,9 +833,21 @@ Learn binds the next matching control to an action; parameters such as cue,
 fixture, bank and slot belong to that binding. Optional MIDI channel restricts matching. Reset restores the
 built-in X-Touch Compact map. Custom maps live in `config/midi-map.json`.
 
+The classic layout remains the default, including existing saved mappings.
+Choose **X-Touch show control** and **Apply layout** to use fixture brightness
+trims, palette override buttons and an energy-effect selector on encoder 3's
+push. The fixture faders then limit brightness without taking fixtures out of
+the show. Applying a layout replaces bindings; **Undo** restores the previous
+map. Merely selecting a layout changes nothing.
+
 Actions cover transport, tap/tempo mode, patterns, colour slots, palettes,
 energy holds, pads (`padPress` with bank/slot), cues, fixture controls and
-master/intensity/sync faders. Encoders detect whether the device sends positions
+master/intensity/sync faders. Additional actions browse patterns, effects, pixel
+pictures, colour slots, palette overrides and beat divisions; adjust fade time
+and held-strobe rate; choose random looks/colours; double/halve BPM; stop effect
+voices; fire a bounded strobe burst; or toggle the auto show. Flashing actions
+use the same acknowledgement and limits as the browser controls.
+Encoders detect whether the device sends positions
 or relative steps, including two's complement and binary offset. Learn captures
 that mode; keep turning until the capture completes. If the messages remain
 ambiguous for two seconds, the requested binding type is retained. Button/LED
@@ -1117,6 +1129,7 @@ Transport routes answer `{ ok, status }`; with no sequence loaded they answer
 | GET | `/api/midi/map` | The live map, the action catalogue, and whether it is customised |
 | PUT | `/api/midi/map` | Replace the whole map |
 | POST | `/api/midi/map/reset` | Back to the built-in X-Touch layout |
+| POST | `/api/midi/map/preset/:id` | Apply `classic` or `performance`; GET map lists available layouts |
 | PUT | `/api/midi/map/binding` | Bind or clear one message (`{ kind, number, binding }`) |
 | POST | `/api/midi/learn` | Arm learn; the request is held open until a control moves |
 | POST | `/api/midi/learn/cancel` | Disarm learn |

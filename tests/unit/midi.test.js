@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
 
 import MidiController from '../../src/midi.ts';
-import { DEFAULT_MAP } from '../../src/server/midi-map.ts';
+import { DEFAULT_MAP, MIDI_PRESETS } from '../../src/server/midi-map.ts';
 
 // A stand-in for the state the controller reads and the callbacks it drives, so
 // these tests need neither a MIDI port nor the engine. `refuse` answers the
@@ -1062,4 +1062,220 @@ test('while an encoder is being learned, the rest of the surface works', async (
   assert.deepStrictEqual(h.patches.at(-1), { running: false });
   turn(h, 10, 1);
   assert.strictEqual((await learnt).type, 'relative');
+});
+
+test('the optional show-control map trims fixtures 1-4, and leaves them in the show', () => {
+  const h = harness(MIDI_PRESETS.find((p) => p.id === 'performance').map);
+  turn(h, 1, 100, 64);            // fader 1: a fader shows itself on the way
+  assert.deepStrictEqual(h.maxes.at(-1), { id: 0, value: 129 });
+  turn(h, 13, 126);               // encoder 4, one click down from full
+  assert.deepStrictEqual(h.maxes.at(-1), { id: 1, value: 251 });
+  assert.deepStrictEqual(h.overrides, [], 'no fixture taken out of the show');
+});
+
+// A palette override is never the auto show's, so a palette put on by hand
+// colours the show instead of lasting to its next scene.
+test('a palette button puts its palette over the show, and takes it off again', () => {
+  const h = harness({ cc: {}, notes: {
+    16: { action: 'togglePaletteOverride', value: 'redCyan' },
+    17: { action: 'togglePaletteOverride', value: 'rainbow' },
+  } });
+  const asked = [];
+  h.state.paletteOverrideId = null;
+  h.midi.setPaletteOverride = (id) => { asked.push(id); h.state.paletteOverrideId = id; };
+  const press = (note) => h.input.emit('noteon', { note, velocity: 127, channel: 0 });
+  const lit = () => { h.leds.length = 0; h.midi.sendFeedback(); return h.leds.filter((m) => m.velocity > 0).map((m) => m.note); };
+
+  press(16);
+  assert.deepStrictEqual(lit(), [16]);
+  press(17);                      // another palette replaces it
+  assert.deepStrictEqual(lit(), [17]);
+  press(17);                      // the lit one again: the show's own colours
+  assert.deepStrictEqual(lit(), []);
+  assert.deepStrictEqual(asked, ['redCyan', 'rainbow', null]);
+});
+
+test('the optional show-control map picks the energy effect on EN3\'s push, not play/stop', () => {
+  const h = harness(MIDI_PRESETS.find((p) => p.id === 'performance').map);
+  const press = (note) => h.input.emit('noteon', { note, velocity: 127, channel: 0 });
+  press(2);                       // EN3 push: the next effect
+  press(7);                       // EN8 push: hold it
+  assert.deepStrictEqual(h.patches.at(-1), { energyOverride: 'color-strobe' });
+  assert.ok(!h.patches.some((p) => 'running' in p), 'the show is never stopped');
+});
+
+// Busking: with the auto show stopped, the controller plays the show itself.
+function busk(h, { acknowledged = false } = {}) {
+  const calls = [];
+  let rate = 10;
+  let on = false;
+  h.midi.busk = {
+    looks: () => [
+      { id: 'solid', legacy: true }, { id: 'chase', legacy: true }, { id: 'breathe', party: true },
+      { id: 'gradient', pixel: true }, { id: 'comet', pixel: true },
+      { id: 'hd.iceStrike', app: 'hd', rapidFlash: false },
+      { id: 'ldj.visualizer.firework', app: 'ldj', rapidFlash: true },
+      { id: 'ldj.Swirl', app: 'ldj', rapidFlash: false },
+      { id: 'energy.whiteStrobe', app: 'own', rapidFlash: true },
+    ],
+    palettes: () => ['redCyan', 'rainbow', 'blueDream'],
+    acknowledged: () => acknowledged,
+    stopEffects: () => calls.push('stopEffects'),
+    strobeBurst: (ms) => calls.push(['burst', ms]),
+    strobeRate: () => rate,
+    setStrobeRate: (hz) => { rate = hz; calls.push(['rate', hz]); },
+    strobeMaxRate: 12,
+    autoShowOn: () => on,
+    toggleAutoShow: () => { on = !on; calls.push('auto'); },
+  };
+  return calls;
+}
+const step = (h, controller, ...values) => {
+  for (const value of values) h.input.emit('cc', { controller, value, channel: 0 });
+};
+const press = (h, note) => h.input.emit('noteon', { note, velocity: 127, channel: 0 });
+
+test('pattern browsing retains fork party looks and filters unacknowledged flashes', () => {
+  const h = harness({ cc: { 37: { action: 'browsePattern', type: 'relative' } }, notes: {} });
+  busk(h);
+  h.midi.busk.looks = () => [
+    { id: 'chase' }, { id: 'own.fire', app: 'own', party: true },
+    { id: 'own.flash', app: 'own', party: true, rapidFlash: true },
+    { id: 'energy.whiteStrobe', app: 'own', rapidFlash: true },
+  ];
+  step(h, 37, 1);
+  assert.strictEqual(h.state.pattern, 'own.fire');
+  step(h, 37, 1);
+  assert.strictEqual(h.state.pattern, 'chase');
+  h.midi.busk.acknowledged = () => true;
+  step(h, 37, 1, 1);
+  assert.strictEqual(h.state.pattern, 'own.flash');
+});
+
+test('the pattern and effect encoders browse their own lists, and wrap round', () => {
+  const h = harness({ cc: {
+    37: { action: 'browsePattern', type: 'relative' },
+    38: { action: 'browseEffect', type: 'relative' },
+  }, notes: {} });
+  busk(h);
+  step(h, 37, 1);                 // chase → the next rig pattern
+  assert.strictEqual(h.state.pattern, 'breathe');
+  step(h, 37, 1);                 // past the last: the first, never a pixel picture
+  assert.strictEqual(h.state.pattern, 'solid');
+  step(h, 37, 127);
+  assert.strictEqual(h.state.pattern, 'breathe');
+  step(h, 38, 1);                 // a pattern on: the effects start from their first
+  assert.strictEqual(h.state.pattern, 'hd.iceStrike');
+  step(h, 38, 1);                 // the fast-flashing one is skipped until acknowledged
+  assert.strictEqual(h.state.pattern, 'ldj.Swirl');
+  step(h, 38, 1);
+  assert.strictEqual(h.state.pattern, 'hd.iceStrike', 'and no energy effect: those are the pads');
+});
+
+test('acknowledged, the effects encoder reaches the fast-flashing effects', () => {
+  const h = harness({ cc: { 38: { action: 'browseEffect', type: 'relative' } }, notes: {} });
+  busk(h, { acknowledged: true });
+  step(h, 38, 1, 1);
+  assert.strictEqual(h.state.pattern, 'ldj.visualizer.firework');
+});
+
+test('a colour encoder steps its slot, and the fade goes out with the change', () => {
+  const h = harness({ cc: {
+    39: { action: 'browseColor', type: 'relative', value: 'colorB' },
+    44: { action: 'adjustFadeTime', type: 'relative' },
+  }, notes: {} });
+  busk(h);
+  step(h, 44, 1, 1);              // half a second
+  step(h, 39, 1);
+  assert.deepStrictEqual(h.patches.at(-1), { colorB: 7, fadeMs: 500 });
+  h.state.colorB = 14;
+  step(h, 39, 1);
+  assert.strictEqual(h.state.colorB, 0, 'round from the last colour to the first');
+  h.sent.length = 0;
+  h.midi._lastCcIn.clear();
+  h.midi.sendFeedback();
+  assert.deepStrictEqual(h.cc().filter((m) => m.controller === 44).map((m) => m.value), [16], 'the fade ring at half a second of four');
+});
+
+test('beat division, fade and strobe rate stop at their ends', () => {
+  const h = harness({ cc: {
+    43: { action: 'browseBeatDivision', type: 'relative' },
+    44: { action: 'adjustFadeTime', type: 'relative' },
+    47: { action: 'adjustStrobeRate', type: 'relative' },
+  }, notes: {} });
+  const calls = busk(h);
+  step(h, 43, 127);
+  assert.strictEqual(h.state.beatDivision, 1);
+  step(h, 43, 1);
+  assert.strictEqual(h.state.beatDivision, 2);
+  step(h, 43, 10);                // a fast spin
+  assert.strictEqual(h.state.beatDivision, 16);
+  step(h, 44, 127);
+  assert.strictEqual(h.midi._fadeMs, 0);
+  step(h, 47, 3);
+  assert.deepStrictEqual(calls.at(-1), ['rate', 12]);
+});
+
+test('the bars encoder browses their pictures from "as the whole rig", and the palette knob the overrides', () => {
+  const h = harness({ cc: {
+    45: { action: 'browseBarsPattern', type: 'relative' },
+    46: { action: 'browsePalette', type: 'relative' },
+  }, notes: { 70: { action: 'clearPaletteOverride' } } });
+  busk(h);
+  const overrides = [];
+  h.midi.setPaletteOverride = (id) => { overrides.push(id); h.state.paletteOverrideId = id; h.state.paletteOverride = id ? [{}] : null; };
+  h.state.pixelPattern = null;
+  step(h, 45, 1);
+  assert.strictEqual(h.state.pixelPattern, 'gradient');
+  step(h, 45, 127);
+  assert.strictEqual(h.state.pixelPattern, null);
+  step(h, 46, 1, 1);
+  h.leds.length = 0;
+  h.midi.sendFeedback();
+  assert.ok(h.leds.some((m) => m.note === 70 && m.velocity > 0), 'palette off is lit while one is on');
+  press(h, 70);
+  assert.deepStrictEqual(overrides, ['redCyan', 'rainbow', null]);
+});
+
+test('random buttons never repeat what is on, and never pick the blackout colour', () => {
+  const h = harness({ cc: {}, notes: {
+    55: { action: 'randomLook', value: 'pattern' },
+    56: { action: 'randomLook', value: 'effect' },
+    57: { action: 'randomColor', value: 'colorA' },
+  } });
+  busk(h);
+  h.midi._random = () => 0;
+  press(h, 55);                   // chase is on: solid or breathe
+  assert.strictEqual(h.state.pattern, 'solid');
+  press(h, 56);
+  assert.strictEqual(h.state.pattern, 'hd.iceStrike');
+  h.midi._random = () => 0.9999;
+  press(h, 57);
+  assert.strictEqual(h.state.colorA, 13, 'the last colour that lights (UV), not blackout');
+});
+
+test('busking buttons reach the server, and BPM doubles and halves within range', () => {
+  const h = harness({ cc: {}, notes: {
+    104: { action: 'scaleBpm', value: 0.5 },
+    105: { action: 'scaleBpm', value: 2 },
+    107: { action: 'toggleAutoShow' },
+    108: { action: 'stopEffects' },
+    69: { action: 'strobeBurst' },
+    68: { action: 'strobeBurst', value: 2000 },
+  } });
+  const calls = busk(h);
+  press(h, 105);
+  assert.strictEqual(h.state.bpm, 240);
+  press(h, 105);
+  assert.strictEqual(h.state.bpm, 300, 'clamped at the top');
+  press(h, 104);
+  assert.strictEqual(h.state.bpm, 150);
+  press(h, 107);
+  press(h, 108);
+  press(h, 69);
+  press(h, 68);
+  assert.deepStrictEqual(calls, ['auto', 'stopEffects', ['burst', 1000], ['burst', 2000]]);
+  h.leds.length = 0;
+  h.midi.sendFeedback();
+  assert.ok(h.leds.some((m) => m.note === 107 && m.velocity > 0), 'auto show lit while on');
 });

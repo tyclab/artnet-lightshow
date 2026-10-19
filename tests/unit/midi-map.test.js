@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 
-import { MidiMapStore, DEFAULT_MAP, ACTIONS, defaultTypeFor, sameControl, mapSchema } from '../../src/server/midi-map.ts';
+import { MidiMapStore, DEFAULT_MAP, MIDI_PRESETS, ACTIONS, defaultTypeFor, sameControl, mapSchema } from '../../src/server/midi-map.ts';
 import MidiController, { MIDI_HOLD_MAX_MS } from '../../src/midi.ts';
 
 let dir;
@@ -21,6 +21,24 @@ function store() { return new MidiMapStore(file).load(); }
 
 test('the built-in default is a valid map', () => {
   assert.doesNotThrow(() => mapSchema.parse(DEFAULT_MAP));
+});
+
+test('show control is opt-in and persists without changing the classic default', () => {
+  const original = structuredClone(DEFAULT_MAP);
+  for (const preset of MIDI_PRESETS) assert.doesNotThrow(() => mapSchema.parse(preset.map));
+  const s = store();
+  assert.deepStrictEqual(s.get(), original);
+  s.setBinding('notes', 60, { action: 'tap' });
+  const saved = structuredClone(s.get());
+  assert.deepStrictEqual(store().get(), saved);
+  s.replace(MIDI_PRESETS.find((p) => p.id === 'performance').map);
+  assert.strictEqual(store().get().cc[1].action, 'setFixtureMax');
+  assert.strictEqual(store().get().notes[16].action, 'togglePaletteOverride');
+  s.replace(saved);
+  assert.deepStrictEqual(store().get(), saved);
+  assert.deepStrictEqual(DEFAULT_MAP, original);
+  s.reset();
+  assert.deepStrictEqual(s.get(), original);
 });
 
 test('every default binding names an action in the catalogue', () => {

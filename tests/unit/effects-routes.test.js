@@ -98,7 +98,7 @@ async function serve(t, { cues } = {}) {
   const call = (method, route, body) => fetch(`${url}${route}`, {
     method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body),
   }).then(async (res) => ({ status: res.status, body: await res.json() }));
-  return { call, integrations, effectLibrary, paletteStore, dir, io, midi, url };
+  return { call, integrations, effectLibrary, paletteStore, dir, io, midi, autoShow, url };
 }
 
 const FADE = { kind: 'ldj.FadeCycle', params: { cadence: 2 } };
@@ -803,3 +803,43 @@ test("public effect routes reject internal bundles", async (t) => {
   const res = await s.call('POST', '/api/effects', { name: 'Bundle', spec: { kind: 'pattern.bundle', params } });
   assert.equal(res.status, 400);
 });
+
+test("MIDI's palette buttons put on the override the strip does, and take it off", async (t) => {
+  const s = await serve(t);
+  const strip = await s.call('PUT', '/api/palette-override', { paletteId: 'redCyan' });
+  await s.call('DELETE', '/api/palette-override');
+  s.midi.setPaletteOverride('redCyan');
+  assert.equal(state.paletteOverrideId, 'redCyan');
+  assert.deepEqual(state.paletteOverride.map(toHex), strip.body.paletteOverride);
+  s.midi.setPaletteOverride(null);
+  assert.equal(state.paletteOverride, null);
+  assert.equal(state.paletteOverrideId, null);
+  s.midi.setPaletteOverride('no-such-palette');
+  assert.equal(state.paletteOverride, null, 'a deleted palette leaves the colours alone');
+});
+
+test("busking from MIDI reaches the looks, the palettes, the voices, the strobe and the auto show", async (t) => {
+  const s = await serve(t);
+  const { busk } = s.midi;
+  const looks = busk.looks();
+  assert.ok(looks.some((r) => r.id === 'chase') && looks.some((r) => r.app === 'ldj'), 'the patterns and the effects the pages get');
+  assert.ok(busk.palettes().includes('redCyan'));
+
+  const started = await s.call('POST', '/api/voices', { preset: 'hd.iceStrike', mode: 'latched' });
+  assert.equal(started.status, 200);
+  busk.stopEffects();
+  assert.deepEqual((await s.call('GET', '/api/voices')).body.voices, []);
+
+  assert.throws(() => busk.strobeBurst(1000), /acknowledg/i, 'a burst waits for the acknowledgement, as from its route');
+  busk.setStrobeRate(4);
+  assert.equal(busk.strobeRate(), 4);
+
+  busk.toggleAutoShow();
+  assert.equal(busk.autoShowOn(), false, 'nothing analysed: it does not start');
+  s.autoShow.analysis = { sections: [] };
+  busk.toggleAutoShow();
+  assert.equal(busk.autoShowOn(), true);
+  busk.toggleAutoShow();
+  assert.equal(busk.autoShowOn(), false);
+});
+

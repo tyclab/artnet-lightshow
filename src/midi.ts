@@ -5,7 +5,7 @@
 import { DEFAULT_MAP, ACTIONS, defaultTypeFor } from './server/midi-map.ts';
 import { createRequire } from 'node:module';
 
-import { ENERGY_EFFECT_IDS, STROBE_FUNCTION_IDS, SYNC_OFFSET_LIMIT_MS } from './server/presets.ts';
+import { COLOR_PRESETS, ENERGY_EFFECT_IDS, STROBE_FUNCTION_IDS, SYNC_OFFSET_LIMIT_MS } from './server/presets.ts';
 import { messageOf } from './errors.ts';
 import type { MidiBinding, MidiMap } from './server/midi-map.ts';
 import type { ShowState } from './server/state.ts';
@@ -117,6 +117,44 @@ const PROBE_HOLD_MS = 3000;
 const LEARN_CONFIRM_MS = 2000;
 const clearRing = (value: number): number => (value >= 64 ? 96 : 32);
 
+export interface LookRow {
+    id: string;
+    pixel?: boolean;
+    app?: string;
+    party?: boolean;
+    rapidFlash?: boolean;
+}
+
+export interface MidiBusk {
+    looks(): readonly LookRow[];
+    palettes(): readonly string[];
+    acknowledged(): boolean;
+    stopEffects(): unknown;
+    strobeBurst(ms: number): unknown;
+    strobeRate(): number;
+    setStrobeRate(hz: number): unknown;
+    strobeMaxRate: number;
+    autoShowOn(): boolean;
+    toggleAutoShow(): unknown;
+}
+
+const DIVISIONS = [1, 2, 4, 8, 16];
+
+const FADE_STEP_MS = 250;
+
+const FADE_MAX_MS = 4000;
+
+const COLOR_SLOTS = ['colorA', 'colorB', 'colorC', 'colorD'] as const;
+
+type ColorSlot = typeof COLOR_SLOTS[number];
+
+const slotOf = (value: unknown): ColorSlot | null => COLOR_SLOTS.find((slot) => slot === value) ?? null;
+
+const LIT_COLORS = COLOR_PRESETS.map((c, i) => ({ c: c as Record<string, unknown>, i }))
+    .filter(({ c }) => ['r', 'g', 'b', 'w', 'a', 'uv'].some((k) => Number(c[k]) > 0)).map(({ i }) => i);
+
+const wrapIndex = (i: number, n: number): number => ((i % n) + n) % n;
+
 class MidiController {
   declare _positions: Map<string, number>;
 
@@ -208,6 +246,11 @@ class MidiController {
     this._emitLearn({ status: 'captured', ...captured });
   }
 
+  declare setPaletteOverride: ((id: string | null) => unknown) | null;
+  declare busk: MidiBusk | null;
+  declare _fadeMs: number;
+  declare _random: () => number;
+
   declare state: ShowState;
   declare apply: (patch: Record<string, unknown>) => unknown;
   declare tap: () => void;
@@ -253,6 +296,10 @@ class MidiController {
     this.enabled = false;
 
     this.recallCue = null;
+    this.setPaletteOverride = null;
+    this.busk = null;
+    this._fadeMs = 0;
+    this._random = Math.random;
 
     this._learn = null;       // { binding, resolve, timer } while learn is armed
     this._learnListeners = [];
@@ -601,11 +648,14 @@ class MidiController {
         this.apply({ beatDivision: Number(binding.value) || 1 });
         break;
       case 'energyHold': {
+        // Momentary: note-on activates, note-off (handled above) deactivates.
+        // A bound effect wins; otherwise this button follows cycleEnergyEffect.
         const effect = binding.value || this._energyEffect || ENERGY_IDS[0];
         this.apply({ energyOverride: effect });
         break;
       }
       case 'cycleEnergyEffect': {
+        // Cycle which effect the energy hold button triggers (without activating it)
         const curIdx = ENERGY_IDS.indexOf(this._energyEffect || ENERGY_IDS[0]);
         this._energyEffect = ENERGY_IDS[(curIdx + 1) % ENERGY_IDS.length];
         break;
@@ -624,6 +674,8 @@ class MidiController {
           this._emitFixOverride(fix.id, null);
           break;
         }
+        // Blackout is a gate, not a replacement look. Clearing it restores the
+        // prior override; if there was none, return to the pattern engine.
         this._emitFixOverride(fix.id, {
           ...(cur || { enabled: false, r: 0, g: 0, b: 0, w: 0, a: 0, uv: 0, dim: 255, strobe: 0 }),
           blackout: newBo,
@@ -631,13 +683,77 @@ class MidiController {
         break;
       }
       case 'recallCue':
+        // Wired up by server.js; a rig with no cue store just does nothing.
         if (this.recallCue && binding.value) this.recallCue(String(binding.value));
         break;
       case 'setPalette':
+        // One press writes all four colour slots from a named look. The server
+        // rejects an id it does not know, which surfaces as a toast rather than
+        // a button that silently does nothing.
         if (binding.value) this.apply({ palette: String(binding.value) });
+        break;
+      case 'togglePaletteOverride': {
+        // Over whatever is playing until pressed again. The auto show never
+        // sets the override, so this colours the show rather than fighting it.
+        if (!binding.value || !this.setPaletteOverride) break;
+        const id = String(binding.value);
+        this.setPaletteOverride(s.paletteOverrideId === id ? null : id);
+        break;
+      }
+      case 'clearPaletteOverride':
+        this.setPaletteOverride?.(null);
+        break;
+      case 'randomLook': {
+        const others = this._lookList(binding.value === 'effect' ? 'effect' : 'pattern').filter((id) => id !== s.pattern);
+        if (others.length) this._look(this._pick(others));
+        break;
+      }
+      case 'randomColor': {
+        const slot = slotOf(binding.value);
+        const others = LIT_COLORS.filter((i) => !slot || i !== s[slot]);
+        if (slot && others.length) this.apply({ [slot]: this._pick(others), ...this._fade() });
+        break;
+      }
+      case 'scaleBpm': {
+        const factor = Number(binding.value);
+        if (factor > 0) this.apply({ bpm: clamp(Math.round(s.bpm * factor * 100) / 100, 20, 300) });
+        break;
+      }
+      case 'stopEffects':
+        this.busk?.stopEffects();
+        break;
+      case 'strobeBurst':
+        this.busk?.strobeBurst(Number(binding.value) || 1000);
+        break;
+      case 'toggleAutoShow':
+        this.busk?.toggleAutoShow();
         break;
     }
     this.sendFeedback();
+  }
+
+  _lookList(kind: 'pattern' | 'effect'): string[] {
+    const rows = this.busk?.looks() ?? [];
+    const acknowledged = !!this.busk?.acknowledged();
+    const eligible = rows.filter((r) => acknowledged || !r.rapidFlash);
+    if (kind === 'pattern') return eligible.filter((r) => !r.pixel && (!r.app || (r.app === 'own' && r.party))).map((r) => r.id);
+    return eligible.filter((r) => r.app === 'hd' || r.app === 'ldj').map((r) => r.id);
+  }
+
+  _barsList(): (string | null)[] {
+    return [null, ...(this.busk?.looks() ?? []).filter((r) => r.pixel && (this.busk?.acknowledged() || !r.rapidFlash)).map((r) => r.id)];
+  }
+
+  _look(id: string): void {
+    this.apply({ pattern: id, ...this._fade() });
+  }
+
+  _fade(): { fadeMs?: number } {
+    return this._fadeMs > 0 ? { fadeMs: this._fadeMs } : {};
+  }
+
+  _pick<T>(list: readonly T[]): T {
+    return list[Math.min(list.length - 1, Math.floor(this._random() * list.length))];
   }
 
   _dispatchContinuous(binding: MidiBinding, delta: number): void {
@@ -669,9 +785,53 @@ class MidiController {
         break;
       }
       case 'adjustAutoIntensity':
+        // 0-100, not 0-255: the auto show's slider is a percentage.
         this.apply({ autoIntensity: clamp(Math.round((s.autoIntensity ?? 50) + delta), 0, 100) });
         break;
+      case 'browsePattern':
+      case 'browseEffect': {
+        const list = this._lookList(binding.action === 'browsePattern' ? 'pattern' : 'effect');
+        if (!list.length) break;
+        const at = list.indexOf(s.pattern);
+        // Not in the list (the other kind is on): the first turn lands on its first or last.
+        this._look(list[at < 0 ? (delta > 0 ? 0 : list.length - 1) : wrapIndex(at + delta, list.length)]);
+        break;
+      }
+      case 'browseColor': {
+        const slot = slotOf(binding.value);
+        if (slot) this.apply({ [slot]: wrapIndex(s[slot] + delta, COLOR_PRESETS.length), ...this._fade() });
+        break;
+      }
+      case 'browseBeatDivision': {
+        const at = Math.max(0, DIVISIONS.indexOf(s.beatDivision));
+        this.apply({ beatDivision: DIVISIONS[clamp(at + delta, 0, DIVISIONS.length - 1)] });
+        break;
+      }
+      case 'browseBarsPattern': {
+        const list = this._barsList();
+        this.apply({ pixelPattern: list[wrapIndex(Math.max(0, list.indexOf(s.pixelPattern)) + delta, list.length)] });
+        break;
+      }
+      case 'browsePalette': {
+        const list = this.busk?.palettes() ?? [];
+        if (!list.length || !this.setPaletteOverride) break;
+        const at = s.paletteOverrideId ? list.indexOf(s.paletteOverrideId) : -1;
+        this.setPaletteOverride(list[at < 0 ? (delta > 0 ? 0 : list.length - 1) : wrapIndex(at + delta, list.length)]);
+        break;
+      }
+      case 'adjustFadeTime':
+        this._fadeMs = clamp(this._fadeMs + delta * FADE_STEP_MS, 0, FADE_MAX_MS);
+        break;
+      case 'adjustStrobeRate': {
+        const busk = this.busk;
+        if (busk) busk.setStrobeRate(clamp(Math.round(busk.strobeRate() + delta), 1, busk.strobeMaxRate));
+        break;
+      }
       case 'adjustAutoSync':
+        // 5 ms a detent. One encoder click of 1 ms would be unusable — you
+        // cannot hear a millisecond — and a whole beat per click would overshoot
+        // the error every time. Five is small enough to creep up on the right
+        // answer and large enough to get there within a song.
         this.apply({
           autoSyncOffsetMs: clamp(
             Math.round((s.autoSyncOffsetMs ?? 0) + delta * SYNC_NUDGE_MS),
@@ -746,7 +906,12 @@ class MidiController {
         case 'setColorD':        lit = binding.value === s.colorD; break;
         case 'setBeatDivision':  lit = Number(binding.value) === s.beatDivision; break;
         case 'setPalette':       lit = binding.value === s.palette; break;
+        case 'togglePaletteOverride': lit = !!binding.value && s.paletteOverrideId === String(binding.value); break;
+        // Lit while there is something for it to do.
+        case 'clearPaletteOverride': lit = !!s.paletteOverride; break;
+        case 'toggleAutoShow':   lit = !!this.busk?.autoShowOn(); break;
         case 'toggleBlackout':   lit = !!s.masterBlackout; break;
+        // Lit while the clock follows the music, as Play is while it runs.
         case 'toggleTempoMode':  lit = s.tempoMode !== 'manual'; break;
         case 'togglePlay':       lit = !!s.running; break;
         case 'energyHold':       lit = !!s.energyOverride; break;
@@ -774,11 +939,14 @@ class MidiController {
         return to127(s.strobeSpeed, 255);
       case 'setBpm':
       case 'adjustBpm':
+        // The inverse of the fader mapping in _dispatchAbsolute: 20-300 BPM.
         return to127(s.bpm - 20, 280);
       case 'setFixtureDim':
       case 'adjustFixtureDim': {
         const fix = s.fixtures.find((fixture) => fixture.id === binding.fixture);
         if (!fix) return null;
+        // No override means the pattern engine owns the fixture and it is at
+        // full — which is where the fader should sit, ready to pull it down.
         const dim = (fix.override && fix.override.enabled) ? fix.override.dim ?? 255 : 255;
         return to127(dim, 255);
       }
@@ -795,6 +963,31 @@ class MidiController {
       case 'adjustAutoSync':
         // Bipolar, so centre the ring rather than parking it at the bottom.
         return to127((s.autoSyncOffsetMs ?? 0) + SYNC_OFFSET_LIMIT_MS, SYNC_OFFSET_LIMIT_MS * 2);
+      case 'browsePattern':
+      case 'browseEffect': {
+        const list = this._lookList(binding.action === 'browsePattern' ? 'pattern' : 'effect');
+        const at = list.indexOf(s.pattern);
+        return at < 0 ? null : to127(at, Math.max(1, list.length - 1));
+      }
+      case 'browseColor': {
+        const slot = slotOf(binding.value);
+        return slot ? to127(s[slot], COLOR_PRESETS.length - 1) : null;
+      }
+      case 'browseBeatDivision':
+        return to127(Math.max(0, DIVISIONS.indexOf(s.beatDivision)), DIVISIONS.length - 1);
+      case 'browseBarsPattern': {
+        const list = this._barsList();
+        return to127(Math.max(0, list.indexOf(s.pixelPattern)), Math.max(1, list.length - 1));
+      }
+      case 'browsePalette': {
+        const list = this.busk?.palettes() ?? [];
+        const at = s.paletteOverrideId ? list.indexOf(s.paletteOverrideId) : -1;
+        return at < 0 ? null : to127(at, Math.max(1, list.length - 1));
+      }
+      case 'adjustFadeTime':
+        return to127(this._fadeMs, FADE_MAX_MS);
+      case 'adjustStrobeRate':
+        return this.busk ? to127(this.busk.strobeRate() - 1, Math.max(1, this.busk.strobeMaxRate - 1)) : null;
       default:
         return null;
     }
