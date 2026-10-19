@@ -24,6 +24,7 @@ import { meanLightRGB, roomViews, STAGE_FOV } from './world.js';
 
 const BG = 0x050507;
 const OFF = 0.035;      // what an unlit lens or cell shows: its shape, not a light
+const DAMPING = 0.08;
 
 const BEAM_VERTEX = /* glsl */`
   varying vec3 vColor;
@@ -125,7 +126,7 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
   const camera = new THREE.PerspectiveCamera(STAGE_FOV, 1, 0.1, 200);
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
-  controls.dampingFactor = 0.08;
+  controls.dampingFactor = DAMPING;
   controls.maxPolarAngle = Math.PI / 2 - 0.02;
   controls.minDistance = 2;
   controls.maxDistance = 45;
@@ -489,8 +490,14 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
     }
   }
 
+  let lastRenderAt = performance.now();
   function render() {
+    const now = performance.now();
+    // Preserve the 60 Hz decay per elapsed millisecond; pointer updates keep their normal factor.
+    controls.dampingFactor = 1 - (1 - DAMPING) ** ((now - lastRenderAt) * 60 / 1000);
     controls.update();
+    controls.dampingFactor = DAMPING;
+    lastRenderAt = now;
     if (!dirty) return;
     dirty = false;
     renderer.render(scene, camera);

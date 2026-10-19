@@ -2,25 +2,32 @@ import { test, expect } from '@playwright/test';
 import { open, set, state } from './helpers.js';
 import { stageImage } from './stage-image.js';
 
-test('Stage idles between visible changes and redraws lights and camera input', async ({ page, request }) => {
-  await page.addInitScript(() => {
+for (const frameInterval of [0, 100]) test(`Stage idles between visible changes and redraws lights and camera input${frameInterval ? ' at 10 Hz' : ''}`, async ({ page, request }) => {
+  await page.addInitScript((frameInterval) => {
+    const raf = window.requestAnimationFrame.bind(window);
+    window.stageTicks = 0;
+    window.requestAnimationFrame = callback => {
+      const tick = now => { window.stageTicks++; callback(now); };
+      return frameInterval ? window.setTimeout(() => tick(performance.now()), frameInterval) : raf(tick);
+    };
+    if (frameInterval) window.cancelAnimationFrame = handle => window.clearTimeout(handle);
     window.stageWork = { draws: 0, uploads: 0 };
     for (const [name, key] of [['drawElements', 'draws'], ['drawElementsInstanced', 'draws'], ['drawArrays', 'draws'],
       ['drawArraysInstanced', 'draws'], ['bufferSubData', 'uploads']]) {
       const original = window.WebGL2RenderingContext.prototype[name];
       window.WebGL2RenderingContext.prototype[name] = function (...args) { window.stageWork[key]++; return original.apply(this, args); };
     }
-  });
+  }, frameInterval);
   const before = await state(request);
   const profileId = 'e2e-stage-performance';
   let added = [];
   const counters = () => page.evaluate(() => ({ ...window.stageWork }));
   const idle = async () => {
     await expect.poll(async () => {
-      const start = await counters();
+      const start = await page.evaluate(() => ({ draws: window.stageWork.draws, ticks: window.stageTicks }));
       await page.waitForTimeout(150);
-      return (await counters()).draws - start.draws;
-    }).toBe(0);
+      return page.evaluate(start => ({ draws: window.stageWork.draws - start.draws, advancing: window.stageTicks > start.ticks }), start);
+    }).toEqual({ draws: 0, advancing: true });
   };
   try {
     const profile = await request.post('/api/profiles/bar', { data: { id: profileId, name: 'Performance strip', cells: 1024, firstChannel: 1, order: 'RGB' } });
