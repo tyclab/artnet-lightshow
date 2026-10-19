@@ -305,7 +305,10 @@ function createTransmitter({ wires = DEFAULT_WIRES, now = () => performance.now(
     }
     for (const group of byWled.values()) {
       if (!group.every((route) => route.parts.every((part) => ddpFrames.has(part.universe)))) continue;
-      const data = new Uint8Array(group.reduce((sum, route) => sum + ledBytes(route), 0));
+      // One frame has one pixel format; RGB sections keep their colours with an unlit white die.
+      const rgbw = group.some((route) => route.rgbw);
+      const width = rgbw ? 4 : 3;
+      const data = new Uint8Array(group.reduce((sum, route) => sum + ledBytes(route, width), 0));
       const runs: DdpRun[] = [];
       let at = 0;
       for (const route of group) {
@@ -316,12 +319,16 @@ function createTransmitter({ wires = DEFAULT_WIRES, now = () => performance.now(
           own.set(frame.subarray(part.from, part.from + part.bytes), cursor);
           cursor += part.bytes;
         }
-        const leds = route.spread ? spreadPixels(own, route.rgbw ? 4 : 3, route.spread) : own;
-        data.set(leds, at);
-        runs.push(...byteRuns(route, at));
-        at += leds.length;
+        const nativeWidth = route.rgbw ? 4 : 3;
+        const leds = route.spread ? spreadPixels(own, nativeWidth, route.spread) : own;
+        if (nativeWidth === width) data.set(leds, at);
+        else for (let from = 0, to = at; from < leds.length; from += 3, to += 4) {
+          data[to] = leds[from]; data[to + 1] = leds[from + 1]; data[to + 2] = leds[from + 2];
+        }
+        runs.push(...byteRuns(route, at, width));
+        at += leds.length / nativeWidth * width;
       }
-      sendToWled(group[0], data, runs);
+      sendToWled({ ...group[0], rgbw }, data, runs);
     }
     for (const [key, gone] of ddpSent) {
       if (!now.has(key)) sendToWled(gone.route, new Uint8Array(gone.bytes), byteRuns(gone.route, 0));
@@ -360,13 +367,12 @@ function createTransmitter({ wires = DEFAULT_WIRES, now = () => performance.now(
     }
   }
 
-  function ledBytes(route: DdpRoute): number {
-    if (route.spread) return route.spread.leds * (route.rgbw ? 4 : 3);
-    return route.parts.reduce((sum, part) => sum + part.bytes, 0);
+  function ledBytes(route: DdpRoute, width = route.rgbw ? 4 : 3): number {
+    if (route.spread) return route.spread.leds * width;
+    return route.parts.reduce((sum, part) => sum + part.bytes, 0) / (route.rgbw ? 4 : 3) * width;
   }
 
-  function byteRuns(route: DdpRoute, from: number): DdpRun[] {
-    const width = route.rgbw ? 4 : 3;
+  function byteRuns(route: DdpRoute, from: number, width = route.rgbw ? 4 : 3): DdpRun[] {
     const out: DdpRun[] = [];
     let cursor = from;
     for (const run of route.runs) {

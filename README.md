@@ -398,6 +398,10 @@ overlap. A panel rectangle uses its LED offset and row stride; WLED resolves
 its own wiring order. All segments of one device are delivered as one frame.
 LEDs outside patched segments keep their previous values.
 
+RGB and RGBW fixtures can share a controller. RGB sections retain their colour
+with a zero white channel; RGBW sections retain the palette's white value.
+WLED's own auto-white and white-balance settings can still alter received colours.
+
 Removing a fixture or disarming sends darkness and stops updates. WLED resumes
 its own effects after its configured realtime timeout. Set its fallback preset
 accordingly. Preflight checks reachability and changed LED counts.

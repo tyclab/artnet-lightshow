@@ -172,6 +172,83 @@ test('segments of one WLED go as one frame: each run where it belongs, shown onc
   assert.ok(dark && dark.data.every((v) => v === 0), 'the side that left goes dark');
 });
 
+for (const reverse of [false, true]) {
+  test(`mixed RGB/RGBW segments share a coherent frame with ${reverse ? 'RGBW' : 'RGB'} first`, () => {
+    const profiles = {
+      rgb: { ...strip(4), grid: { columns: 2, rows: 2 } },
+      rgbw: { id: 'wash-rgbw', name: 'RGBW wash', channelCount: 4, channelMap: { red: 0, green: 1, blue: 2, white: 3 } },
+    };
+    const fixtures = [
+      { id: 1, label: 'RGB rectangle', address: 1, universe: INTERNAL_UNIVERSE, profileId: 'rgb',
+        output: { protocol: 'ddp', host: 'fake.local', at: 2, rowStride: 4 } },
+      { id: 2, label: 'RGBW wash', address: 13, universe: INTERNAL_UNIVERSE, profileId: 'rgbw',
+        output: { protocol: 'ddp', host: 'fake.local', at: 20, leds: 3 } },
+    ];
+    if (reverse) fixtures.reverse();
+    assert.strictEqual(ddpConflict(fixtures, (f) => profiles[f.profileId]), null);
+    const routes = ddpRoutes(fixtures, (f) => profiles[f.profileId], (f) => f.universe);
+    const { sent, wires } = fakeWires();
+    const tx = createTransmitter({ wires });
+    const frame = Buffer.alloc(512);
+    frame.set([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 5, 6, 7, 8]);
+    tx.send(INTERNAL_UNIVERSE, frame, outputs(routes));
+    tx.endFrame(outputs(routes));
+    assert.strictEqual(sent.ddp.length, 1);
+    const mixed = sent.ddp[0];
+    assert.strictEqual(mixed.rgbw, true);
+    const packets = buildDdpPackets(mixed.data, mixed).map(parseDdpPacket);
+    assert.deepStrictEqual(packets.map((p) => p.push), [false, false, true]);
+    assert.ok(packets.every((p) => p.rgbw));
+    assert.deepStrictEqual(packets.sort((a, b) => a.offset - b.offset).map((p) => [p.offset, [...p.data]]), [
+      [8, [10, 20, 30, 0, 40, 50, 60, 0]],
+      [24, [70, 80, 90, 0, 100, 110, 120, 0]],
+      [80, [5, 6, 7, 8, 5, 6, 7, 8, 5, 6, 7, 8]],
+    ], 'RGB stays RGB with W=0; RGBW retains authored white, offsets, row stride and wash expansion');
+
+    const rgbOnly = routes.filter((route) => !route.rgbw);
+    tx.send(INTERNAL_UNIVERSE, frame, outputs(rgbOnly));
+    tx.endFrame(outputs(rgbOnly));
+    const [remaining, retired] = sent.ddp.slice(1);
+    assert.strictEqual(remaining.rgbw, false, 'an RGB-only device frame keeps its original encoding');
+    assert.deepStrictEqual([...remaining.data], [...frame.subarray(0, 12)]);
+    assert.deepStrictEqual(remaining.runs, [{ at: 6, from: 0, bytes: 6 }, { at: 18, from: 6, bytes: 6 }]);
+    assert.strictEqual(retired.rgbw, true);
+    assert.deepStrictEqual(retired.runs, [{ at: 80, from: 0, bytes: 12 }]);
+    assert.ok(retired.data.every((v) => v === 0), 'the removed RGBW section is sent fully dark');
+
+    tx.endFrame(outputs(rgbOnly, { armed: false }));
+    assert.ok(sent.ddp.at(-1).data.every((v) => v === 0), 'disarming still clears the remaining RGB section');
+  });
+}
+
+test('mixed DDP formats pad RGB across universe and 1440-byte packet boundaries', () => {
+  const profiles = { rgb: strip(361), rgbw: strip(2, 4) };
+  const fixtures = [
+    { id: 1, label: 'RGB strip', address: 1, universe: INTERNAL_UNIVERSE, profileId: 'rgb', output: { protocol: 'ddp', host: 'fake.local' } },
+    { id: 2, label: 'RGBW strip', address: 1, universe: INTERNAL_UNIVERSE + 3, profileId: 'rgbw', output: { protocol: 'ddp', host: 'fake.local', at: 400 } },
+  ];
+  const routes = ddpRoutes(fixtures, (f) => profiles[f.profileId], (f) => f.universe);
+  const { sent, wires } = fakeWires();
+  const tx = createTransmitter({ wires });
+  for (const part of routes[0].parts) {
+    const frame = Buffer.alloc(512);
+    for (let i = 0; i < part.bytes; i += 3) frame.set([77, 33, 11], i);
+    tx.send(part.universe, frame, outputs(routes));
+  }
+  const whiteFrame = Buffer.alloc(512);
+  whiteFrame.set([1, 2, 3, 4, 5, 6, 7, 8]);
+  tx.send(INTERNAL_UNIVERSE + 3, whiteFrame, outputs(routes));
+  tx.endFrame(outputs(routes));
+  const mixed = sent.ddp[0];
+  const packets = buildDdpPackets(mixed.data, mixed).map(parseDdpPacket);
+  assert.deepStrictEqual(packets.map((p) => [p.rgbw, p.offset, p.data.length, p.push]), [
+    [true, 0, 1440, false], [true, 1440, 4, false], [true, 1600, 8, true],
+  ]);
+  const rgb = Buffer.concat(packets.slice(0, 2).map((p) => p.data));
+  for (let i = 0; i < rgb.length; i += 4) assert.deepStrictEqual([...rgb.subarray(i, i + 4)], [77, 33, 11, 0]);
+  assert.deepStrictEqual([...packets[2].data], [1, 2, 3, 4, 5, 6, 7, 8]);
+});
+
 test('a wash or zones: each cell lights its share of the LEDs, on the wire', () => {
   const wash = { id: 'wash', name: 'W', channelCount: 3, channelMap: { red: 0, green: 1, blue: 2 } };
   const zones = strip(3);
