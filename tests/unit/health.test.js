@@ -5,7 +5,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { assess, health } from '../../src/server/health.ts';
+import { assess, health, performanceSample, startHealthMonitor } from '../../src/server/health.ts';
+import { buffer } from '../../src/server/log.ts';
 import { supervision, startHeartbeat, EXIT_RESTART, EXIT_CONFIG } from '../../src/server/supervised.ts';
 import { attachRoutes } from '../../src/server/routes.ts';
 
@@ -60,6 +61,75 @@ test('the heartbeat stops sending after teardown', (t) => {
 
 test('heartbeat teardown works without a supervisor', () => {
   assert.doesNotThrow(() => startHeartbeat(undefined)());
+});
+
+const timing = {
+  thread: 'worker', running: true, rate: 44, fellBack: null,
+  commands: { submitted: 0, processed: 0, applied: 0 },
+  startedAtMs: 100, sampledAtMs: 1000, totalFrames: 40,
+  frames: 40, lateFrames: 1, skippedFrames: 2,
+  renderMs: { p50: 1, p95: 2, max: 5 }, lateMs: { p50: 0, p95: 3, max: 10 },
+};
+const memory = { rss: 1024, heapUsed: 512 };
+const sample = (engine, previous = null, now = 31_010) => performanceSample(engine, fine.eventLoop, memory, false, previous, now);
+
+test('performance summaries measure elapsed throughput without leaking health details', (t) => {
+  t.mock.method(Date, 'now', () => -1_000_000);
+  const next = { ...timing, sampledAtMs: 31_000, totalFrames: 1240, frames: 1000, lateFrames: 20, skippedFrames: 122,
+    fellBack: 'private diagnostic', host: 'private host', token: 'private token' };
+  const s = sample(next, timing);
+  assert.equal(s.actualFps, 40, 'measured throughput differs from the configured target');
+  assert.equal(s.targetFps, 44);
+  assert.equal(s.intervalMs, 30_000);
+  assert.equal(s.intervalSkipped, 120);
+  assert.equal(s.skippedFrames, 122);
+  assert.equal(s.windowFrames, 1000);
+  assert.equal(s.lateFrames, 20);
+  assert.equal(s.engineSampleAgeMs, 10);
+  assert.equal(s.engineFallback, true);
+  assert.equal(s.renderP95Ms, 2);
+  assert.equal(s.eventLoopP99Ms, 20);
+  assert.equal(s.rssBytes, 1024);
+  assert.equal(s.armed, false);
+  assert.ok(!JSON.stringify(s).includes('private'));
+  assert.ok(Object.values(s).every((value) => value === null || ['boolean', 'number', 'string'].includes(typeof value)));
+});
+
+test('performance deltas reject startup, restart, fallback and stale or reset counters', () => {
+  const next = { ...timing, sampledAtMs: 31_000, totalFrames: 1240, skippedFrames: 10 };
+  assert.equal(sample(next).actualFps, null);
+  for (const patch of [
+    { startedAtMs: 2000 }, { thread: 'main' }, { running: false },
+    { sampledAtMs: timing.sampledAtMs }, { sampledAtMs: -100 },
+    { totalFrames: 0 }, { skippedFrames: 0 }, { startedAtMs: undefined },
+  ]) {
+    const s = sample({ ...next, ...patch }, timing);
+    assert.equal(s.actualFps, null, JSON.stringify(patch));
+    assert.equal(s.intervalSkipped, null);
+    assert.equal(s.intervalMs, null);
+  }
+  assert.equal(sample(timing, timing).engineSampleAgeMs, 30_010, 'stale worker reports remain visible');
+  assert.equal(sample({ ...timing, frames: undefined, renderMs: undefined }).renderMaxMs, null);
+});
+
+test('one existing health timer emits bounded summaries and survives collection failure', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const since = buffer.last;
+  const summaries = () => buffer.since(since).filter((entry) => entry.component === 'performance');
+  startHealthMonitor();
+  startHealthMonitor();
+  t.mock.timers.tick(29_999);
+  assert.equal(summaries().length, 0);
+  t.mock.timers.tick(1);
+  assert.equal(summaries().length, 1);
+  const usage = t.mock.method(process, 'memoryUsage', () => { throw new Error('collection failed'); });
+  assert.doesNotThrow(() => t.mock.timers.tick(30_000));
+  usage.mock.restore();
+  t.mock.timers.tick(30_000);
+  assert.equal(summaries().length, 2);
+  assert.equal(summaries()[1].data.engineRunning, false);
+  assert.equal(summaries()[1].data.actualFps, null);
+  assert.ok(JSON.stringify(summaries()[1]).length < 1500);
 });
 
 test('health routes expose liveness and detailed status', async (t) => {

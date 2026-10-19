@@ -1405,6 +1405,24 @@ Files are JSON lines, rotated at 10 MB with three retained rotations.
 `LOG_LEVEL` changes verbosity; `LOG_FORMAT=pretty|json` controls terminal
 format. `/api/logs` supports sequence, level and limit filters.
 
+At info level, the existing health monitor writes one `component=performance`
+JSON record every 30 seconds. It contains measured `actualFps`, configured
+`targetFps`, render/lateness percentiles in milliseconds, event-loop delay,
+memory bytes and whether outputs are armed. Rates use monotonic elapsed time;
+`actualFps`, `intervalMs` and `intervalSkipped` are null on the first sample,
+after a ticker restart or when a worker report has not advanced. Check
+`engineSampleAgeMs` for stale worker reports. `windowFrames` and `lateFrames`
+describe the last 2,640 rendered frames; `skippedFrames` is cumulative for the
+current ticker, while `intervalSkipped` covers `intervalMs`. These are engine
+timings, not confirmation that a device displayed every frame.
+
+The existing Docker log collector can query these records without another
+endpoint or credential. For example, in Loki:
+
+```logql
+{container_name="artnet-lightshow"} | json | component="performance"
+```
+
 The UI shows server refusals as toasts and blocks controls while disconnected.
 An access-token prompt requires a valid token; ordinary disconnects reconnect
 automatically. Use the logs and pending-restart list before changing settings.

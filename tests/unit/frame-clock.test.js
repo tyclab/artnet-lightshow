@@ -148,12 +148,18 @@ test('stats report lateness, render time and the frames that went out late', () 
 });
 
 test('stats keep a fixed window', () => {
-  const stats = new FrameStats(10, 0.1);   // ten frames
+  let now = 100;
+  const stats = new FrameStats(10, 0.1, () => now);   // ten frames
   for (let i = 0; i < 25; i++) stats.record(i, 0);
+  now = 350;
   const s = stats.summary();
   assert.strictEqual(s.frames, 10);
+  assert.strictEqual(s.totalFrames, 25, 'lifetime count survives ring wrap');
+  assert.strictEqual(s.startedAtMs, 100);
+  assert.strictEqual(s.sampledAtMs, 350);
   assert.strictEqual(s.lateMs.max, 24);
   assert.strictEqual(s.lateMs.p50, 20, 'only the last ten remain');
+  assert.strictEqual(new FrameStats(10, 0.1, () => now).summary().startedAtMs, 350, 'a new ticker has a distinct epoch');
 });
 
 /** Wait, a few milliseconds at a time, until `done()`; a hung loop fails after `limitMs`. */

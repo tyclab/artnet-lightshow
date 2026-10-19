@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
-import { buffer } from './log.ts';
+import { buffer, logger } from './log.ts';
 import { engineStatus } from './engine.ts';
+import { hrtimeMs } from './frame-clock.ts';
 import * as output from './output.ts';
 import { isArmed } from './armed.ts';
 import { state, voices, getSequenceStatus } from './state.ts';
@@ -10,17 +11,6 @@ import { KINDS } from '../shared/effects/registry.ts';
 import { supervision } from './supervised.ts';
 import type { Supervision } from './supervised.ts';
 import type { EngineStatus } from './engine.ts';
-
-/**
- * How the server is doing, in one answer (GET /api/health): up how long,
- * whether the engine is rendering on time, whether the main thread is keeping
- * up, memory, the outputs, the auto show, the errors logged lately, and how
- * often the supervisor has had to bring it back — with what is wrong, if
- * anything, said in words.
- *
- * The status is `ok`, `degraded` (something to look at; the show is running)
- * or `failing` (the show is not: the engine is down).
- */
 
 export type HealthStatus = 'ok' | 'degraded' | 'failing';
 
@@ -52,6 +42,7 @@ const RECENT_ERRORS_MS = 10 * 60_000;
 const STALL_MS = 100;
 const LATE_SHARE = 0.05;
 const RSS_MB = 1536;
+const performanceLog = logger('performance');
 
 /** What is wrong, in words, and the status it adds up to. */
 export function assess(inputs: HealthInputs): { status: HealthStatus; problems: Problem[] } {
@@ -73,8 +64,7 @@ export function assess(inputs: HealthInputs): { status: HealthStatus; problems: 
     problems.push({ level: 'warn', what: `${errors.count} error${errors.count === 1 ? '' : 's'} logged in the last ten minutes.${last}` });
   }
   if (auto && auto.status === 'error' && auto.error) problems.push({ level: 'warn', what: `The auto show: ${auto.error}` });
-  // How the server spends its days, not a fault: said, so a dark rig with a
-  // healthy engine has its explanation in the same place.
+  // Disarmed explains a dark rig without marking a healthy engine as degraded.
   if (inputs.armed === false) problems.push({ level: 'info', what: 'The outputs are disarmed: nothing goes out to the rig until they are armed.' });
   if (supervisor.restarts > 0) {
     const why = supervisor.lastExit ? ` The last: ${supervisor.lastExit.reason}.` : '';
@@ -86,8 +76,6 @@ export function assess(inputs: HealthInputs): { status: HealthStatus; problems: 
   return { status, problems };
 }
 
-// ── Measuring ────────────────────────────────────────────────────────────────
-
 let histogram: ReturnType<typeof monitorEventLoopDelay> | null = null;
 let lastWindow: EventLoopDelay | null = null;
 const startedAt = Date.now();
@@ -96,15 +84,66 @@ const ms = (ns: number) => Math.round((ns / 1e6) * 10) / 10;
 const snapshot = (h: NonNullable<typeof histogram>): EventLoopDelay | null => (h.count
   ? { p50Ms: ms(h.percentile(50)), p99Ms: ms(h.percentile(99)), maxMs: ms(h.max) } : null);
 
+const metric = (value: number | undefined): number | null => Number.isFinite(value) ? value! : null;
+
+// Whitelist scalars: health() also contains device addresses and recent error text.
+export function performanceSample(
+  engine: EngineStatus,
+  eventLoop: EventLoopDelay | null,
+  memory: Pick<NodeJS.MemoryUsage, 'rss' | 'heapUsed'>,
+  armed: boolean,
+  previous: EngineStatus | null,
+  nowMs = hrtimeMs(),
+) {
+  const elapsed = (engine.sampledAtMs ?? NaN) - (previous?.sampledAtMs ?? NaN);
+  const frames = (engine.totalFrames ?? NaN) - (previous?.totalFrames ?? NaN);
+  const skipped = (engine.skippedFrames ?? NaN) - (previous?.skippedFrames ?? NaN);
+  const continuous = engine.running && previous?.running && engine.thread === previous.thread
+    && metric(engine.startedAtMs) !== null && engine.startedAtMs === previous.startedAtMs
+    && Number.isFinite(elapsed) && elapsed > 0 && frames >= 0 && skipped >= 0;
+  return {
+    armed,
+    engineRunning: engine.running,
+    engineThread: engine.thread,
+    engineFallback: !!engine.fellBack,
+    targetFps: engine.rate,
+    actualFps: continuous ? Math.round(frames * 100_000 / elapsed) / 100 : null,
+    intervalMs: continuous ? Math.round(elapsed) : null,
+    intervalSkipped: continuous ? skipped : null,
+    engineSampleAgeMs: metric(engine.sampledAtMs) === null ? null : Math.max(0, Math.round(nowMs - engine.sampledAtMs!)),
+    windowFrames: metric(engine.frames),
+    lateFrames: metric(engine.lateFrames),
+    skippedFrames: metric(engine.skippedFrames),
+    renderP50Ms: metric(engine.renderMs?.p50),
+    renderP95Ms: metric(engine.renderMs?.p95),
+    renderMaxMs: metric(engine.renderMs?.max),
+    lateP50Ms: metric(engine.lateMs?.p50),
+    lateP95Ms: metric(engine.lateMs?.p95),
+    lateMaxMs: metric(engine.lateMs?.max),
+    eventLoopP50Ms: eventLoop?.p50Ms ?? null,
+    eventLoopP99Ms: eventLoop?.p99Ms ?? null,
+    eventLoopMaxMs: eventLoop?.maxMs ?? null,
+    rssBytes: memory.rss,
+    heapUsedBytes: memory.heapUsed,
+  };
+}
+
 /** Watch the main thread's event loop from now on, a window at a time. */
 export function startHealthMonitor(): void {
   if (histogram) return;
   histogram = monitorEventLoopDelay({ resolution: 10 });
   histogram.enable();
   const h = histogram;
+  let previous: EngineStatus | null = null;
   setInterval(() => {
     lastWindow = snapshot(h) || lastWindow;
     h.reset();
+    try {
+      const engine = engineStatus();
+      const sample = performanceSample(engine, lastWindow, process.memoryUsage(), isArmed(), previous);
+      previous = engine;
+      performanceLog.info(sample, 'Periodic performance summary');
+    } catch (_) { /* Telemetry must not interrupt the show. */ }
   }, WINDOW_MS).unref();
 }
 
