@@ -135,6 +135,11 @@ function scenes(fixtures) {
   const patterns = ['solid', 'fade', 'hit', 'chase', 'wave', 'rainbow', 'twinkle', 'sparkle', 'random-flash',
     'ensemble', 'ribbon', 'sections', 'gradient', 'comet', 'burst', 'plasma', 'meter', 'strobe'];
   for (const pattern of patterns) run({ pattern, strobeSpeed: pattern === 'strobe' ? 200 : 0 });
+  for (const strobeFunction of ['ramp-up', 'random', 'break']) {
+    run({ pattern: 'strobe', strobeSpeed: 255, strobeFunction, hardware: { technologies: {}, products: {} },
+      fixtures: fixtures.map((f) => ({ ...f, hardware: { maxFlashHz: 1, minTransitionMs: 0 } })) }, 60);
+    run({ pattern: 'strobe', strobeSpeed: 255, strobeFunction, masterBlackout: true }, 2);
+  }
   for (const pattern of ['wave', 'twinkle', 'ribbon']) run({ pattern, showDynamics: DYNAMICS });
   for (const pixelMap of ['bar', 'mirror']) run({ pattern: 'comet', pixelMap });
   // The pars and the bars on a look each, random dice on both sides included.
@@ -203,6 +208,9 @@ test('a preset renders the same bytes on the worker as on the main thread', asyn
     const runs = [
       // The base effect as its spec rides in the snapshot.
       { pattern: 'ldj.FadeCycle', effect: fadeCycle },
+      { pattern: 'solid', voices: [{ id: 'drawn-strobe', spec: validateSpec({ kind: 'strobe', params: { function: 'random', speed: 255 } }),
+        targets: null, tier: 'strobe', launchSeq: 1, startedAtMs: 1000, untilMs: null, anchorBeat: 0, seed: seedFrom('drawn-strobe') }],
+        extra: { hardware: { technologies: {}, products: {} } } },
       // A stateful random kind, with voices on chosen fixtures over it.
       { pattern: 'ldj.ScatterStrobe', effect: presetById('ldj.ScatterStrobe').spec, voices: [
         { id: 'pad:1', spec: presetById('hd.neonPulse').spec, targets: [0, 4], tier: 'voice', launchSeq: 1, startedAtMs: 1200, untilMs: 2500, anchorBeat: 0, seed: seedFrom('pad:1') },

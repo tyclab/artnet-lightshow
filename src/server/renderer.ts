@@ -1,9 +1,10 @@
 import { fixedColours, colourSlots, resolveGradient } from '../shared/palette-model.ts';
 import type { PaletteBody } from '../shared/palette-model.ts';
-import { COLOR_PRESETS, STROBE_FUNCTIONS } from './presets.ts';
+import { COLOR_PRESETS, STANDARD_STROBE } from './presets.ts';
 import { outputEmitters } from '../shared/emitter-capability.ts';
 import { HardwareClock } from '../shared/hardware-clock.ts';
 import { HardwareGuard } from '../shared/hardware-guard.ts';
+import { drawnByTheShow, strobeLevel } from '../shared/strobe-fx.ts';
 import { hardwareStrobe } from '../shared/hardware-strobe.ts';
 import { hardwareOf } from '../shared/hardware.ts';
 import type { HardwareCaps, HardwareSettings } from '../shared/hardware.ts';
@@ -214,9 +215,8 @@ function softStrobeHz(raw: number): number {
 
 const FLASH_LIMIT_STROBE = strobeCap(softStrobeHz);
 
-function softStrobeLit({ raw, fnId }: StrobeRequest, now: number): boolean {
+function softStrobeLit({ raw }: StrobeRequest, now: number): boolean {
   const hz = softStrobeHz(raw);
-  if (/random|rnd/.test(fnId)) return Math.random() < (hz * FRAME_MS) / 1000;
   const period = 1000 / hz;
   const flash = Math.min(SOFT_FLASH_MAX_MS, Math.max(FRAME_MS, 0.3 * period));
   return ((now % period) + period) % period < flash;
@@ -767,19 +767,19 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     let raw = own ? strobe : (input.pattern === 'strobe' ? input.strobeSpeed : strobe);
     if (!(raw > 0)) return null;
     if (input.flashLimit && !capabilities.length) raw = Math.min(raw, FLASH_LIMIT_STROBE);
-    return { raw, fnId: own || input.flashLimit ? 'standard' : input.strobeFunction,
+    return { raw, fnId: own ? 'standard' : input.strobeFunction,
       limitHz: input.flashLimit ? FLASHES_PER_SECOND : undefined };
   }
 
   function strobeValue(request: StrobeRequest | null): number | null {
     if (!request) return null;
-    const fn = STROBE_FUNCTIONS.find((f) => f.id === request.fnId) || STROBE_FUNCTIONS[0];
-    return fn.lo + Math.round((request.raw / 255) * (fn.hi - fn.lo));
+    return STANDARD_STROBE.lo + Math.round((request.raw / 255) * (STANDARD_STROBE.hi - STANDARD_STROBE.lo));
   }
 
   // Legacy inputs retain their fallback; configured outputs share capability admission.
   function strobe(dmx: Dmx, base: number, fix: RenderFixture, ch: ChannelMap, request: StrobeRequest | null,
     now: number): number {
+    if (request && drawnByTheShow(request.fnId)) return 1;
     const caps = capabilities[inputFixtureIndex(fix)];
     if (caps) {
       const planned = hardwareStrobe(request?.raw ?? 0, caps, now, request?.limitHz);
@@ -797,6 +797,22 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     }
     if (!request || hueLamp(fix)) return 1;
     return softStrobeLit(request, now) ? 1 : 0;
+  }
+
+  // Shape the winning layer before capability guards; no output may brighten afterwards.
+  function drawStrobes(input: FrameInput, rigNow: Rig<RenderFixture>, all: LightValue[][],
+    owned: (EnergyLook | null)[], clipped: boolean[], reading: MusicalTime): void {
+    if (!drawnByTheShow(input.strobeFunction)) return;
+    for (let i = 0; i < all.length; i++) {
+      const caps = capabilities[i] ?? hardwareOf(input.fixtures[i], profileOf(input.fixtures[i]));
+      const maxHz = Math.min(caps?.maxFlashHz ?? Infinity, input.flashLimit ? FLASHES_PER_SECOND : Infinity);
+      for (let c = 0; c < all[i].length; c++) {
+        const light = all[i][c], request = strobeRequest(input, owned[i], light.strobe, clipped[i]);
+        if (!request || !drawnByTheShow(request.fnId)) continue;
+        light.dim *= strobeLevel(request.fnId, request.raw, reading.beatPos, reading.bpm,
+          rigNow.ranges[i].start + c, maxHz > 0 ? 1000 / maxHz : Infinity);
+      }
+    }
   }
 
   function writePar(input: RenderInput, store: FrameStore, fix: RenderFixture, { col, dim, strobe: flash }: LightValue,
@@ -978,12 +994,13 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
         const kind = top ? (voice ? voice.kind ?? null : null) : overridden || pixelOwners[u] ? null : seqUnits && seqLight[u] ? seqKind[u] : baseKind[u];
         topKind[u] = kind;
         if (hdGuarded(kind)) guarded = true;
-        if (kind === 'strobe') strobed = true;
+        if (kind === 'strobe' || kind === 'strobe.program') strobed = true;
       }
       owned.push(first);
       clipped.push(clip);
       all.push(lights);
     }
+    drawStrobes(input, rigNow, all, owned, clipped, reading);
     if (capabilities.length) {
       const ids = new Set<string>();
       for (let i = 0; i < fixtures.length; i++) for (let c = 0; c < all[i].length; c++) {
@@ -1040,10 +1057,10 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       const lights = all[i];
       for (let c = 0; c < lights.length; c++) {
         const u = start + c;
-        if (topKind[u] !== 'strobe') { strobeGuard.clear(u); continue; }
+        if (topKind[u] !== 'strobe' && topKind[u] !== 'strobe.program') { strobeGuard.clear(u); continue; }
         const light = lights[c];
         const level = light.dim / 255;
-        const allowed = strobeGuard.apply(u, level, frameIndex);
+        const allowed = strobeGuard.apply(u, level, frameIndex, topKind[u] === 'strobe.program');
         if (allowed < level) light.dim = 255 * allowed;
       }
     }

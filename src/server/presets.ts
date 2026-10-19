@@ -2,16 +2,29 @@ import { CATALOGUE, presetById } from '../shared/effects/index.ts';
 import { ENERGY_KIND_BY_ID } from '../shared/effects/energy.ts';
 import { requiresAcknowledgement } from '../shared/effects/registry.ts';
 
-const STROBE_FUNCTIONS = [
-  { id: 'standard',         name: 'Standard',         desc: 'Strobe slow → fast (1-20 Hz)', lo: 128, hi: 250 },
-  { id: 'ramp-up-down',     name: 'Ramp Up/Down',     desc: 'Ramp up/down, slow → fast',    lo: 11,  hi: 22  },
-  { id: 'ramp-up-down-rnd', name: 'Ramp Up/Down Rnd', desc: 'Ramp up/down random',          lo: 23,  hi: 33  },
-  { id: 'ramp-up',          name: 'Ramp Up',          desc: 'Ramp up, slow → fast',         lo: 34,  hi: 45  },
-  { id: 'ramp-up-rnd',      name: 'Ramp Up Rnd',      desc: 'Ramp up random, slow → fast',  lo: 46,  hi: 56  },
-  { id: 'ramp-down',        name: 'Ramp Down',        desc: 'Ramp down, slow → fast',       lo: 57,  hi: 68  },
-  { id: 'ramp-down-rnd',    name: 'Ramp Down Rnd',    desc: 'Ramp down random, slow → fast',lo: 69,  hi: 79  },
-  { id: 'random',           name: 'Random',           desc: 'Random strobe, slow → fast',   lo: 80,  hi: 102 },
-  { id: 'break',            name: 'Break',            desc: 'Burst with break, 5s → 1s',    lo: 103, hi: 127 },
+interface StrobeFunction {
+  id: string;
+  name: string;
+  desc: string;
+  /** The strobe channel's range, for the one function a fixture runs itself. */
+  lo?: number;
+  hi?: number;
+}
+
+const STANDARD_STROBE = {
+  id: 'standard', name: 'Standard', desc: 'The fixture\'s own strobe, slow → fast (1-20 Hz)', lo: 128, hi: 250,
+} satisfies StrobeFunction;
+
+const STROBE_FUNCTIONS: StrobeFunction[] = [
+  STANDARD_STROBE,
+  { id: 'ramp-up-down',     name: 'Ramp Up/Down',     desc: 'Swells up and back down, peaking on the beat — 4 beats → ¼ beat' },
+  { id: 'ramp-up-down-rnd', name: 'Ramp Up/Down Rnd', desc: 'Swells up and back down, every light at its own random moment' },
+  { id: 'ramp-up',          name: 'Ramp Up',          desc: 'Swells up from black and cuts on the beat — 4 beats → ¼ beat' },
+  { id: 'ramp-up-rnd',      name: 'Ramp Up Rnd',      desc: 'Swells up and cuts, every light at its own random moment' },
+  { id: 'ramp-down',        name: 'Ramp Down',        desc: 'Hits full on the beat and dies away — 4 beats → ¼ beat' },
+  { id: 'ramp-down-rnd',    name: 'Ramp Down Rnd',    desc: 'Hits full and dies away, every light at its own random moment' },
+  { id: 'random',           name: 'Random',           desc: 'Random flashes, every light on its own — a beat → a sixteenth' },
+  { id: 'break',            name: 'Burst',            desc: 'A burst of flashes on the beat, then a break — every 2 bars → every beat' },
 ];
 
 const STROBE_FUNCTION_IDS = STROBE_FUNCTIONS.map((f) => f.id);
@@ -81,6 +94,9 @@ const PATTERNS = [
   { id: 'flash-fill',      name: 'Flash Fill',      desc: 'Every step fills from the middle out, holds, and cuts to black', pixel: true },
   { id: 'flash-alternate', name: 'Flash Alternate', desc: 'Odd zones flash on the step, even ones between', pixel: true },
   { id: 'ramp',            name: 'Ramp',            desc: 'Every step swells from black to full from the middle, cut on the beat', pixel: true },
+  { id: 'ramp-scatter',    name: 'Random Ramps',    desc: 'Every zone swells up and cuts at its own random moment', pixel: true },
+  { id: 'decay-scatter',   name: 'Random Hits',     desc: 'Every zone hits full at its own random moment and dies away', pixel: true },
+  { id: 'flash-burst',     name: 'Flash Burst',     desc: 'A burst of flashes every four steps, odd and even zones in turn, then a break', pixel: true },
   { id: 'core',            name: 'Strobe Core',     desc: 'A colour wash with a white core striking on every kick', pixel: true },
   ...CATALOGUE.filter((p) => p.legacy).map(({ id, name, desc, party, preset }) => ({ id, name, desc, party, ...(preset ? { preset } : {}) })),
 ].map((row) => ({ ...row, legacy: true as const }));
@@ -108,6 +124,7 @@ const AUTO_SOURCES = ['auto', 'hybrid', 'spotify', 'deezer', 'nowplaying', 'prol
 const TEMPO_MODES = ['auto', 'manual'] as const;
 
 export {
+  STANDARD_STROBE,
   STROBE_FUNCTIONS,
   STROBE_FUNCTION_IDS,
   COLOR_PRESETS,

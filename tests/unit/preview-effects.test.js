@@ -960,3 +960,24 @@ test('legacy strobe on a rate-limited Hue matches preview', () => {
   assert.ok(rendered.some((frame) => frame[0].r === 0));
   assert.ok(rendered.some((frame) => frame[0].r > 0));
 });
+
+test('drawn programs keep preview/output parity under device limits and overlay replacement', () => {
+  const times = frames(0, 3000), hardware = { technologies: {}, products: {} };
+  const fixtures = [...PARS.slice(0, 2), LAMP].map((f) => ({ ...f, hardware: { maxFlashHz: 1, minTransitionMs: 0 } }));
+  const profiles = Object.fromEntries(fixtures.map((f) => [f.profileId, getProfile(f)]));
+  for (const fn of ['ramp-up', 'random', 'break']) {
+    const look = { pattern: 'strobe', strobeFunction: fn, strobeSpeed: 255, ...LOOK };
+    const outputs = rigRun(fixtures, times, () => ({ ...look, hardware }));
+    const sample = createPreviewSampler([{ timeMs: 0, action: 'patch', data: look }], GRID, { hardware, profiles, safety: ACK });
+    assertSame(outputs, previewRun(sample, fixtures, times), times, fn);
+  }
+  const program = validateSpec({ kind: 'strobe', params: { function: 'ramp-up', speed: 255, continueBetween: false } });
+  const overlay = voice('beam-program', program, { tier: 'strobe', targets: [fixtures[0].id] });
+  const outputs = rigRun(fixtures, times, () => ({ pattern: 'strobe', strobeFunction: 'break', strobeSpeed: 255,
+    hardware, safety: ACK, voices: [overlay] }));
+  const sample = createPreviewSampler([
+    { timeMs: 0, action: 'patch', data: { pattern: 'strobe', strobeFunction: 'break', strobeSpeed: 255, ...LOOK } },
+    { timeMs: 0, action: 'voice', data: { id: overlay.id, effect: program, tier: 'strobe', targets: overlay.targets, launchSeq: 1 } },
+  ], GRID, { hardware, profiles, safety: ACK });
+  assertSame(outputs, previewRun(sample, fixtures, times), times, 'program overlay');
+});

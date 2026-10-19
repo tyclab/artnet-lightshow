@@ -1,4 +1,5 @@
 import type { ResolvedGradient } from './palette-model.ts';
+import { FLASH_MS, MIN_SLOT_MS, flashLit, scatter, rampUp, rampDown, randomSwell, swellsIn } from './strobe-fx.ts';
 import { colourMixer } from './color.ts';
 import { HOLD_STROBE_MAX_HZ, HUE_PULSE_MS, HUE_PULSE_FLOOR, huePulseLevel } from './look-math.ts';
 import { roomOf, xOf, yOf } from './room.ts';
@@ -79,7 +80,7 @@ const CELL_PATTERNS = new Set([
   'ensemble', 'ribbon', 'wave', 'rainbow', 'twinkle', 'sparkle',
   'gradient', 'comet', 'burst', 'plasma', 'meter', 'drums', 'stems',
   'rise', 'impact', 'bars', 'fire', 'rain',
-  'flash-chase', 'flash-scatter', 'flash-fill', 'flash-alternate', 'ramp', 'core',
+  'flash-chase', 'flash-scatter', 'flash-fill', 'flash-alternate', 'ramp', 'core', 'ramp-scatter', 'decay-scatter', 'flash-burst',
   'radial-pulse', 'spatial-wash', 'bounce-scan', 'streak',
   'breathe', 'volume-gate', 'room-wave', 'swirl',
 ]);
@@ -526,9 +527,9 @@ Object.assign(PATTERN_FUNCS, {
   },
 } satisfies Record<string, PatternFn>);
 
-const FLASH_MS = 45;
-const FLASH_MAX_MS = 80;
-const MIN_SLOT_MS = 90;
+
+
+
 // Bound replay cost for sparse flashes, including direct preview seeks.
 const SCATTER_LOOKBACK = 32;
 const DEFAULT_STEP_MS = 500;
@@ -546,9 +547,7 @@ function flashGrid(ctx: PatternContext, want: number): { slot: number; phase: nu
   return { slot: Math.floor(pos), phase: frac(pos), slotMs: stepMs / perStep };
 }
 
-function flashLit(phase: number, slotMs: number): boolean {
-  return phase * slotMs < Math.min(FLASH_MAX_MS, Math.max(FLASH_MS, 0.35 * slotMs));
-}
+
 
 const ranks = new WeakMap<readonly number[], { rank: number[]; count: number }>();
 function rankOf(ctx: PatternContext): { rank: (i: number) => number; count: number } {
@@ -704,6 +703,41 @@ Object.assign(PATTERN_FUNCS, {
       }
     }
   },
+  'ramp-scatter'(ctx) {
+    scatterSwells(ctx, rampUp, 0);
+  },
+
+  // The other way round: every zone hit at full at a moment of its own, dying
+  // away to black after it.
+  'decay-scatter'(ctx) {
+    scatterSwells(ctx, rampDown, 5381);
+  },
+
+  // A burst with a break: from the top of every four steps, a run of flashes
+  // as fast as a zone may flash, odd zones and even ones taking turns, for
+  // two steps — then black until the next, each burst in the look's next
+  // colour.
+  'flash-burst'(ctx) {
+    const pal = paletteOf(ctx);
+    const { rank } = rankOf(ctx);
+    const stepMs = stepMsOf(ctx);
+    const pos = (ctx.stepPos ?? ctx.step) / BURST_STEPS;
+    const cycle = Math.floor(pos);
+    const into = frac(pos) * BURST_STEPS;
+    const colour = pal[cycle % pal.length];
+    let lit = false;
+    let half = 0;
+    if (into < BURST_ON_STEPS) {
+      const lengthMs = BURST_ON_STEPS * stepMs;
+      const flashes = Math.max(2, Math.floor(lengthMs / MIN_SLOT_MS));
+      const flash = (into / BURST_ON_STEPS) * flashes;
+      lit = flashLit(frac(flash), lengthMs / flashes);
+      half = Math.floor(flash) % 2;
+    }
+    for (let i = 0; i < ctx.fixtureCount; i++) {
+      ctx.write(i, colour, lit && rank(i) % 2 === half ? 255 : 0, 0);
+    }
+  },
 } satisfies Record<string, PatternFn>);
 
 function heightsOf(ctx: PatternContext): ((i: number) => number) | null {
@@ -745,12 +779,7 @@ function noise2(x: number, y: number, seed: number): number {
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
-function scatter(i: number, seed: number): number {
-  let h = Math.imul(i + 1, 0x9E3779B1) ^ Math.imul(seed + 7, 0x85EBCA77);
-  h = Math.imul(h ^ (h >>> 15), 0x2C1B3C6D);
-  h ^= h >>> 13;
-  return (h >>> 0) / 4294967296;
-}
+
 
 function kitFromTheClock(ctx: PatternContext): { kick: number; snare: number; hats: number } {
   const phase = ctx.stepPhase ?? 0;
@@ -1115,3 +1144,25 @@ export {
   MAX_LAMP_FLASH_HZ,
   BACKLIGHT,
 };
+
+const BURST_STEPS = 4;
+
+const BURST_ON_STEPS = 2;
+
+const SWELL_MIN_MS = 160;
+
+function scatterSwells(ctx: PatternContext, shape: (q: number) => number, seed: number): void {
+  const pal = paletteOf(ctx);
+  const stepMs = stepMsOf(ctx);
+  let steps = 1;
+  while (steps < 16 && stepMs * steps < SWELL_MIN_MS) steps *= 2;
+  const clocked = ctx.stepPos != null;
+  const t = (ctx.stepPos ?? ctx.step) / steps;
+  const cycle = Math.floor(t);
+  for (let i = 0; i < ctx.fixtureCount; i++) {
+    const light = i + seed;
+    const level = clocked ? randomSwell(shape, t, light) : swellsIn(cycle, light) ? 1 : 0;
+    const colour = pal[Math.floor(scatter(light, cycle + 7919) * pal.length) % pal.length];
+    ctx.write(i, colour, Math.round(255 * level), 0);
+  }
+}

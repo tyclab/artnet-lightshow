@@ -1,3 +1,4 @@
+import { drawnByTheShow, strobeLevel } from './strobe-fx.ts';
 import { outputEmitters } from './emitter-capability.ts';
 import { HardwareClock } from './hardware-clock.ts';
 import { HardwareGuard } from './hardware-guard.ts';
@@ -532,7 +533,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       : null;
     const palette = hold ? paletteOverride ?? paletteOf({ colors }) : null;
 
-    return layer.map(({ color, dim }, u) => {
+    return layer.map(({ color, dim, strobe }, u) => {
       const { fixture: i, cell } = rig.units[u];
       const fixture = fixtures[i];
       const burst = hold && palette ? holdStrobeLook(palette, hold, hue[i] && hueStrobe === 'pulse') : energy;
@@ -542,6 +543,13 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       } else {
         dim *= expr.level;
         if (dyn && dyn.level === 0) dim = 0;
+      }
+      const fn = String(frame.look.strobeFunction ?? 'standard');
+      const raw = frame.look.pattern === 'strobe' ? Number(frame.look.strobeSpeed) || 0 : strobe ?? 0;
+      if (!burst && raw > 0 && drawnByTheShow(fn)) {
+        const caps = hardwareOf(fixture, options.profiles?.[fixture.profileId ?? ''], options.hardware);
+        const maxHz = Math.min(caps.maxFlashHz, frame.look.flashLimit ? 3 : Infinity);
+        dim *= strobeLevel(fn, raw, beatAt(positionMs, frame), frame.look.bpm, u, 1000 / maxHz);
       }
       const scale = (dim / 255) * ((fixture.maxBrightness ?? 255) / 255);
       return outputEmitters(color, scale, rig.cellMaps[i]?.[cell] ?? options.profiles?.[fixtures[i]?.profileId ?? '']?.channelMap);
@@ -798,9 +806,19 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       flashes[u] = voice ? voice.strobe ?? 0 : clip ? clip.strobe : s.pattern === 'strobe' ? Number(s.strobeSpeed) || 0 : below.strobe;
       tops[u] = voice ? voice.kind ?? null : clip ? clipKind[u] : baseKind[u];
       if (hdGuarded(tops[u])) guarded = true;
-      if (tops[u] === 'strobe') strobed = true;
+      if (tops[u] === 'strobe' || tops[u] === 'strobe.program') strobed = true;
     }
     w.shown = shown;
+    const programs = new Array<boolean>(n).fill(false);
+    for (let u = 0; u < n; u++) {
+      const fixture = rig.units[u].fixture;
+      const fn = String(s.strobeFunction ?? 'standard');
+      if (voiceTop?.[u] || clips?.[u] || !drawnByTheShow(fn) || !(flashes[u] > 0)) continue;
+      programs[u] = true;
+      const caps = e.hardware?.[fixture] ?? hardwareOf(fixtures[fixture], options.profiles?.[fixtures[fixture]?.profileId ?? ''], options.hardware);
+      const maxHz = Math.min(caps.maxFlashHz, s.flashLimit ? 3 : Infinity);
+      dims[u] *= strobeLevel(fn, flashes[u], beatPos, bpm, u, maxHz > 0 ? 1000 / maxHz : Infinity);
+    }
     if (e.hardware) for (let u = 0; u < n; u++) {
       const { fixture: i, cell } = rig.units[u];
       const voice = voiceTop?.[u], clip = clips?.[u];
@@ -808,7 +826,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       const cut = tops[u] === 'energy.kill' || !voice && (target?.level === 0 || !!clip && sequence?.transport.stop?.mode === 'black');
       const guardedLight = w.hardwareGuard.light(`${fixtures[i]?.id ?? i}:${cell}`, cols[u], dims[u], t, e.hardware[i], owner, cut);
       cols[u] = guardedLight.colour; dims[u] = guardedLight.dim;
-      if (w.hardwareStrobeGuard.apply(String(fixtures[i]?.id ?? i), hardwareStrobe(flashes[u], e.hardware[i], t).previewLevel, t,
+      if (!programs[u] && w.hardwareStrobeGuard.apply(String(fixtures[i]?.id ?? i), hardwareStrobe(flashes[u], e.hardware[i], t).previewLevel, t,
         { ...e.hardware[i], minTransitionMs: 0 }) === 0) dims[u] = 0;
     }
     // The party flash limit on the hd.* kinds, on what each lamp puts out at its trim (the preview's master is full).
@@ -823,9 +841,9 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
     if (strobed) {
       const frameIndex = strobeFrameOf(t);
       for (let u = 0; u < n; u++) {
-        if (tops[u] !== 'strobe') { w.strobeGuard.clear(u); continue; }
+        if (tops[u] !== 'strobe' && tops[u] !== 'strobe.program') { w.strobeGuard.clear(u); continue; }
         const level = dims[u] / 255;
-        const allowed = w.strobeGuard.apply(u, level, frameIndex);
+        const allowed = w.strobeGuard.apply(u, level, frameIndex, tops[u] === 'strobe.program');
         if (allowed < level) dims[u] = 255 * allowed;
       }
     } else if (w.strobeGuard.liveCount) for (let u = 0; u < n; u++) w.strobeGuard.clear(u);

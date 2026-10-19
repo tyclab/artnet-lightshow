@@ -1284,19 +1284,20 @@ const PANEL_ROLE_LOOKS: Record<string, readonly string[]> = {
 };
 const PANEL_LOOKS = ['bars', 'fire', 'rain'];
 
-const DROP_STROBES = ['impact', 'flash-fill', 'flash-scatter', 'core'];
-const DRIVING_STROBES = ['flash-alternate', 'flash-chase', 'ramp', 'core'];
+const DROP_STROBES = ['impact', 'flash-fill', 'flash-scatter', 'core', 'flash-burst'];
+const DRIVING_STROBES = ['flash-alternate', 'flash-chase', 'ramp', 'core', 'ramp-scatter', 'decay-scatter'];
 const STROBE_DRIVE = 0.72;
 const STROBE_ROLES = new Set(['chorus', 'instrumental', 'bridge']);
 
 const STROBE_MAPS: Record<string, string> = {
   impact: 'stage', 'flash-scatter': 'stage', 'flash-chase': 'mirror',
   'flash-fill': 'bar', 'flash-alternate': 'bar', ramp: 'bar', core: 'bar',
+  'ramp-scatter': 'stage', 'decay-scatter': 'stage', 'flash-burst': 'bar',
 };
 
 const CELL_LOOKS = new Set(['gradient', 'comet', 'burst', 'plasma', 'drums', 'stems', 'rise', 'impact', 'ensemble', 'ribbon', 'wave', 'rainbow',
   'twinkle', 'sparkle', 'bars', 'fire', 'rain',
-  'flash-chase', 'flash-scatter', 'flash-fill', 'flash-alternate', 'ramp', 'core']);
+  'flash-chase', 'flash-scatter', 'flash-fill', 'flash-alternate', 'ramp', 'core', 'ramp-scatter', 'decay-scatter', 'flash-burst']);
 
 const PAR_WASHES: readonly (readonly string[])[] = [
   ['ensemble', 'wave', 'fade'],

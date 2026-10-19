@@ -56,7 +56,7 @@ test('the bars draw what the section is doing', () => {
   assert.deepStrictEqual([...seen.get('verse')], ['gradient/stage'], 'a verse is a slow gradient');
   // Or, driving as hard as a drop, one of the strobe programs, laid as it is.
   for (const look of seen.get('chorus')) {
-    assert.ok(/^(comet\/mirror|flash-chase\/mirror|(flash-alternate|ramp|core)\/bar)$/.test(look), `a chorus is a mirrored chase: ${look}`);
+    assert.ok(/^(comet\/mirror|flash-chase\/mirror|(flash-alternate|ramp|core)\/bar|(ramp|decay)-scatter\/stage)$/.test(look), `a chorus is a mirrored chase: ${look}`);
   }
   assert.ok(seen.get('chorus').has('comet/mirror'), 'a chorus that is not driving that hard still chases');
   assert.deepStrictEqual([...seen.get('drop')], ['impact/stage'], 'a drop is a burst from the centre, sparking on the kick');
