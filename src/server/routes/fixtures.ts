@@ -406,6 +406,7 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
       ok: true,
       bridge: { id: bridge.id, label: bridge.label },
       area: { id: area.id, name: area.name },
+      channels: area.channels,
       lamps: area.lamps.map((lamp) => ({ ...lamp, shows: hueProfile(lamp, bridge.id)?.modeName ?? null })),
     });
   }));

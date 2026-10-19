@@ -61,7 +61,8 @@ flowchart LR
   Server --> Engine
   Show --> Engine
   Engine --> Preview[Browser preview]
-  Room[Private room export] --> RoomAPI[Authenticated Stage room import]
+  HueMap[Hue channels / segment members / ordered fixture units] --> Room[Private room export]
+  Room --> RoomAPI[Authenticated Stage room import]
   RoomAPI --> Preview
   Engine --> Guard[Output arming / transport gates]
   Guard --> Outputs[Art-Net / sACN / DDP / OpenRGB / Hue]
@@ -1269,7 +1270,7 @@ Transport routes answer `{ ok, status }`; with no sequence loaded they answer
 | GET | `/api/hue/discover` | Bridges Philips' cloud service has seen on this network |
 | POST | `/api/hue/pair` | Pair with `{ host, label? }` — the bridge link button must have been pressed in the last 30 seconds. Answers `409` with `pressLink: true` if it has not. A new address is added to `hue.bridges` (as `bridge-1`, `bridge-2`…, on, with no area yet); one already there gets fresh keys. Answers the bridge and its areas |
 | GET | `/api/hue/:bridge/areas` | Entertainment areas on that bridge, with their channel ids and lamp names |
-| GET | `/api/hue/:bridge/lamps` | Its chosen area's lamps: id, name, product, devices, ordered `channels`, capabilities and `shows` description |
+| GET | `/api/hue/:bridge/lamps` | Its chosen area's physical `lamps` (id, name, product, devices, ordered `channels`, capabilities and `shows`) plus authoritative `channels` with device/segment membership for room exporters |
 | POST | `/api/hue/:bridge/add` | `{ lamps? }`: patch those lamp ids, or every unpatched lamp, with a bridge-derived profile and `output: { protocol: 'hue', bridge, channels }`. Legacy `{ channels? }` selects the lamps containing those channels |
 | POST | `/api/hue/:bridge/refresh` | Refresh existing lamp capabilities without replacing fixture IDs or channel order; returns `refreshed` fixture IDs and `skipped` entries with reasons |
 | POST | `/api/hue/:bridge/disconnect` | Forget that bridge, keys and all. `409` while its lamps are in the patch unless `{ removeFixtures: true }` takes them along |
