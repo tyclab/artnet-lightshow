@@ -11,7 +11,7 @@ import express from 'express';
 
 import {
   buildPacket, parseHeader, buildUpdateLeds, buildUpdateMode, parseUpdateLeds, parseControllerData, directMode,
-  closeOpenRgb, OPENRGB_PORT, PACKET,
+  closeOpenRgb, OpenRgbConnection, OPENRGB_PORT, PACKET,
 } from '../../src/server/openrgb.ts';
 import { openrgbProfile } from '../../src/server/openrgb-devices.ts';
 import { openrgbRoutes, openrgbPixels, openrgbConflict } from '../../src/server/openrgb-routes.ts';
@@ -95,8 +95,10 @@ const rig = () => [
 
 async function fakeServer(devices = rig(), { version = 4, answerVersion = true } = {}) {
   const log = { leds: [], modes: [], names: [], connections: 0, closed: 0 };
+  const sockets = new Set();
   const server = net.createServer((socket) => {
     log.connections++;
+    sockets.add(socket);
     let buf = Buffer.alloc(0);
     socket.on('data', (chunk) => {
       buf = Buffer.concat([buf, chunk]);
@@ -118,12 +120,14 @@ async function fakeServer(devices = rig(), { version = 4, answerVersion = true }
         }
       }
     });
-    socket.on('close', () => { log.closed++; });
+    socket.on('close', () => { log.closed++; sockets.delete(socket); });
     socket.on('error', () => {});
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   return {
     port: server.address().port, log, devices,
+    changed: () => { for (const socket of sockets) socket.write(buildPacket(0, PACKET.DEVICE_LIST_UPDATED)); },
+    disconnect: () => { for (const socket of sockets) socket.destroy(); },
     close: () => new Promise((resolve) => server.close(() => resolve())),
   };
 }
@@ -450,6 +454,116 @@ test('OpenRGB resolves renumbered devices by name and occurrence', async () => {
     assert.strictEqual(server.log.connections, 1, 'one connection served the lot');
   } finally {
     closeOpenRgb({ host: '127.0.0.1', port: server.port });
+    await server.close();
+  }
+});
+
+test('missing OpenRGB devices back off independently while healthy frames remain unthrottled', async () => {
+  const server = await fakeServer([{ name: 'Keyboard', leds: 1 }]);
+  let now = 0;
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port, clock: () => now });
+  const missing = { device: 6, name: 'Monitor' }, keyboard = { device: 6, name: 'Keyboard' };
+  const rgb = Uint8Array.of(100, 20, 30), attempts = [];
+  const resolve = connection.resolve.bind(connection);
+  connection.resolve = (ref) => { attempts.push({ name: ref.name, now }); return resolve(ref); };
+  try {
+    await connection.open();
+    connection.send(missing, rgb, 1);
+    await until(() => connection.failed.size === 1 && !connection.preparing.size);
+    await connection.prepare(keyboard);
+    const before = server.log.leds.length;
+    for (let frame = 0; frame < 44; frame++) {
+      now = frame * 1000 / 44;
+      assert.strictEqual(connection.send(missing, rgb, 1), false);
+      assert.strictEqual(connection.send(keyboard, rgb, 1), true);
+      await new Promise(setImmediate);
+    }
+    await until(() => server.log.leds.length === before + 44);
+    assert.strictEqual(attempts.filter((a) => a.name === 'Monitor').length, 1, 'no rejected async preparation per frame');
+    assert.ok(server.log.leds.every((p) => p.device === 0 && p.rgb[0] === 100), 'same old number cannot redirect the keyboard to the monitor');
+
+    for (const due of [1000, 3000, 7000, 15000, 31000, 61000]) {
+      now = due;
+      const count = attempts.length;
+      connection.send(missing, rgb, 1);
+      await until(() => attempts.length === count + 1 && !connection.preparing.size);
+      assert.strictEqual([...connection.failed.values()][0].delay, Math.min(due + 1000, 30000));
+    }
+    assert.deepStrictEqual(attempts.filter((a) => a.name === 'Monitor').map((a) => a.now), [0, 1000, 3000, 7000, 15000, 31000, 61000]);
+    server.devices.push({ name: 'Monitor', leds: 1 });
+    now = 91000;
+    await until(() => connection.send(missing, rgb, 1), { what: 'retry discovers a returned monitor without a notification' });
+    assert.strictEqual(connection.failed.size, 0);
+    await until(() => server.log.leds.some((p) => p.device === 1));
+  } finally {
+    connection.end();
+    await server.close();
+  }
+});
+
+test('OpenRGB device-list updates clear failed preparation without waiting for backoff', async () => {
+  const server = await fakeServer([{ name: 'Keyboard', leds: 1 }]);
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port, clock: () => 0 });
+  const missing = { device: 6, name: 'Monitor' }, rgb = Uint8Array.of(80, 0, 0);
+  try {
+    await connection.open();
+    connection.send(missing, rgb, 1);
+    await until(() => connection.failed.size === 1 && !connection.preparing.size);
+    server.devices.push({ name: 'Monitor', leds: 1 });
+    server.changed();
+    await until(() => connection.send(missing, rgb, 1), { what: 'immediate recovery from the updated device list' });
+    assert.strictEqual(connection.failed.size, 0);
+    await until(() => server.log.leds.some((p) => p.device === 1));
+  } finally {
+    connection.end();
+    await server.close();
+  }
+});
+
+test('OpenRGB reconnect clears device failures and an ended connection never retries', async () => {
+  const server = await fakeServer([]);
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port, clock: () => 0 });
+  const missing = { device: 6, name: 'Monitor' }, rgb = Uint8Array.of(70, 0, 0);
+  try {
+    await connection.open();
+    connection.send(missing, rgb, 1);
+    await until(() => connection.failed.size === 1 && !connection.preparing.size);
+    server.disconnect();
+    await until(() => !connection.socket);
+    assert.strictEqual(connection.failed.size, 0);
+    server.devices.push({ name: 'Monitor', leds: 1 });
+    await connection.open();
+    await until(() => connection.send(missing, rgb, 1), { what: 'device recovery after reconnect' });
+    connection.send(missing, new Uint8Array(3), 1);
+    connection.end();
+    await until(() => server.log.closed === 2);
+    assert.ok(dark(server.log.leds.at(-1).rgb), 'shutdown sends the final dark frame');
+    for (let frame = 0; frame < 44; frame++) assert.strictEqual(connection.send(missing, rgb, 1), false);
+    assert.strictEqual(server.log.connections, 2, 'no reconnect after shutdown');
+  } finally {
+    connection.end();
+    await server.close();
+  }
+});
+
+test('OpenRGB resolves different names sharing their original device number independently', async () => {
+  const server = await fakeServer([{ name: 'Keyboard', leds: 1 }, { name: 'Monitor', leds: 1 }]);
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port });
+  const keyboard = { device: 6, name: 'Keyboard' }, monitor = { device: 6, name: 'Monitor' };
+  try {
+    await connection.open();
+    connection.send(keyboard, Uint8Array.of(100, 0, 0), 1);
+    connection.send(monitor, Uint8Array.of(0, 0, 200), 1);
+    await until(() => connection.devices.size === 2);
+    assert.strictEqual(connection.send(keyboard, Uint8Array.of(100, 0, 0), 1), true);
+    assert.strictEqual(connection.send(monitor, Uint8Array.of(0, 0, 200), 1), true);
+    await until(() => server.log.leds.length === 2);
+    assert.deepStrictEqual(server.log.leds.map((p) => [p.device, ...p.rgb]), [[0, 100, 0, 0], [1, 0, 0, 200]]);
+    connection.restore(monitor);
+    await until(() => server.log.leds.length === 3);
+    assert.strictEqual(server.log.leds.at(-1).device, 1, 'restore addresses the named monitor too');
+  } finally {
+    connection.end();
     await server.close();
   }
 });

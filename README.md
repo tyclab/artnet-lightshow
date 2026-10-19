@@ -549,7 +549,9 @@ renumbered devices. Devices must support a direct LED colour mode.
 
 Disarm or removal sends darkness and closes the connection. OpenRGB has no
 realtime timeout: another client/profile must restore the desired hardware
-effect. Unavailable PCs generate warnings; other outputs continue.
+effect. Unavailable PCs generate warnings; other outputs continue. Missing devices
+retry after 1 second, doubling to at most 30 seconds while healthy devices keep
+receiving every frame. A device-list update or reconnect retries immediately.
 
 ### Philips Hue
 
