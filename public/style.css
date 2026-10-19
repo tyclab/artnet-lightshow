@@ -442,67 +442,6 @@ button.cb-bpm-num:focus-visible { outline: 2px solid var(--accent); outline-offs
   color: #052e1f;
 }
 
-.cb-blackout {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 14px;
-  height: 38px;
-  border-radius: 8px;
-  background: rgba(239, 68, 68, .14);
-  border: 1px solid rgba(239, 68, 68, .35);
-  color: var(--text-red);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  cursor: pointer;
-  transition: all var(--t);
-  flex-shrink: 0;
-}
-.cb-blackout:hover { background: rgba(239, 68, 68, .25); border-color: rgba(239, 68, 68, .55); color: var(--text-hover); }
-.cb-blackout-dot {
-  width: 10px; height: 10px;
-  border-radius: 50%;
-  background: rgba(239, 68, 68, .55);
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, .15);
-}
-.cb-blackout.active {
-  background: var(--red);
-  border-color: transparent;
-  color: #fff;
-  animation: blackout-pulse 1.4s ease-in-out infinite;
-}
-.cb-blackout.active .cb-blackout-dot { background: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .3); }
-
-.cb-master {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 12px;
-  height: 38px;
-  border-radius: 8px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  flex: 1;
-  min-width: 180px;
-}
-.cb-master-label {
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  color: var(--muted);
-  flex-shrink: 0;
-}
-.cb-master input[type=range] { flex: 1; min-width: 0; width: 100%; }
-.cb-master-val {
-  font-size: 13px;
-  font-weight: 700;
-  font-family: var(--mono);
-  color: var(--text);
-  width: 42px;
-  text-align: right;
-  flex-shrink: 0;
-}
 
 /* — Energy strip — */
 .cb-energy { gap: 10px; }
@@ -885,7 +824,8 @@ button.cb-bpm-num:focus-visible { outline: 2px solid var(--accent); outline-offs
    SHOW VIEW — the room, the looks, the switches a party needs
    ============================================================= */
 .show-view { display: grid; gap: 12px; padding-bottom: 48px; }
-.show-strip { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1.3fr); gap: 8px; align-items: stretch; }
+/* Above every live view, between the tabs and the panel, as wide as the panel. */
+.show-strip { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1.3fr); gap: 8px; align-items: stretch; padding: 10px 12px 0; }
 .show-strip .perform-arm { min-width: 0; }
 .show-switch {
   display: flex;
@@ -2278,7 +2218,6 @@ input[type=range]::-moz-range-thumb {
   .cb-tempo { gap: 10px; }
   .cb-bpm-num { font-size: 28px; }
   .cb-tap { height: 48px; padding: 0 16px; }
-  .cb-master { min-width: 0; flex: 1 1 100%; }
   .cb-energy-btn { padding: 0 10px; height: 38px; font-size: 10px; }
   .mode-tab-hint { display: none; }
   .fixtures-grid { grid-template-columns: 1fr; }
@@ -3231,12 +3170,11 @@ input[type=range]::-moz-range-thumb {
 
 @media (prefers-reduced-motion: reduce) {
   /* Every one of these is decoration over a state that is also carried by a
-     background colour — .cb-blackout.active is red whether or not it breathes,
+     background colour — .btn.danger.active is red whether or not it breathes,
      .auto-badge-playing keeps its tint — so stopping them costs no information. */
   .stat-pill.alert,
   .cb-bpm.pulse .cb-bpm-num,
   .bpm-display.pulse,
-  .cb-blackout.active,
   .btn.danger.active,
   .cb-energy-btn.active,
   .energy-btn.active,
@@ -3716,7 +3654,7 @@ input[type=range]::-moz-range-thumb {
 .stage3d-time { font-family: var(--mono); font-size: 11px; color: var(--text-2); white-space: nowrap; }
 .stage3d-wrap {
   position: relative;
-  height: clamp(240px, calc(100dvh - var(--header-height, 47px) - var(--commands-height, 0px) - var(--views-height, 0px) - 200px), 900px);
+  height: clamp(240px, calc(100dvh - var(--header-height, 47px) - var(--commands-height, 0px) - var(--views-height, 0px) - var(--strip-height, 0px) - 200px), 900px);
   background: #030306;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -3886,7 +3824,7 @@ input[type=range]::-moz-range-thumb {
    ============================================================= */
 @media (pointer: coarse) {
   .btn, .btn.sm, .btn.icon, .segmented-btn, .bd-tab, .bd-toggle, .mode-tab, .nav-link,
-  .header-tool, .header-theme, .stat-pill.gate, .cb-energy-btn, .cb-tap, .cb-play, .cb-blackout, .cb-bpm-follow,
+  .header-tool, .header-theme, .stat-pill.gate, .cb-energy-btn, .cb-tap, .cb-play, .cb-bpm-follow,
   .palette-btn, .pattern-btn, .color-slot-tab, .cue-recall, .cue-capture, .sync-nudge,
   .transport-btn, .warm-toggle, .auto-select, .warm-playlist-select, .shortcuts-tab,
   .sub-tab, .remove-btn, .wizard-step-btn, .ofl-hit, .file-upload-btn, .timeline-section,
@@ -4182,13 +4120,9 @@ input[type=range]::-moz-range-thumb {
   .cb-tempo { gap: 6px; }
   .cb-bpm { min-width: 42px; }
   .cb-bpm-num { font-size: 22px; }
-  .cb-bpm-controls, .cb-bpm-source, .cb-energy, .cb-play, .cb-master-label, .cb-master-val { display: none; }
+  .cb-bpm-controls, .cb-bpm-source, .cb-energy, .cb-play { display: none; }
   .cb-tap { min-width: 44px; height: 44px; padding: 0 8px; }
   .cb-transport { min-width: 0; gap: 6px; }
-  .cb-blackout { min-height: 44px; padding: 0 8px; font-size: 10px; letter-spacing: 0; }
-  .cb-blackout-dot { display: none; }
-  .cb-master { min-width: 44px; height: 44px; padding: 0 6px; }
-  .cb-master input { min-width: 0; width: 100%; }
 }
 
 @media (max-width: 900px) and (orientation: landscape) {

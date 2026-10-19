@@ -29,6 +29,26 @@ test('the app opens on Show: the room, the looks and the switches', async ({ pag
   await expect(page.locator('.command-bar')).toHaveCount(0);
 });
 
+test('the same strip sits above every live view and none of the setup views', async ({ page }) => {
+  for (const view of ['effects', 'perform', 'stage', 'auto', 'sequence']) {
+    await open(page, view);
+    const strip = page.locator('.show-strip');
+    await expect(strip).toHaveCount(1);
+    await expect(strip.getByRole('switch', { name: /Disarmed|Armed/ })).toBeVisible();
+    await expect(strip.getByRole('group', { name: 'Picture source' })).toBeVisible();
+    await expect(strip.getByRole('switch', { name: /Auto show/ })).toBeVisible();
+    await expect(strip.getByRole('switch', { name: /Blackout/ })).toBeVisible();
+    await expect(strip.getByRole('slider', { name: 'Master dimmer' })).toBeVisible();
+    // The view below adds no second copy of any of them.
+    await expect(page.getByRole('switch', { name: /Blackout/ })).toHaveCount(1);
+    await expect(page.getByRole('slider', { name: 'Master dimmer' })).toHaveCount(1);
+  }
+  for (const view of ['rig', 'sources', 'settings', 'preflight']) {
+    await open(page, view);
+    await expect(page.locator('.show-strip')).toHaveCount(0);
+  }
+});
+
 test('the Show switches fit on the first screen of a tablet', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 768 });
   await open(page, 'show');
