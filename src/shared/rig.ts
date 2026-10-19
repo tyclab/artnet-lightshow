@@ -1,3 +1,4 @@
+import { isHueProfile } from './hue-lamp.ts';
 import { isPlaced, stagePositions, spatialLayout, washFixtures } from './stage.ts';
 import type { ChannelMap, Geometry, Grid, GridPoint, PixelMap, Point, Profile, ProfileCell, StageFixture } from '../types/rig.ts';
 
@@ -54,6 +55,7 @@ export interface Rig<F extends StageFixture = StageFixture> {
   localY: number[];
   grids: (Grid | null)[];
   zoned: boolean[];
+  hue: boolean[];
   hasPixels: boolean;
   hasPars: boolean;
   hasPanels: boolean;
@@ -62,7 +64,7 @@ export interface Rig<F extends StageFixture = StageFixture> {
 
 export type LayerPart = 'pars' | 'cells' | 'strips' | 'panels' | 'unpanelled';
 
-export type ProfileLookup<F> = (fixture: F) => Pick<Profile, 'cells' | 'grid' | 'zoned'> | null | undefined;
+export type ProfileLookup<F> = (fixture: F) => Pick<Profile, 'cells' | 'grid' | 'zoned' | 'hue'> | null | undefined;
 
 function cellsOf(profile: Pick<Profile, 'cells'> | null | undefined): ProfileCell[] | null {
   const cells = profile && profile.cells;
@@ -111,6 +113,7 @@ function buildRig<F extends StageFixture>(fixtures: readonly F[], profileOf: Pro
   const localY: number[] = [];
   const grids: (Grid | null)[] = [];
   const zoned: boolean[] = [];
+  const hue: boolean[] = [];
   let hasPixels = false;
   let hasPars = false;
   let hasPanels = false;
@@ -118,6 +121,7 @@ function buildRig<F extends StageFixture>(fixtures: readonly F[], profileOf: Pro
   fixtures.forEach((fixture, i) => {
     const start = units.length;
     const profile = profileOf(fixture);
+    hue.push(isHueProfile(profile) || isHueLamp(fixture));
     const cells = cellsOf(profile);
     if (!cells) {
       hasPars = true;
@@ -169,7 +173,7 @@ function buildRig<F extends StageFixture>(fixtures: readonly F[], profileOf: Pro
 
   const layouts = new Map<string, Layout>();
   return {
-    fixtures, units, ranges, cellMaps, points, local, localY, grids, zoned, hasPixels, hasPars, hasPanels,
+    fixtures, units, ranges, cellMaps, points, local, localY, grids, zoned, hue, hasPixels, hasPars, hasPanels,
     layout(split = null, pixelMap = 'stage', only = null) {
       const key = `${split}|${pixelMap}|${only || ''}`;
       let layout = layouts.get(key);
@@ -235,7 +239,7 @@ function layoutOf(rig: Rig, split: number | null | undefined, pixelMap: string |
     group: order.map((k) => fixtures[members[k]].group || null),
   } : null;
   const layoutFixtures: Layout['fixtures'] = {
-    members, order, xs, plan: fixturePlan, noFlash: hueFlags(order.map((k) => isHue(fixtures[members[k]]))),
+    members, order, xs, plan: fixturePlan, noFlash: hueFlags(order.map((k) => rig.hue[members[k]])),
   };
   if (pixelMap === 'mirror' && members.length >= 3) {
     const n = order.length;
@@ -296,7 +300,7 @@ function layoutOf(rig: Rig, split: number | null | undefined, pixelMap: string |
     z: list.map((u) => heightOf(fixtures[rig.units[u].fixture])),
     group: list.map((u) => fixtures[rig.units[u].fixture].group || null),
   } : null;
-  const noFlash = hueFlags(list.map((u) => isHue(fixtures[rig.units[u].fixture])));
+  const noFlash = hueFlags(list.map((u) => rig.hue[rig.units[u].fixture]));
   const layout: Layout = { wash, fixtures: layoutFixtures, units: { list, xs: unitXs, ys: unitYs, plan: unitPlan, noFlash } };
   if (list.length > members.length) {
     const lampIndex = new Map(order.map((k, i) => [members[k], i]));

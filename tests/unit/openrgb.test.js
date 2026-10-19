@@ -23,7 +23,7 @@ import { state } from '../../src/server/state.ts';
 import { showStore } from '../../src/server/show-store.ts';
 import { stopEngine } from '../../src/server/engine.ts';
 import { checkOpenRgb } from '../../src/server/preflight.ts';
-import { stripOf } from '../../src/shared/placement.ts';
+import { stripOf, INTERNAL_UNIVERSE, isInternalUniverse } from '../../src/shared/placement.ts';
 
 state.artnet.enabled = false;
 state.running = false;
@@ -257,15 +257,15 @@ test('OpenRGB routes map universe bytes to LED cell colours', () => {
   assert.deepStrictEqual([...openrgbPixels(odd, () => parFrame).subarray(0, 6)], [10, 20, 30, 0, 0, 0]);
 });
 
-test('a device is one fixture\'s, and its universes are its alone', () => {
+test('a device is one fixture\'s', () => {
   assert.strictEqual(openrgbConflict([ram(1, 3, 0), ram(2, 4, 1)]), null);
-  assert.ok(openrgbConflict([ram(1, 3, 0), ram(2, 4, 0)]));
+  assert.match(openrgbConflict([ram(1, 3, 0), ram(2, 4, 0)]), /"RAM 2" and "RAM 1" are both OpenRGB device #0 at 10.0.0.80/);
   const named = (id, device, name) => ({ ...ram(id, id + 2, device), output: { ...ram(id, id + 2, device).output, name } });
   assert.strictEqual(openrgbConflict([named(1, 6, 'Keyboard'), named(2, 6, 'Monitor')]), null, 'two devices patched at one number on different days, under their names');
-  assert.ok(openrgbConflict([named(1, 6, 'Monitor'), named(2, 6, 'Monitor')]));
-  assert.ok(ddpConflict([ram(1, 3, 0), { ...ram(2, 4, 0), output: { ...ram(2, 4, 0).output, port: 6742 } }], profileOf, universeOf));
-  assert.ok(ddpConflict([ram(1, 3, 0), { id: 2, label: 'Par', address: 100, universe: 3, profileId: 'par' }], profileOf, universeOf));
-  assert.ok(ddpConflict([ram(1, 3, 0), ram(2, 3, 1)], profileOf, universeOf));
+  assert.match(openrgbConflict([named(1, 6, 'Monitor'), named(2, 6, 'Monitor')]), /"RAM 2" and "RAM 1" are both OpenRGB device #6 Monitor at 10.0.0.80/);
+  assert.match(ddpConflict([ram(1, 3, 0), { ...ram(2, 4, 0), output: { ...ram(2, 4, 0).output, port: 6742 } }], profileOf), /both OpenRGB device #0/);
+  // It has no DMX address: the server places it, so no par or other device can share its universes.
+  assert.strictEqual(ddpConflict([ram(1, 3, 0), ram(2, 3, 1), { id: 3, label: 'Par', address: 100, universe: 3, profileId: 'par' }], profileOf), null);
 });
 
 // ── The transmitter ─────────────────────────────────────────────────────────
@@ -492,7 +492,7 @@ async function withApp(fn) {
   }
 }
 
-test('OpenRGB discovery adds devices on dedicated universes', async () => {
+test('discover lists the server\'s devices; add patches each with no DMX address, sent over the SDK', async () => {
   const server = await fakeServer();
   try {
     await withApp(async (call) => {
@@ -507,16 +507,16 @@ test('OpenRGB discovery adds devices on dedicated universes', async () => {
       const two = await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, devices: [0, 5] });
       assert.strictEqual(two.status, 200, JSON.stringify(two.body));
       assert.deepStrictEqual(two.body.fixtures.map((f) => [f.label, f.universe, f.address, f.profileId, f.output]), [
-        ['Trident Z A', 1, 1, `openrgb-127-0-0-1-${server.port}-0`, { protocol: 'openrgb', host: '127.0.0.1', port: server.port, device: 0, name: 'Trident Z A', leds: 8 }],
-        ['B650 Board', 2, 1, `openrgb-127-0-0-1-${server.port}-5`, { protocol: 'openrgb', host: '127.0.0.1', port: server.port, device: 5, name: 'B650 Board', leds: 85 }],
-      ], 'from universe 1: the rig\'s default universe 0 stays clear; each under its name, to be found again when OpenRGB renumbers');
+        ['Trident Z A', INTERNAL_UNIVERSE, 1, `openrgb-127-0-0-1-${server.port}-0`, { protocol: 'openrgb', host: '127.0.0.1', port: server.port, device: 0, name: 'Trident Z A', leds: 8 }],
+        ['B650 Board', INTERNAL_UNIVERSE, 25, `openrgb-127-0-0-1-${server.port}-5`, { protocol: 'openrgb', host: '127.0.0.1', port: server.port, device: 5, name: 'B650 Board', leds: 85 }],
+      ], 'one after the other on the server\'s own universes; each under its name, to be found again when OpenRGB renumbers');
       assert.deepStrictEqual(two.body.profiles.map((p) => [p.name, p.modeName]), [['Trident Z A', '8 LEDs, RGB, DRAM'], ['B650 Board', '85 LEDs, RGB, Motherboard']]);
       assert.strictEqual(state.fixtures.length, 3);
 
       const again = await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, devices: [0] });
-      assert.deepStrictEqual([again.status, Boolean(again.body.error)], [409, true]);
+      assert.deepStrictEqual([again.status, again.body.error], [409, 'Trident Z A (#0) is patched already, as "Trident Z A"']);
       assert.strictEqual((await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, devices: [99] })).status, 404);
-      assert.ok((await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, devices: [9] })).body.error);
+      assert.match((await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, devices: [9] })).body.error, /has no LEDs to light/);
 
       const rest = await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, label: 'PC' });
       assert.strictEqual(rest.status, 200, JSON.stringify(rest.body));
@@ -524,9 +524,9 @@ test('OpenRGB discovery adds devices on dedicated universes', async () => {
         ['PC · Trident Z B', 1], ['PC · Trident Z C', 2], ['PC · Trident Z D', 3], ['PC · RTX 4080', 4], ['PC · Keyboard', 6],
         ['PC · Monitor L', 7], ['PC · Monitor R', 8], ['PC · Mouse', 10],
       ], 'every device with LEDs not patched yet; the one with none is skipped');
-      assert.deepStrictEqual(rest.body.fixtures.map((f) => f.universe), [3, 4, 5, 6, 7, 8, 9, 10]);
+      assert.ok(rest.body.fixtures.every((f) => isInternalUniverse(f.universe)), 'none on an Art-Net universe');
       const all = await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port });
-      assert.deepStrictEqual([all.status, Boolean(all.body.error)], [409, true]);
+      assert.deepStrictEqual([all.status, all.body.error], [409, 'Every device of OpenRGB at 127.0.0.1 is patched already']);
 
       const listed = await call(`/api/openrgb/discover?host=127.0.0.1&port=${server.port}`);
       assert.deepStrictEqual(listed.body.devices.map((d) => d.patched).slice(0, 3), ['Trident Z A', 'PC · Trident Z B', 'PC · Trident Z C']);
@@ -539,8 +539,8 @@ test('OpenRGB discovery adds devices on dedicated universes', async () => {
         [6, 'PC · Monitor L'], [7, 'PC · Monitor R'], [8, null], [9, 'PC · Keyboard'],
       ]);
       const none = await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port });
-      assert.deepStrictEqual([none.status, Boolean(none.body.error)], [409, true], 'nothing new, whatever the numbers');
-      assert.ok((await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, devices: [9] })).body.error);
+      assert.deepStrictEqual([none.status, none.body.error], [409, 'Every device of OpenRGB at 127.0.0.1 is patched already'], 'nothing new, whatever the numbers');
+      assert.match((await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, devices: [9] })).body.error, /Keyboard \(#9\) is patched already, as "PC · Keyboard"/);
 
       // Deleted and undone, a device comes back with its output, name and all.
       const keyboard = state.fixtures.find((f) => f.label === 'PC · Keyboard');
@@ -555,7 +555,7 @@ test('OpenRGB discovery adds devices on dedicated universes', async () => {
 
       assert.strictEqual((await call('/api/openrgb/add', { host: 'http://x' })).status, 400);
       const nobody = await call('/api/openrgb/discover?host=127.0.0.1&port=1');
-      assert.deepStrictEqual([nobody.status, Boolean(nobody.body.error)], [502, true], JSON.stringify(nobody.body));
+      assert.deepStrictEqual([nobody.status, /Cannot reach OpenRGB at 127.0.0.1:1/.test(nobody.body.error)], [502, true], JSON.stringify(nobody.body));
     });
   } finally {
     await server.close();

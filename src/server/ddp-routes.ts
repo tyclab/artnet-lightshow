@@ -106,13 +106,10 @@ function pixelWidth(profile: Profile): number {
   return Number.isInteger(width) ? width : 0;
 }
 
-const toDevice = (fix: Fixture) => !!fix.output && (fix.output.protocol === 'ddp' || fix.output.protocol === 'openrgb');
-const deviceName = (fix: Fixture) => (fix.output?.protocol === 'openrgb' ? 'an OpenRGB device' : 'a WLED');
-
-// Reserve device universes exclusively so DMX fixtures cannot be patched onto channels never sent to DMX.
-function ddpConflict(fixtures: readonly Fixture[], profileOf: ProfileOf, universeOf: UniverseOf): string | null {
+function ddpConflict(fixtures: readonly Fixture[], profileOf: ProfileOf): string | null {
   const twice = openrgbConflict(fixtures);
   if (twice) return twice;
+
   const leds = new Map<string, { fixture: Fixture; from: number; to: number }[]>();
   for (const fix of fixtures) {
     const output = fix.output;
@@ -129,26 +126,6 @@ function ddpConflict(fixtures: readonly Fixture[], profileOf: ProfileOf, univers
       taken.push({ fixture: fix, from: run.at, to: run.at + run.count - 1 });
     }
     leds.set(key, taken);
-  }
-  const owner = new Map<number, Fixture>();
-  for (const fix of fixtures) {
-    if (!toDevice(fix)) continue;
-    for (const part of footprintOf(universeOf(fix), fix.address, profileOf(fix))) {
-      const other = owner.get(part.universe);
-      if (other) return `"${fix.label}" and "${other.label}" both send universe ${part.universe} to ${deviceName(fix)}; give each universes of its own`;
-      owner.set(part.universe, fix);
-    }
-  }
-  for (const fix of fixtures) {
-    if (toDevice(fix)) continue;
-    for (const part of footprintOf(universeOf(fix), fix.address, profileOf(fix))) {
-      const device = owner.get(part.universe);
-      if (device) {
-        const where = device.output?.protocol === 'openrgb' ? 'OpenRGB device' : 'WLED over DDP';
-        return `"${fix.label}" is on universe ${part.universe}, which goes to "${device.label}"'s ${where} and nowhere else; `
-          + 'patch it on another universe';
-      }
-    }
   }
   return null;
 }

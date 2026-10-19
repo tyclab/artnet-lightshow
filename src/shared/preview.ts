@@ -9,7 +9,7 @@ import { fixedColours, colourSlots, resolveGradient } from './palette-model.ts';
 import type { PaletteBody } from './palette-model.ts';
 import { PATTERN_FUNCS, paletteOf } from './patterns.ts';
 import { renderLayer } from './layer.ts';
-import { buildRig, isHueLamp, rigSignature } from './rig.ts';
+import { buildRig, rigSignature, isHueLamp } from './rig.ts';
 import { EXPRESSION_REST, resolveEnergyOverride, blendExpression, blendFixture, HOLD_STROBE, holdStrobeFlash, holdStrobeLook } from './look-math.ts';
 import { gridFromAnalysis, beatPositionAt, localBpm, anchorStep, stepAt, motionAdvance } from './beat-clock.ts';
 import { canonical, effectContentKey, handOverStrobes, hdGuarded, relaunchEffect, renderEffectLayer, renderVoices, voiceAnchor, voiceLaunchKey, voiceLayout } from './effects/layer.ts';
@@ -572,7 +572,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
     if (!(explicitVoices || anyEffect || sequence || options.hardware)) {
       // Nothing steps: answered straight from the timeline, nothing kept.
       if (env) { env = null; forgetHistory(); }
-      return { key: '', stepped: false, fixtures, presets, rig, specs, hue: fixtures.map(isHueLamp), cells: new Map() };
+      return { key: '', stepped: false, fixtures, presets, rig, specs, hue: rig.hue, cells: new Map() };
     }
     const key = `${effectsKey}\n${fixturesContent(fixtures)}\n${rigContent(rig)}\n${presets.map(contentOf).join(',')}`;
     if (env && env.key === key) {
@@ -580,7 +580,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       env.fixtures = fixtures; env.presets = presets; env.rig = rig;
       return env;
     }
-    env = { key, stepped: true, fixtures, presets, rig, specs, hue: fixtures.map(isHueLamp), cells: new Map(),
+    env = { key, stepped: true, fixtures, presets, rig, specs, hue: rig.hue, cells: new Map(),
       hardware: options.hardware ? fixtures.map((f) => hardwareOf(f, options.profiles?.[f.profileId ?? ''], options.hardware)) : undefined };
     forgetHistory();
     return env;

@@ -1,4 +1,5 @@
-import { BUILTIN_PROFILE_ID, BUILTIN_PROFILE_IDS, HUE_PROFILE_IDS, getProfile, listProfiles } from './profiles.ts';
+import { isHueProfile } from '../shared/hue-lamp.ts';
+import { BUILTIN_PROFILE_ID, BUILTIN_PROFILE_IDS, getProfile, listProfiles } from './profiles.ts';
 import { settings } from './settings.ts';
 import * as universes from './universes.ts';
 import { COLOR_PRESETS, PATTERNS, PRESET_ROWS, STROBE_FUNCTIONS, ENERGY_EFFECTS, SYNC_OFFSET_LIMIT_MS } from './presets.ts';
@@ -270,17 +271,6 @@ function setDefaultUniverse(next: number): void {
 }
 
 // The default universe counts as used, since new fixtures land on it.
-function freeUniverses(count: number, taken: ReadonlySet<number> = new Set()): number | null {
-  const used = new Set<number>([state.artnet.universe, ...taken]);
-  for (const f of state.fixtures) for (const part of footprintOf(universeOf(f), f.address, getProfile(f))) used.add(part.universe);
-  for (let u = 1; u + count - 1 <= 32767; u++) {
-    let free = true;
-    for (let k = 0; k < count && free; k++) free = !used.has(u + k);
-    if (free) return u;
-  }
-  return null;
-}
-
 function getFixtureCount(): number { return state.fixtures.length; }
 
 function getFixture(id: number): Fixture | null {
@@ -346,7 +336,7 @@ function getCatalogs() {
     // So the UI offers no Remove for a profile the server refuses to delete.
     builtinProfileIds: [...BUILTIN_PROFILE_IDS],
     // A fixture on a Hue profile has no DMX address by default, so the patch does not ask for one.
-    hueProfileIds: [...HUE_PROFILE_IDS],
+    hueProfileIds: Object.values(listProfiles()).filter(isHueProfile).map((profile) => profile.id),
     // The sync control sizes itself from this rather than a copy that drifts.
     syncOffsetLimitMs: SYNC_OFFSET_LIMIT_MS,
   };
@@ -451,7 +441,6 @@ export {
   wireUniverses,
   placeAddresslessFixtures,
   countUniverses,
-  freeUniverses,
   setDefaultUniverse,
   getFixtureCount,
   getFixture,

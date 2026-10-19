@@ -364,7 +364,7 @@ Undo for 12 seconds; restore still checks patch conflicts.
 |--------|------------|-------|
 | Art-Net | UDP 6454, universes from 0 | Broadcast, unicast, or discovered-node routing; optional ArtSync |
 | sACN/E1.31 | UDP 5568, universes from 1 | Multicast `239.255.x.y` or unicast; default offset +1 from the patch |
-| WLED/DDP | Device host, optional port and LED offset | Discover by mDNS or add by address; dedicated fixture universes |
+| WLED/DDP | Device host, optional port and LED offset | Discover by mDNS or add by address; no DMX address |
 | OpenRGB | TCP SDK server, default port 6742 | Enable the SDK server, discover devices and add those with direct LED control |
 | Hue Entertainment | Bridge and entertainment-area channel | Pair bridge, select area, add its lamps |
 
@@ -380,7 +380,8 @@ Entertainment sessions. Master blackout keeps the outputs owned and streaming.
 
 Find WLEDs on the local network or add a host directly. Adding reads its LED
 count, RGB/RGBW layout and panel dimensions; up to 4096 LEDs form one fixture.
-Dedicated WLED universes are not also sent on Art-Net or sACN.
+WLED fixtures have no DMX address. The server allocates internal rendering space
+without consuming Art-Net/sACN universes.
 
 **Add each segment** creates separate fixtures. Segment regions must not
 overlap. A panel rectangle uses its LED offset and row stride; WLED resolves
@@ -507,7 +508,8 @@ export marks `role: screen` (the TV and the monitors in a house-model export).
 
 ### OpenRGB
 
-Each device is a fixture, with one RGB cell per LED, on dedicated universes.
+Each device is a fixture, with one RGB cell per LED and no DMX address.
+The server allocates its internal rendering space and sends only its own pixels.
 The patch keeps the device name as well as its number so discovery can resolve
 renumbered devices. Devices must support a direct LED colour mode.
 
@@ -527,16 +529,36 @@ entertainment stream; stop another sync client before connecting. Pairing keys
 are stored as secrets. Disconnect refuses while lamps remain patched unless
 `removeFixtures: true` is supplied.
 
-| Profile | Channels |
-|---------|----------|
-| Generic Lamp | Dimmer, RGB, warm white, cool white, UV |
-| Generic White Ambiance Lamp | Dimmer, warm white, cool white |
-| Generic White Lamp | Dimmer |
+Each physical lamp gets a profile built from its bridge capabilities: colour gamut,
+its warm/cool white temperatures, or the fixed white it dims. Gradient strips and
+Play gradients are one fixture with ordered cells, one per entertainment section.
+The profile travels with the saved show. Hue profiles are selected by discovery,
+not imported or changed manually; UV is represented as visible violet.
 
-Hue fixtures have no DMX address; their internal universes start at 60000 and
-are not sent to DMX outputs. UV is represented as violet, warm white as a warm
-tint, cool white as daylight. `hue.latencyMs` delays Art-Net/sACN relative to
-Hue; use `/api/hue/sync-test` to compare them.
+Hue, WLED and OpenRGB fixtures have no DMX address. Internal rendering space starts
+at universe 60000; small devices can share it, and each transport reads only its
+fixture's pixels. It is never transmitted over Art-Net or sACN. `hue.latencyMs`
+delays the other outputs relative to Hue; use `/api/hue/sync-test` to compare them.
+
+Existing Hue fixtures retain their IDs, positions, geometry, hardware limits and
+channel bindings when loaded. Legacy `{ channel }` outputs become `{ channels: [channel] }`;
+their compatibility profiles retain the original colour rendering even when a bridge
+is offline. **Refresh lamp profiles** reads current capabilities while preserving
+fixture and section identities. It keeps old strip sections as separate fixtures so
+sequence, MIDI and room bindings remain valid. Unreadable or ambiguous lamps and
+changed section counts are retained and listed in the response for review.
+
+```mermaid
+flowchart LR
+  Saved[Saved fixtures and stable IDs] --> Load[Load and validate channel bindings]
+  Bridge[Bridge lamp capabilities and ordered sections] --> Add[Add one fixture per physical lamp]
+  Load --> Refresh[Optional profile refresh / retain existing sections]
+  Bridge --> Refresh
+  Add --> Allocate[Allocate internal rendering space]
+  Refresh --> Allocate
+  Allocate --> Render[Renderer / hardware limits / blackout]
+  Render --> Transport[Each device reads its own cells]
+```
 
 ### Hue flash handling
 
@@ -1101,9 +1123,9 @@ Transport routes answer `{ ok, status }`; with no sequence loaded they answer
 | POST | `/api/profiles/bar` | Build and register an LED bar profile from `{ id, name, cells, firstChannel, order, stride?, dimmer?, strobe? }`; `?dryRun=1` answers with it without registering |
 | GET · POST | `/api/show` | Export / import the patch |
 | GET | `/api/wled/discover` | Ask the network for WLEDs (mDNS): `{ devices: [{ host, name, leds, rgbw, matrix, version, segments, patched }] }` |
-| POST | `/api/wled/add` | Add a WLED to the patch from `{ host, label?, segments? }`: its profile from `/json/info`, on free universes, sent DDP. With `segments: true`, a fixture for each segment in its `/json/state` not patched yet: `{ fixtures, profiles, info, segments }` |
+| POST | `/api/wled/add` | Add a WLED to the patch from `{ host, label?, segments? }`: its profile from `/json/info`, with internal allocation and no DMX address, sent DDP. With `segments: true`, a fixture for each segment in its `/json/state` not patched yet: `{ fixtures, profiles, info, segments }` |
 | GET | `/api/openrgb/discover?host=&port=` | Ask an OpenRGB SDK server for its devices: `{ host, port, devices: [{ index, name, type, leds, direct, patched }] }` |
-| POST | `/api/openrgb/add` | Add devices of an OpenRGB server to the patch from `{ host, port?, devices?: [index], label? }` — those named, or every one with LEDs not patched yet — each a fixture with a cell per LED, on free universes, sent over the SDK: `{ fixtures, profiles, devices }` |
+| POST | `/api/openrgb/add` | Add devices of an OpenRGB server to the patch from `{ host, port?, devices?: [index], label? }` — those named, or every one with LEDs not patched yet — each a fixture with a cell per LED and no DMX address, sent over the SDK: `{ fixtures, profiles, devices }` |
 
 ### Outputs
 
@@ -1123,7 +1145,7 @@ Transport routes answer `{ ok, status }`; with no sequence loaded they answer
 | POST | `/api/identify/stop` | Stop identifying, a streamed WLED or OpenRGB device included |
 | POST | `/api/wled/identify` | `{ host, seconds? }`: through the patch when the WLED is in it (`via: 'patch'`), else its picture streamed over DDP (`via: 'device'`) |
 | POST | `/api/openrgb/identify` | `{ host, port?, device, seconds? }`: through the patch when the device is in it (`via: 'patch'`), else its picture streamed over the SDK (`via: 'device'`, with `leds` and `name`) and the device put back after |
-| POST | `/api/hue/:bridge/identify` | `{ channel, seconds? }`: the lamp on that channel of the bridge's area through the patch (`via: 'fixture'`), else the bridge's own identify (`via: 'bridge'`) |
+| POST | `/api/hue/:bridge/identify` | `{ lamp, seconds? }` (legacy `{ channel, seconds? }` also accepted): the lamp of the bridge's area through the patch (`via: 'fixture'`), else the bridge's own identify (`via: 'bridge'`) |
 
 ### Cues
 
@@ -1196,8 +1218,9 @@ Transport routes answer `{ ok, status }`; with no sequence loaded they answer
 | GET | `/api/hue/discover` | Bridges Philips' cloud service has seen on this network |
 | POST | `/api/hue/pair` | Pair with `{ host, label? }` — the bridge link button must have been pressed in the last 30 seconds. Answers `409` with `pressLink: true` if it has not. A new address is added to `hue.bridges` (as `bridge-1`, `bridge-2`…, on, with no area yet); one already there gets fresh keys. Answers the bridge and its areas |
 | GET | `/api/hue/:bridge/areas` | Entertainment areas on that bridge, with their channel ids and lamp names |
-| GET | `/api/hue/:bridge/lamps` | Its chosen area's channels: each lamp's name, product, devices and what it can show (`kind`: `color`, `ambiance`, `white`, or `null` when the bridge would not say) |
-| POST | `/api/hue/:bridge/add` | `{ channels? }`: patch those channels of its area, or every one not in the patch yet, each a fixture on the profile for its `kind`, with `output: { protocol: 'hue', bridge, channel }` and no DMX address |
+| GET | `/api/hue/:bridge/lamps` | Its chosen area's lamps: id, name, product, devices, ordered `channels`, capabilities and `shows` description |
+| POST | `/api/hue/:bridge/add` | `{ lamps? }`: patch those lamp ids, or every unpatched lamp, with a bridge-derived profile and `output: { protocol: 'hue', bridge, channels }`. Legacy `{ channels? }` selects the lamps containing those channels |
+| POST | `/api/hue/:bridge/refresh` | Refresh existing lamp capabilities without replacing fixture IDs or channel order; returns `refreshed` fixture IDs and `skipped` entries with reasons |
 | POST | `/api/hue/:bridge/disconnect` | Forget that bridge, keys and all. `409` while its lamps are in the patch unless `{ removeFixtures: true }` takes them along |
 | POST | `/api/hue/sync-test` | Flash every fixture white once a second for 10 s, to tune `hue.latencyMs` |
 
@@ -1275,13 +1298,15 @@ of `front`, `back`, `room`, `floor`, or `null`; `geometry` is an LED bar's line
 (a panel's top edge), `{ length, angle }` (length 1–100 in stage percent, angle
 −180–180 degrees clockwise on the plot), or `null` for the default; `output` is
 `{ protocol: 'ddp', host, port?, at?, rowStride? }` to send the fixture's
-universes to a WLED — from its LED `at` for a segment, a row every `rowStride`
+pixels to a WLED — from its LED `at` for a segment, a row every `rowStride`
 LEDs for a rectangle of a panel — `{ protocol: 'openrgb', host, port?, device,
 name?, leds }` to send them to device `device` of the OpenRGB SDK server at
 `host` (found by `name` when the server has renumbered it), `leds` LEDs long
 (as `POST /api/openrgb/add` patches it) — or `null` for
-Art-Net and sACN. A Hue lamp's
-`{ protocol: 'hue', bridge, channel }` is given by `POST /api/hue/:bridge/add`
+Art-Net and sACN. A device's protocol cannot be changed here: only its destination
+within the same protocol can be edited, and supplied DMX addresses are ignored.
+A Hue lamp's
+`{ protocol: 'hue', bridge, channels }` is given by `POST /api/hue/:bridge/add`
 and cannot be set or changed here.
 
 ## Pre-show checks and diagnostics

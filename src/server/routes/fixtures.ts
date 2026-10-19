@@ -1,9 +1,14 @@
-import { state, allocateFixtureId, universeOf, maxBrightnessOf, countUniverses, freeUniverses, placeAddresslessFixtures } from '../state.ts';
+import { state, allocateFixtureId, universeOf, maxBrightnessOf, countUniverses, placeAddresslessFixtures } from '../state.ts';
 import { resizeFixtureBuffers } from '../engine.ts';
 import { parseGDTF } from '../../gdtf.ts';
-import { BUILTIN_PROFILE_ID, HUE_PROFILE_IDS, HUE_BY_HAND, hueProfileFor, isBuiltinProfile, MAX_FIXTURES, UNIVERSE_SIZE, endChannel, fitsInUniverse, universeOverflow, registerProfile, unregisterProfile, listProfiles, getProfile, unitCapOverflow } from '../profiles.ts';
+import { BUILTIN_PROFILE_ID, HUE_BY_HAND, isBuiltinProfile, MAX_FIXTURES, UNIVERSE_SIZE, endChannel, fitsInUniverse, universeOverflow, registerProfile, unregisterProfile, listProfiles, getProfile, unitCapOverflow } from '../profiles.ts';
 import { MAX_UNIVERSES } from '../universes.ts';
-import { INTERNAL_UNIVERSE, footprintOf, hasNoAddress, universeCount } from '../../shared/placement.ts';
+import { INTERNAL_UNIVERSE, footprintOf, hasNoAddress, isHueLamp, universeCount } from '../../shared/placement.ts';
+import { isHueProfile, hueSections, hueChannels } from '../../shared/hue-lamp.ts';
+import { refreshHueFixtures } from '../hue-migration.ts';
+import { hueProfile, hueProfileId } from '../hue-profile.ts';
+import type { AreaLamp, EntertainmentArea } from '../hue.ts';
+import type { HueBridgeSettings } from '../settings.ts';
 import { ddpConflict } from '../ddp-routes.ts';
 import { showStore, snapshotShow, applyShow } from '../show-store.ts';
 import { barProfile } from '../bar-profile.ts';
@@ -124,14 +129,14 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
       if (sameDevice) {
         return res.status(409).json({ ok: false, error: `${info.name} is patched already, as "${sameDevice.label}"; change its address in the patch table` });
       }
-      const universe = freeUniverses(universeCount(profile));
-      if (universe === null) return res.status(400).json({ ok: false, error: 'No free universes left for it' });
+      // No DMX address: the server places it on universes of its own.
       const fixture: Fixture = {
-        id: -1, label: (label || info.name).slice(0, 64), address: 1, universe, profileId: profile.id, maxBrightness: 255,
+        id: -1, label: (label || info.name).slice(0, 64), address: 1, universe: INTERNAL_UNIVERSE, profileId: profile.id, maxBrightness: 255,
         override: null, position: null, group: null, geometry: null, output: { protocol: 'ddp', host, ...wledSpan(info, null, look) },
       };
-      const next = [...state.fixtures, fixture];
       const profileOf = (f: Pick<Fixture, 'profileId'>) => (f.profileId === profile.id ? profile : getProfile(f));
+      const next = [...state.fixtures.map((f) => ({ ...f })), fixture];
+      placeAddresslessFixtures(next, profileOf);
       const tooMany = unitCapOverflow(next, profileOf);
       if (tooMany) return res.status(400).json({ ok: false, error: tooMany });
       if (countUniverses(next, profileOf) > MAX_UNIVERSES) {
@@ -140,6 +145,7 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
       if (!registerProfile(profile)) return res.status(400).json({ ok: false, error: 'Invalid profile' });
       fixture.id = allocateFixtureId();
       state.fixtures.push(fixture);
+      placeAddresslessFixtures();
       resizeFixtureBuffers();
       showStore.scheduleSave();
       integrations.broadcast();
@@ -151,8 +157,8 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
 
   /**
    * A WLED patched segment by segment: a fixture for each of its segments not
-   * patched yet, each on universes of its own and sent to its own LEDs, so the
-   * stage plot can put the booth's front and its sides where they are.
+   * patched yet, each sent to its own LEDs, so the stage plot can put the
+   * booth's front and its sides where they are.
    */
   async function addSegments(res: Response, host: string, label: string | undefined, look: WledLook) {
     if (!wled.segments) return res.status(501).json({ ok: false, error: 'This server cannot read WLED segments' });
@@ -166,14 +172,10 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
     if (state.fixtures.length + fresh.length > MAX_FIXTURES) {
       return res.status(400).json({ ok: false, error: `${fresh.length} segments would take the patch past ${MAX_FIXTURES} fixtures` });
     }
-    const taken = new Set<number>();
     const draft: Fixture[] = [];
     for (const { segment, profile } of fresh) {
-      const universe = freeUniverses(universeCount(profile), taken);
-      if (universe === null) return res.status(400).json({ ok: false, error: 'No free universes left for it' });
-      for (let k = 0; k < universeCount(profile); k++) taken.add(universe + k);
       draft.push({
-        id: -1 - draft.length, label: `${label || info.name} · ${segment.name}`.slice(0, 64), address: 1, universe,
+        id: -1 - draft.length, label: `${label || info.name} · ${segment.name}`.slice(0, 64), address: 1, universe: INTERNAL_UNIVERSE,
         profileId: profile.id, maxBrightness: 255, override: null, position: null, group: null, geometry: null,
         output: {
           protocol: 'ddp', host, at: segment.at, ...(segment.rowStride ? { rowStride: segment.rowStride } : {}), ...wledSpan(info, segment, look),
@@ -182,8 +184,9 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
     }
     const byId = new Map(fresh.map(({ profile }) => [profile.id, profile as Profile]));
     const profileOf = (f: Pick<Fixture, 'profileId'>) => byId.get(f.profileId) || getProfile(f);
-    const next = [...state.fixtures, ...draft];
-    const problem = unitCapOverflow(next, profileOf) || ddpConflict(next, profileOf, universeOf)
+    const next = [...state.fixtures.map((f) => ({ ...f })), ...draft];
+    placeAddresslessFixtures(next, profileOf);
+    const problem = unitCapOverflow(next, profileOf) || ddpConflict(next, profileOf)
       || (countUniverses(next, profileOf) > MAX_UNIVERSES
         ? `${info.name}'s segments would put the patch on more than the ${MAX_UNIVERSES} universes this server transmits` : null);
     if (problem) return res.status(400).json({ ok: false, error: problem });
@@ -194,6 +197,7 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
       fixture.id = allocateFixtureId();
       state.fixtures.push(fixture);
     }
+    placeAddresslessFixtures();
     resizeFixtureBuffers();
     showStore.scheduleSave();
     integrations.broadcast();
@@ -203,6 +207,8 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
   app.post('/api/profiles', (req, res) => {
     try {
       const profile = validate(profileSchema, req.body, 'profile');
+      const hue = hueProfileBlocked(profile);
+      if (hue) return res.status(400).json({ ok: false, error: hue });
       // Re-importing a profile that is already patched changes every fixture
       // on it at once — a GDTF that now counts its fine channels is a channel
       // longer — so those fixtures are held to the same rules as patching them.
@@ -223,6 +229,8 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
       const profile = barProfile(req.body || {});
       if (req.query.dryRun === '1') return res.json({ ok: true, profile });
       if (isBuiltinProfile(profile.id)) return res.status(400).json({ ok: false, error: 'That id is a built-in profile' });
+      const hue = hueProfileBlocked(profile);
+      if (hue) return res.status(400).json({ ok: false, error: hue });
       const blocked = profileChangeBlocked(profile);
       if (blocked) return res.status(400).json({ ok: false, error: blocked });
       if (!registerProfile(profile)) return res.status(400).json({ ok: false, error: 'Invalid profile' });
@@ -237,7 +245,7 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
   function profileChangeBlocked(profile: Profile): string | null {
     const users = state.fixtures.filter((f) => f.profileId === profile.id);
     for (const fixture of users) {
-      // One with no DMX address is placed again wherever the new length fits.
+
       const overflow = hasNoAddress(fixture)
         ? universeOverflow(fixture.label, 1, profile, INTERNAL_UNIVERSE)
         : universeOverflow(fixture.label, fixture.address, profile, universeOf(fixture));
@@ -246,8 +254,8 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
     if (!users.length) return null;
     const profiles = listProfiles();
     const profileOf = (f: Pick<Fixture, 'profileId'>) => (f.profileId === profile.id ? profile : profiles[f.profileId] || profiles[BUILTIN_PROFILE_ID]);
-    // A WLED's profile growing reaches onto more universes, which must be free.
-    return unitCapOverflow(state.fixtures, profileOf) || ddpConflict(state.fixtures, profileOf, universeOf);
+
+    return unitCapOverflow(state.fixtures, profileOf) || ddpConflict(state.fixtures, profileOf);
   }
 
   app.delete('/api/profiles/:id', (req, res) => {
@@ -284,7 +292,7 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
     const profileId = body.profileId ?? BUILTIN_PROFILE_ID;
     const profile = profiles[profileId];
     if (!profile) return res.status(400).json({ ok: false, error: `No profile "${profileId}"` });
-    if (HUE_PROFILE_IDS.has(profileId)) return res.status(400).json({ ok: false, error: HUE_BY_HAND });
+    if (isHueProfile(profile)) return res.status(400).json({ ok: false, error: HUE_BY_HAND });
 
     // What is taken, per universe: the last channel used on it, a strip
     // running on into it included, and new fixtures as they are placed.
@@ -336,7 +344,7 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
     const next = [...state.fixtures, ...draft];
     const tooMany = unitCapOverflow(next);
     if (tooMany) return res.status(400).json({ ok: false, error: tooMany });
-    const wled = ddpConflict(next, getProfile, universeOf);
+    const wled = ddpConflict(next, getProfile);
     if (wled) return res.status(400).json({ ok: false, error: wled });
     if (countUniverses(next) > MAX_UNIVERSES) {
       return res.status(400).json({
@@ -365,30 +373,44 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
     res.json({ ok: true, fixtures: ids, placed });
   });
 
-  // ─── Philips Hue ──────────────────────────────────────────────────────────
-  // A Hue lamp is patched from the bridge, as a WLED is: each channel of the
-  // entertainment area a fixture of its own, on the profile for what the
-  // bridge says the lamp can show, with no DMX address — the server renders
-  // it on universes of its own that are never sent, and its channel is sent
-  // the colour that comes out (output.ts).
+  /** The area a bridge streams, or the answer that says why there is none. */
+  async function hueArea(bridge: HueBridgeSettings, res: Response): Promise<EntertainmentArea | null> {
+    const name = bridge.label || bridge.id;
+    if (!bridge.host || !bridge.username) { res.status(409).json({ ok: false, error: `Pair with "${name}" first.` }); return null; }
+    if (!bridge.entertainmentId) { res.status(409).json({ ok: false, error: `Pick an entertainment area for "${name}" first.` }); return null; }
+    let area;
+    try {
+      area = (await hueAreas(bridge.host, bridge.username)).find((a) => a.id === bridge.entertainmentId);
+    } catch (err) {
+      res.status(502).json({ ok: false, error: messageOf(err) });
+      return null;
+    }
+    if (!area) res.status(404).json({ ok: false, error: `"${name}" has no such entertainment area any more; pick one again.` });
+    return area || null;
+  }
 
-  /** The channels of the area a bridge streams, and what each lamp can show. */
+  /** The fixture a lamp of a bridge's area is patched as already: on its profile, or on one of its channels. */
+  function patchedAs(bridgeId: string, lamp: AreaLamp): Fixture | null {
+    const profileId = hueProfileId(lamp.id, bridgeId);
+    return state.fixtures.find((f) => f.output?.protocol === 'hue' && f.output.bridge === bridgeId
+      && (f.profileId === profileId || hueChannels(f.output).some((ch) => lamp.channels.includes(ch)))) || null;
+  }
+
+  /** The lamps of the area a bridge streams, their sections, and what each can show. */
   app.get(['/api/hue/lamps', '/api/hue/:bridge/lamps'], asyncHandler(async (req, res) => {
     const bridge = resolveHueBridge(req, res);
     if (!bridge) return;
-    const name = bridge.label || bridge.id;
-    if (!bridge.host || !bridge.username) return res.status(409).json({ ok: false, error: `Pair with "${name}" first.` });
-    if (!bridge.entertainmentId) return res.status(409).json({ ok: false, error: `Pick an entertainment area for "${name}" first.` });
-    try {
-      const area = (await hueAreas(bridge.host, bridge.username)).find((a) => a.id === bridge.entertainmentId);
-      if (!area) return res.status(404).json({ ok: false, error: `"${name}" has no such entertainment area any more; pick one again.` });
-      res.json({ ok: true, bridge: { id: bridge.id, label: bridge.label }, area: { id: area.id, name: area.name }, lamps: area.channels });
-    } catch (err) {
-      res.status(502).json({ ok: false, error: messageOf(err) });
-    }
+    const area = await hueArea(bridge, res);
+    if (!area) return;
+    res.json({
+      ok: true,
+      bridge: { id: bridge.id, label: bridge.label },
+      area: { id: area.id, name: area.name },
+      lamps: area.lamps.map((lamp) => ({ ...lamp, shows: hueProfile(lamp, bridge.id)?.modeName ?? null })),
+    });
   }));
 
-  /** Patch channels of a bridge's area: those named, or every one not patched yet. */
+  /** Patch lamps of a bridge's area: those named, or every one not patched yet. */
   app.post(['/api/hue/add', '/api/hue/:bridge/add'], asyncHandler(async (req, res) => {
     let body;
     try {
@@ -398,49 +420,50 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
     }
     const bridge = resolveHueBridge(req, res);
     if (!bridge) return;
-    const name = bridge.label || bridge.id;
-    if (!bridge.host || !bridge.username) return res.status(409).json({ ok: false, error: `Pair with "${name}" first.` });
-    if (!bridge.entertainmentId) return res.status(409).json({ ok: false, error: `Pick an entertainment area for "${name}" first.` });
-    let area;
-    try {
-      area = (await hueAreas(bridge.host, bridge.username)).find((a) => a.id === bridge.entertainmentId);
-    } catch (err) {
-      return res.status(502).json({ ok: false, error: messageOf(err) });
-    }
-    if (!area) return res.status(404).json({ ok: false, error: `"${name}" has no such entertainment area any more; pick one again.` });
+    const area = await hueArea(bridge, res);
+    if (!area) return;
 
-    const patched = hueLampsByChannel(bridge.id);
-    const wanted = body.channels ? new Set(body.channels) : null;
-    for (const channel of wanted || []) {
-      if (!area.channels.some((ch) => ch.id === channel)) {
-        return res.status(404).json({ ok: false, error: `"${area.name}" has no channel ${channel}` });
-      }
-      const already = patched.get(channel);
-      if (already) return res.status(409).json({ ok: false, error: `Channel ${channel} is patched already, as "${already.label}"` });
+    const wanted = body.lamps ? new Set(body.lamps) : body.channels
+      ? new Set(area.lamps.filter((lamp) => lamp.channels.some((channel) => body.channels!.includes(channel))).map((lamp) => lamp.id)) : null;
+    if (body.channels?.some((channel) => !area.channels.some((entry) => entry.id === channel))) {
+      return res.status(404).json({ ok: false, error: 'The requested channel is not in this entertainment area' });
     }
-    const fresh = area.channels.filter((ch) => (wanted ? wanted.has(ch.id) : !patched.has(ch.id)));
+    for (const id of wanted || []) {
+      const lamp = area.lamps.find((l) => l.id === id);
+      if (!lamp) return res.status(404).json({ ok: false, error: `"${area.name}" has no lamp ${id}` });
+      const already = patchedAs(bridge.id, lamp);
+      if (already) return res.status(409).json({ ok: false, error: `${lamp.name || 'That lamp'} is patched already, as "${already.label}"` });
+    }
+    const fresh = area.lamps.filter((lamp) => (wanted ? wanted.has(lamp.id) : !patchedAs(bridge.id, lamp)));
     if (!fresh.length) return res.status(409).json({ ok: false, error: `Every lamp of "${area.name}" is patched already` });
-    const unread = fresh.find((ch) => !ch.kind);
+    const built = fresh.map((lamp) => ({ lamp, profile: hueProfile(lamp, bridge.id) }));
+    const unread = built.find((b) => !b.profile);
     if (unread) {
+      const { lamp } = unread;
       return res.status(502).json({
-        ok: false, error: `The bridge would not say what channel ${unread.id}${unread.name ? ` ("${unread.name}")` : ''} can show; try again`,
+        ok: false, error: `The bridge would not say what ${lamp.name ? `"${lamp.name}"` : `channel ${lamp.channels[0]}`} can show; try again`,
       });
     }
     if (state.fixtures.length + fresh.length > MAX_FIXTURES) {
       return res.status(400).json({ ok: false, error: `${fresh.length} lamps would take the patch past ${MAX_FIXTURES} fixtures` });
     }
 
-    const draft: Fixture[] = fresh.map((ch, k) => ({
-      id: -1 - k, label: (ch.name || `Hue ${ch.id}`).slice(0, 64), address: 1, universe: INTERNAL_UNIVERSE,
-      profileId: hueProfileFor(ch.kind as 'color' | 'ambiance' | 'white'), maxBrightness: 255, override: null,
-      output: { protocol: 'hue', bridge: bridge.id, channel: ch.id },
+    const byId = new Map(built.map(({ profile }) => [(profile as Profile).id, profile as Profile]));
+    const profileOf = (f: Pick<Fixture, 'profileId'>) => byId.get(f.profileId) || getProfile(f);
+    const draft: Fixture[] = built.map(({ lamp, profile }, k) => ({
+      id: -1 - k, label: (lamp.name || `Hue ${lamp.channels[0]}`).slice(0, 64), address: 1, universe: INTERNAL_UNIVERSE,
+      profileId: (profile as Profile).id, maxBrightness: 255, override: null,
+      output: { protocol: 'hue', bridge: bridge.id, channels: [...lamp.channels] },
     }));
     const next = [...state.fixtures.map((f) => ({ ...f })), ...draft];
-    placeAddresslessFixtures(next);
-    const problem = unitCapOverflow(next) || (countUniverses(next) > MAX_UNIVERSES
+    placeAddresslessFixtures(next, profileOf);
+    const problem = unitCapOverflow(next, profileOf) || (countUniverses(next, profileOf) > MAX_UNIVERSES
       ? `These lamps would put the patch on more than the ${MAX_UNIVERSES} universes this server renders` : null);
     if (problem) return res.status(400).json({ ok: false, error: problem });
 
+    for (const profile of byId.values()) {
+      if (!registerProfile(profile)) return res.status(400).json({ ok: false, error: 'Invalid profile' });
+    }
     const fixtures = draft.map((fix) => {
       const added = { ...fix, id: allocateFixtureId() };
       state.fixtures.push(added);
@@ -450,17 +473,30 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
     resizeFixtureBuffers();
     showStore.scheduleSave();
     integrations.broadcast();
-    res.json({ ok: true, fixtures, bridge: { id: bridge.id, label: bridge.label }, area: { id: area.id, name: area.name } });
+    res.json({ ok: true, fixtures, profiles: [...byId.values()], bridge: { id: bridge.id, label: bridge.label }, area: { id: area.id, name: area.name } });
   }));
 
-  /** The lamps of one bridge in the patch, by their channel. */
-  function hueLampsByChannel(bridgeId: string): Map<number, Fixture> {
-    const out = new Map<number, Fixture>();
-    for (const fix of state.fixtures) {
-      if (fix.output?.protocol === 'hue' && fix.output.bridge === bridgeId && !out.has(fix.output.channel)) out.set(fix.output.channel, fix);
-    }
-    return out;
-  }
+  app.post(['/api/hue/refresh', '/api/hue/:bridge/refresh'], asyncHandler(async (req, res) => {
+    const bridge = resolveHueBridge(req, res);
+    if (!bridge) return;
+    const area = await hueArea(bridge, res);
+    if (!area) return;
+    const { updates, skipped } = refreshHueFixtures(state.fixtures, listProfiles(), bridge.id, area.lamps);
+    if (!updates.length) return res.json({ ok: true, refreshed: [], skipped });
+    const byId = new Map(updates.map((update) => [update.id, update.profile]));
+    const draft = state.fixtures.map((fixture) => ({ ...fixture, profileId: byId.get(fixture.id)?.id || fixture.profileId }));
+    const refreshedProfiles = new Map(updates.map(({ profile }) => [profile.id, profile]));
+    const profileOf = (fixture: Pick<Fixture, 'profileId'>) => refreshedProfiles.get(fixture.profileId) || getProfile(fixture);
+    placeAddresslessFixtures(draft, profileOf);
+    const problem = unitCapOverflow(draft, profileOf) || (countUniverses(draft, profileOf) > MAX_UNIVERSES ? 'The refreshed patch exceeds the universe limit' : null);
+    if (problem) return res.status(400).json({ ok: false, error: problem });
+    for (const { profile } of updates) registerProfile(profile);
+    state.fixtures = draft;
+    resizeFixtureBuffers();
+    showStore.scheduleSave();
+    integrations.broadcast();
+    res.json({ ok: true, refreshed: updates.map(({ id }) => id), skipped });
+  }));
 
   // Answers with the fixture that was removed and its position, so the client
   // can offer an undo. The id is stable because external bindings refer to it.
@@ -475,7 +511,8 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
     resizeFixtureBuffers();
     showStore.scheduleSave();
     integrations.broadcast();
-    // A Hue lamp's place is the server's own, and goes back wherever it fits.
+    // A Hue lamp's, a WLED's or an OpenRGB device's place is the server's own,
+    // and goes back wherever it fits.
     const addressless = hasNoAddress(removed);
     res.json({
       ok: true,
@@ -513,17 +550,21 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
       const profiles = listProfiles();
       const profileId = profiles[fixture.profileId] ? fixture.profileId : BUILTIN_PROFILE_ID;
       const addressless = hasNoAddress(fixture);
-      if (addressless !== HUE_PROFILE_IDS.has(profileId)) return res.status(400).json({ ok: false, error: HUE_BY_HAND });
+      if (isHueLamp(fixture) !== isHueProfile(profiles[profileId])) return res.status(400).json({ ok: false, error: HUE_BY_HAND });
       // A lamp from before several bridges were possible names none: it is
       // the first bridge's, as the show loader makes it.
       const hueOut = fixture.output?.protocol === 'hue'
         ? { ...fixture.output, bridge: fixture.output.bridge || defaultHueBridgeId(output.getHueConfig().bridges) } : null;
       // A WLED's or an OpenRGB device's output comes back with it; Hue is settled above.
       const deviceOut = fixture.output && (fixture.output.protocol === 'ddp' || fixture.output.protocol === 'openrgb') ? fixture.output : null;
+      const channels = hueOut ? hueChannels(hueOut) : [];
+      if (hueOut && channels.length !== hueSections(profiles[profileId])) {
+        return res.status(400).json({ ok: false, error: 'The lamp channels do not match its profile sections' });
+      }
       const sameChannel = !hueOut ? null
-        : state.fixtures.find((f) => f.output?.protocol === 'hue' && f.output.bridge === hueOut.bridge && f.output.channel === hueOut.channel);
+        : state.fixtures.find((f) => f.output?.protocol === 'hue' && f.output.bridge === hueOut.bridge && hueChannels(f.output).some((ch) => channels.includes(ch)));
       if (sameChannel) {
-        return res.status(409).json({ ok: false, error: `Hue channel ${hueOut?.channel} of bridge ${hueOut?.bridge} is patched already, as "${sameChannel.label}"` });
+        return res.status(409).json({ ok: false, error: `Hue channel ${channels.join(', ')} of bridge ${hueOut?.bridge} is patched already, as "${sameChannel.label}"` });
       }
       if (!addressless && fixture.address === undefined) {
         return res.status(400).json({ ok: false, error: 'fixture-restore: fixture.address is required for a fixture on DMX' });
@@ -558,7 +599,7 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
       placeAddresslessFixtures(proposed);
       const tooMany = unitCapOverflow(proposed);
       if (tooMany) return res.status(400).json({ ok: false, error: tooMany });
-      const wled = ddpConflict(proposed, getProfile, universeOf);
+      const wled = ddpConflict(proposed, getProfile);
       if (wled) return res.status(400).json({ ok: false, error: wled });
 
       if (countUniverses(proposed) > MAX_UNIVERSES) {
@@ -594,4 +635,8 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
       res.json({ ok: true });
     } catch (err) { res.status(statusOf(err) || 400).json({ ok: false, error: messageOf(err) }); }
   });
+}
+
+function hueProfileBlocked(profile: Profile): string | null {
+    return isHueProfile(profile) || isHueProfile(listProfiles()[profile.id]) ? HUE_BY_HAND : null;
 }

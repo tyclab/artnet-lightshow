@@ -94,6 +94,7 @@ export interface Profile {
   defaults?: ChannelDefault[];
   /** Grid zones use bar programs instead of panel images. */
   zoned?: boolean;
+  hue?: HueLampTraits;
   [key: string]: unknown;
 }
 
@@ -183,7 +184,8 @@ export interface OpenRgbOutput {
 export interface HueOutput {
   protocol: 'hue';
   bridge: string;
-  channel: number;
+  channels?: number[];
+  channel?: number;
 }
 
 /** Expression values are normalized to 0–1. */
@@ -238,4 +240,14 @@ export interface ImportedFixture {
   modes: ImportedMode[];
   /** Modes the import had to leave out, and why. */
   warnings?: string[];
+}
+
+export interface HueLampTraits {
+    legacy?: boolean;
+    partial?: boolean;
+    gamut: 'A' | 'B' | 'C' | 'other' | null;
+    whites: {
+        warm: number;
+        cool: number;
+    } | null;
 }

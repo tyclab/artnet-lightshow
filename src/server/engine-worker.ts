@@ -6,6 +6,7 @@ import { createTransmitter } from './transmit.ts';
 import { createTicker, hrtimeMs, FRAME_MS } from './frame-clock.ts';
 import { createClockFollower } from './clock-follow.ts';
 import { getProfile, profilesRevision, registerProfile, clearNonBuiltinProfiles, BUILTIN_PROFILE_ID, HUE_COLOR_PROFILE_ID } from './profiles.ts';
+import { hueProfile } from './hue-profile.ts';
 import { HOLD_STROBE } from '../shared/look-math.ts';
 import { guarded } from './guard.ts';
 import type { MusicalTime } from './conductor.ts';
@@ -50,10 +51,16 @@ const follow = createClockFollower();
 // Warm effects on private buffers so first-use compilation cannot overrun a live frame.
 function warmUp(): void {
   const scratch = createUniverseStore(allocateShared());
-  const warm = createRenderer({ profileOf: getProfile, profilesRevision, now: 0 });
+  const bulb = hueProfile({ id: 'warmup-bulb', name: 'Bulb', product: 'Hue lamp', devices: [], channels: [0], kind: 'color',
+    capabilities: { gamut: 'C', whites: { warm: 2000, cool: 6536 }, fixedWhite: null } })!;
+  const strip = hueProfile({ id: 'warmup-strip', name: 'Strip', product: 'Hue gradient', devices: [], channels: [1, 2, 3], kind: 'color',
+    capabilities: { gamut: 'C', whites: { warm: 2000, cool: 6536 }, fixedWhite: null } })!;
+  const profiles = new Map([[bulb.id, bulb], [strip.id, strip]]);
+  const warm = createRenderer({ profileOf: (fixture) => profiles.get(fixture.profileId) || getProfile(fixture), profilesRevision, now: 0 });
   const par = (id: number) => ({ id, address: 1 + 12 * id, universe: 0, profileId: BUILTIN_PROFILE_ID, maxBrightness: 255, override: null,
     position: { x: 20 + 20 * id, y: 40 }, group: null, geometry: null, hue: false });
-  const fixtures = [par(0), par(1), par(2), { ...par(3), profileId: HUE_COLOR_PROFILE_ID, hue: true }];
+  const fixtures = [par(0), par(1), { ...par(2), profileId: HUE_COLOR_PROFILE_ID, hue: true },
+    { ...par(3), profileId: bulb.id, hue: true }, { ...par(4), profileId: strip.id, hue: true }];
   const look: RenderInput = {
     running: true, pattern: 'chase', colorA: 0, colorB: 5, colorC: 3, colorD: 8, split: null, pixelMap: 'stage', beatDivision: 1,
     strobeSpeed: 0, strobeFunction: 'standard', masterDimmer: 255, masterBlackout: false, energy: null, showDynamics: null,

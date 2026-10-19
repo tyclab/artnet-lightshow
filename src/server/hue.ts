@@ -58,6 +58,7 @@ export interface EntertainmentArea {
   name: string;
   status: string;
   channels: AreaChannel[];
+  lamps: AreaLamp[];
 }
 
 export type PairResult =
@@ -92,8 +93,12 @@ interface ClipService {
 interface ClipLight {
   id: string;
   owner?: { rid?: string };
-  color?: unknown;
-  color_temperature?: unknown;
+
+  color?: { gamut_type?: unknown } | null;
+
+  color_temperature?: { mirek_schema?: { mirek_minimum?: unknown; mirek_maximum?: unknown } } | null;
+
+  metadata?: { fixed_mired?: unknown };
 }
 
 interface ClipChannel {
@@ -119,6 +124,7 @@ interface Lamp {
   product: string;
   device: string;
   kind: LampKind | null;
+  capabilities: LampCapabilities | null;
   segmentLengths?: number[];
 }
 
@@ -280,7 +286,7 @@ async function fetchLampNames(host: string, key: string): Promise<Map<string, La
       bridgeRequest(host, { path: '/clip/v2/resource/light', key }) as Promise<ClipList<ClipLight> | null>,
     ]);
 
-    const deviceById = new Map<string, Omit<Lamp, 'kind'>>();
+    const deviceById = new Map<string, Omit<Lamp, 'kind' | 'capabilities'>>();
     for (const device of (devices && devices.data) || []) {
       deviceById.set(device.id, {
         name: (device.metadata && device.metadata.name) || '',
@@ -302,7 +308,7 @@ async function fetchLampNames(host: string, key: string): Promise<Map<string, La
       if (!device || !device.name) continue;
       const ref = service.renderer_reference && service.renderer_reference.rid;
       const light = (ref && lightById.get(ref)) || (owner && lightByDevice.get(owner)) || null;
-      names.set(service.id, { ...device, kind: light ? kindOf(light) : null,
+      names.set(service.id, { ...device, kind: light ? kindOf(light) : null, capabilities: light ? capabilitiesOf(light) : null,
         segmentLengths: service.segments?.segments?.map((segment) => segment.length) });
     }
   } catch (_) {
@@ -394,6 +400,7 @@ async function listEntertainmentConfigs(host: string, key: string): Promise<Ente
           members: channelMembers(ch, names),
         };
       }),
+      lamps: lampsOf(cfg.channels || [], names),
     };
   });
 }
@@ -764,6 +771,8 @@ export {
   nameChannel,
   kindOf,
   kindOfChannel,
+  capabilitiesOf,
+  lampsOf,
   channelMembers,
   setStreaming,
   buildStreamMessage,
@@ -781,3 +790,80 @@ export {
   closeAll,
   _reset,
 };
+
+export type HueGamut = 'A' | 'B' | 'C' | 'other';
+
+export interface LampCapabilities {
+
+  gamut: HueGamut | null;
+
+  whites: { warm: number; cool: number } | null;
+
+  fixedWhite: number | null;
+}
+
+export interface AreaLamp {
+
+  id: string;
+  name: string;
+
+  product: string;
+
+  devices: string[];
+
+  channels: number[];
+
+  kind: LampKind | null;
+  capabilities: LampCapabilities | null;
+}
+
+const GAMUTS: readonly HueGamut[] = ['A', 'B', 'C', 'other'];
+
+function kelvinOf(mirek: unknown): number | null {
+  const m = Number(mirek);
+  if (!Number.isFinite(m) || m < 50 || m > 1000) return null;
+  return Math.round(1e6 / m);
+}
+
+function capabilitiesOf(light: Pick<ClipLight, 'color' | 'color_temperature' | 'metadata'>): LampCapabilities {
+  const color = light.color && typeof light.color === 'object' ? light.color : null;
+  const gamut = color ? (GAMUTS.find((g) => g === color.gamut_type) || 'other') : null;
+  const schema = light.color_temperature && typeof light.color_temperature === 'object'
+    ? light.color_temperature.mirek_schema : undefined;
+  const warm = kelvinOf(schema && schema.mirek_maximum);
+  const cool = kelvinOf(schema && schema.mirek_minimum);
+  return {
+    gamut,
+    whites: warm !== null && cool !== null && warm <= cool ? { warm, cool } : null,
+    fixedWhite: color || schema ? null : kelvinOf(light.metadata && light.metadata.fixed_mired),
+  };
+}
+
+function lampsOf(channels: readonly ClipChannel[], names: Map<string, Lamp>): AreaLamp[] {
+  const groups = new Map<string, { channels: { id: number; index: number; order: number }[]; services: Set<string> }>();
+  channels.forEach((ch, order) => {
+    const members = (ch.members || []).filter((m) => m.service && m.service.rid);
+    const lead = members[0];
+    const key = lead ? lead.service!.rid! : `channel-${ch.channel_id}`;
+    let group = groups.get(key);
+    if (!group) groups.set(key, group = { channels: [], services: new Set() });
+    const index = lead && Number.isInteger(lead.index) ? lead.index as number : order;
+    group.channels.push({ id: ch.channel_id, index, order });
+    for (const m of members) group.services.add(m.service!.rid!);
+  });
+  return [...groups].map(([key, group]) => {
+    group.channels.sort((a, b) => a.index - b.index || a.order - b.order);
+    const lead = names.get(key);
+    const lamps = [...group.services].map((rid) => names.get(rid)).filter((l): l is Lamp => !!l);
+    return {
+      id: key,
+
+      name: [...new Set(lamps.map((l) => l.name).filter(Boolean))].join(' + '),
+      product: lead ? lead.product : '',
+      devices: [...new Set(lamps.map((l) => l.device))],
+      channels: group.channels.map((c) => c.id),
+      kind: lead ? lead.kind : null,
+      capabilities: lead ? lead.capabilities : null,
+    };
+  });
+}

@@ -7,6 +7,7 @@ import { HardwareGuard } from '../shared/hardware-guard.ts';
 import { hardwareStrobe } from '../shared/hardware-strobe.ts';
 import { hardwareOf } from '../shared/hardware.ts';
 import type { HardwareCaps, HardwareSettings } from '../shared/hardware.ts';
+import { isHueProfile } from '../shared/hue-lamp.ts';
 import { HUE_PROFILE_IDS } from './profiles.ts';
 import { FRAME_MS } from './frame-clock.ts';
 import { PATTERN_FUNCS, paletteOf } from '../shared/patterns.ts';
@@ -721,7 +722,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
   }
 
   function hueLamp(fix: RenderFixture): boolean {
-    return fix.hue || HUE_PROFILE_IDS.has(fix.profileId);
+    return fix.hue || isHueProfile(profileOf(fix)) || HUE_PROFILE_IDS.has(fix.profileId);
   }
 
   function lightOf(u: number, fix: RenderFixture, energy: EnergyLook | null, fadeT: number,

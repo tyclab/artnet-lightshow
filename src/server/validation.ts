@@ -48,7 +48,9 @@ const HOSTNAME_RE = /^(?=.{1,253}$)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?
 const hueOutput = z.object({
   protocol: z.literal('hue'),
   bridge: z.string().regex(HUE_BRIDGE_ID_RE, 'is not a bridge id').optional(),
-  channel: z.number().int().min(0).max(255),
+  channel: z.number().int().min(0).max(255).optional(),
+  channels: z.array(z.number().int().min(0).max(255)).min(1).max(20)
+    .refine((channels) => new Set(channels).size === channels.length, { message: 'names a channel twice' }).optional(),
 }).strict();
 const ddpOutput = z.object({
     protocol: z.literal('ddp'),
@@ -72,7 +74,11 @@ const openrgbOutput = z.object({
   leds: z.number().int().min(1).max(MAX_CELLS_PER_FIXTURE),
 }).strict();
 const deviceOutput = z.discriminatedUnion('protocol', [ddpOutput, openrgbOutput]);
-const fixtureOutput = z.discriminatedUnion('protocol', [ddpOutput, openrgbOutput, hueOutput]);
+const fixtureOutput = z.discriminatedUnion('protocol', [ddpOutput, openrgbOutput, hueOutput]).superRefine((output, ctx) => {
+  if (output.protocol === 'hue' && (output.channel === undefined) === (output.channels === undefined)) {
+    ctx.addIssue({ code: 'custom', message: 'Hue output needs either channels or a legacy channel' });
+  }
+});
 
 // Apply IPv4 rules to dotted numeric input so malformed addresses cannot pass as hostnames.
 const DOTTED_NUMERIC_RE = /^[0-9]+(\.[0-9]+)*$/;
@@ -207,6 +213,13 @@ interface CellCheck {
 }
 
 const profileSchema = z.object({
+  hue: z.object({
+    gamut: z.enum(['A', 'B', 'C', 'other']).nullable(),
+    whites: z.object({ warm: z.number().min(1000).max(20000), cool: z.number().min(1000).max(20000) })
+      .strict().refine((w) => w.warm <= w.cool).nullable(),
+    legacy: z.boolean().optional(),
+    partial: z.boolean().optional(),
+  }).strict().optional(),
   hardware: rateOverrideSchema.optional(),
   strobeHz: z.object({ min: z.number().nonnegative().max(100), max: z.number().positive().max(100) }).strict().refine((v) => v.min <= v.max).optional(),
   id: z.string().min(1).max(128)
@@ -378,8 +391,9 @@ const huePairSchema = z.object({
 }).strict();
 
 const hueAddSchema = z.object({
+  lamps: z.array(z.string().min(1).max(128)).min(1).max(20).optional(),
   channels: z.array(z.number().int().min(0).max(255)).min(1).max(20).optional(),
-}).strict();
+}).strict().refine((body) => !body.lamps || !body.channels, { message: 'Choose lamps or legacy channels, not both' });
 
 const hueDisconnectSchema = z.object({
   removeFixtures: z.boolean().optional(),

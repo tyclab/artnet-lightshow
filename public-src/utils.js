@@ -1,3 +1,4 @@
+import { hueChannelsLabel, hueChannels } from '../src/shared/hue-lamp.ts';
 import { channelReader, hasNoAddress } from '../src/shared/placement.ts';
 
 // Scale emitter mixes proportionally so white-heavy swatches retain their colour temperature.
@@ -73,9 +74,12 @@ export function hueBridgeLabel(bridges, id) {
 }
 
 export function patchedAt(fix, bridges) {
-  if (!hasNoAddress(fix)) return `Universe ${fix.universe ?? 0} / ${fix.address}`;
-  const where = bridges ? ` of ${hueBridgeLabel(bridges, fix.output.bridge)}` : '';
-  return `Hue channel #${fix.output.channel}${where}, no DMX address`;
+    if (!hasNoAddress(fix))
+        return `Universe ${fix.universe ?? 0} / ${fix.address}`;
+    if (fix.output.protocol !== 'hue')
+        return `${deviceLabel(fix)}, no DMX address`;
+    const where = bridges ? ` of ${hueBridgeLabel(bridges, fix.output.bridge)}` : '';
+    return `Hue ${hueChannelsLabel(hueChannels(fix.output))}${where}, no DMX address`;
 }
 
 function fixtureReader(fix, profile, all) {
@@ -163,4 +167,9 @@ export function rigLights(fixtures, state, dmxSnapshot, rig) {
     }
   });
   return out;
+}
+
+export function deviceLabel(fix) {
+    const out = fix.output;
+    return out.protocol === 'ddp' ? `WLED at ${out.host}` : `OpenRGB device #${out.device}${out.name ? ` ${out.name}` : ''} at ${out.host}`;
 }

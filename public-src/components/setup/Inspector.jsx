@@ -5,7 +5,8 @@ import { buildRig, lineOf } from '../../../src/shared/rig.ts';
 import { clamp, geometryOf, round1 } from '../../stage-geometry.js';
 import { rigSelectionSig, identifyFixtures } from '../../rig-ui.js';
 import { FieldInput } from './FieldInput.jsx';
-import { hasNoAddress } from '../../../src/shared/placement.ts';
+import { hasNoAddress, isHueLamp } from '../../../src/shared/placement.ts';
+import { hueChannels, hueChannelsLabel } from '../../../src/shared/hue-lamp.ts';
 import { hueBridgeLabel } from '../../utils.js';
 
 /**
@@ -56,7 +57,8 @@ export function Inspector() {
   const send = (patch) => emitFixture({ id: fix.id, ...patch });
   const place = (patch) => send({ position: { x: clamp(round1(patch.x ?? point.x)), y: clamp(round1(patch.y ?? point.y)) } });
   const trimPct = Math.round(((fix.maxBrightness ?? 255) / 255) * 100);
-  const hueOnly = hasNoAddress(fix);
+  const addressless = hasNoAddress(fix);
+  const hueLamp = isHueLamp(fix);
   const wled = !!(fix.output && fix.output.protocol === 'ddp');
   const openrgb = !!(fix.output && fix.output.protocol === 'openrgb');
 
@@ -75,8 +77,8 @@ export function Inspector() {
         <span class="inspector-key">Output</span>
         <span class="inspector-value">{wled ? `WLED at ${fix.output.host}, over DDP`
           : openrgb ? `OpenRGB device #${fix.output.device}${profile ? ` (${profile.name})` : ''} at ${fix.output.host}${fix.output.port ? `:${fix.output.port}` : ''}, over the SDK`
-            : hueOnly ? `Hue channel #${fix.output.channel} of ${hueBridgeLabel(s.hueBridges, fix.output.bridge)}` : 'DMX (Art-Net, sACN)'}</span>
-        {!hueOnly && <>
+            : hueLamp ? `Hue ${hueChannelsLabel(hueChannels(fix.output))} of ${hueBridgeLabel(s.hueBridges, fix.output.bridge)}` : 'DMX (Art-Net, sACN)'}</span>
+        {!addressless && <>
           <label for="insp-universe">Universe</label>
           <FieldInput id="insp-universe" type="number" min="0" max="32767" value={fix.universe ?? 0} onCommit={(v) => send({ universe: v })} />
           <label for="insp-address">Address</label>
@@ -102,8 +104,8 @@ export function Inspector() {
         </span>
       </div>
       <FixtureHardware fixture={fix} profile={profile} settings={s.hardware} send={send} />
-      {hueOnly && <p class="setting-help">A lamp of the entertainment area of the Hue bridge "{hueBridgeLabel(s.hueBridges, fix.output.bridge)}",
-        added from Rig → Outputs → Philips Hue: it takes no DMX channels, and its channel is sent the colour it is rendered.</p>}
+      {hueLamp && <p class="setting-help">A lamp of the entertainment area of the Hue bridge "{hueBridgeLabel(s.hueBridges, fix.output.bridge)}",
+        added from Rig → Outputs → Philips Hue: it takes no DMX channels, and each section is sent its rendered colour.</p>}
       <p class="setting-help">{fix.position ? '' : 'Not placed yet: drawn at its default spot. '}
         {bar ? 'At angle 0 its first cell is on the left and its last on the right; 180 is the other way round, and 90 runs from the back of the stage towards the audience.' : ''}</p>
       <div class="inspector-actions">

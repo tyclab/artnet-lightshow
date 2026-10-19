@@ -1,8 +1,9 @@
 import { state, getClientState, getFixture, countUniverses, universeOf, placeAddresslessFixtures, voices, legacyEnergy, onVoicesChange } from './state.ts';
 import { applyPatch, applyOverride, processTap } from './patch.ts';
 import { overrideMessageSchema, fixtureMessageSchema, validate } from './validation.ts';
-import { listProfiles, getProfile, universeOverflow, unitCapOverflow, HUE_PROFILE_IDS, HUE_BY_HAND } from './profiles.ts';
-import { INTERNAL_UNIVERSE, hasNoAddress } from '../shared/placement.ts';
+import { listProfiles, getProfile, universeOverflow, unitCapOverflow, HUE_BY_HAND, DEVICE_BY_HAND } from './profiles.ts';
+import { INTERNAL_UNIVERSE, hasNoAddress, isHueLamp } from '../shared/placement.ts';
+import { isHueProfile } from '../shared/hue-lamp.ts';
 import { showStore } from './show-store.ts';
 import { MAX_UNIVERSES } from './universes.ts';
 import { connectMidi } from './midi-connect.ts';
@@ -215,13 +216,17 @@ function attachSockets(io: Server, { midi, integrations }: {
         // other fixture becomes one, and its output (the channel) is not
         // changed by hand. The schema already refuses a Hue output here.
         const addressless = hasNoAddress(fixture);
-        if ((addressless && output !== undefined) || addressless !== HUE_PROFILE_IDS.has(nextProfileId)) {
+        if (isHueLamp(fixture) ? (output !== undefined || nextProfileId !== fixture.profileId) : isHueProfile(nextProfile)) {
           socket.emit('error-msg', { source: 'fixture', message: HUE_BY_HAND });
           return;
         }
         const nextOutput = output !== undefined ? output : fixture.output ?? null;
-        const nextAddress = address !== undefined ? address : fixture.address;
-        const nextUniverse = universe !== undefined ? universe : universeOf(fixture);
+        if (addressless !== hasNoAddress({ output: nextOutput }) || (nextOutput && nextOutput.protocol !== fixture.output?.protocol)) {
+          socket.emit('error-msg', { source: 'fixture', message: DEVICE_BY_HAND });
+          return;
+        }
+        const nextAddress = addressless || address === undefined ? fixture.address : address;
+        const nextUniverse = addressless || universe === undefined ? universeOf(fixture) : universe;
 
         // A fixture has to fit inside its universe. Past channel 512 the writes
         // land outside the DMX buffer and Node drops them silently, leaving the
@@ -243,9 +248,8 @@ function attachSockets(io: Server, { midi, integrations }: {
         const proposed = state.fixtures.map((f) => (f.id === id
           ? { ...f, address: nextAddress, universe: nextUniverse, profileId: nextProfileId, output: nextOutput } : { ...f }));
         placeAddresslessFixtures(proposed);
-        // A universe that goes to a WLED over DDP goes nowhere else, so nothing
-        // else may be patched on it.
-        const wled = ddpConflict(proposed, getProfile, universeOf);
+        // Two fixtures on one WLED may not share a LED, nor two be one OpenRGB device.
+        const wled = ddpConflict(proposed, getProfile);
         if (wled) {
           socket.emit('error-msg', { source: 'fixture', message: wled });
           return;

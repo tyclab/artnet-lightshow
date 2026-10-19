@@ -155,8 +155,12 @@ function createTransmitter({ wires = DEFAULT_WIRES, now = () => performance.now(
   function send(universe: number, frame: Buffer, config: TransmitConfig,
     { immediate = false, terminate = false }: SendOptions = {}): Wire[] {
     const sent: Wire[] = [];
+
     if (!syncArmed(config)) return sent;
-    if (isInternalUniverse(universe)) return sent;
+
+    const toWled = ddpUniverses(config.ddp)?.has(universe) ?? false;
+    const toOpenRgb = openrgbUniverses(config.openrgb)?.has(universe) ?? false;
+    if (!toWled && !toOpenRgb && isInternalUniverse(universe)) return sent;
     if (!immediate && config.delayMs > 0) {
       const ready = delayedFrame(universe, frame, config.delayMs);
       if (!ready) return sent;
@@ -165,16 +169,15 @@ function createTransmitter({ wires = DEFAULT_WIRES, now = () => performance.now(
       delayLine.delete(universe);
     }
 
-    const toWled = ddpUniverses(config.ddp);
-    if (toWled && toWled.has(universe)) {
-      ddpFrames.set(universe, frame);
-      sent.push('ddp');
-      return sent;
-    }
-    const toOpenRgb = openrgbUniverses(config.openrgb);
-    if (toOpenRgb && toOpenRgb.has(universe)) {
-      openrgbFrames.set(universe, frame);
-      sent.push('openrgb');
+    if (toWled || toOpenRgb) {
+      if (toWled) {
+        ddpFrames.set(universe, frame);
+        sent.push('ddp');
+      }
+      if (toOpenRgb) {
+        openrgbFrames.set(universe, frame);
+        sent.push('openrgb');
+      }
       return sent;
     }
 

@@ -11,8 +11,12 @@ function isInternalUniverse(universe: number): boolean {
   return universe >= INTERNAL_UNIVERSE;
 }
 
-function hasNoAddress(fixture: { output?: { protocol: string } | null }): boolean {
-  return !!fixture.output && fixture.output.protocol === 'hue';
+function hasNoAddress(fixture: {
+    output?: {
+        protocol: string;
+    } | null;
+}): boolean {
+    return !!fixture.output && DEVICE_PROTOCOLS.has(fixture.output.protocol);
 }
 
 const HUE_BRIDGE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
@@ -175,6 +179,7 @@ export {
   HUE_BRIDGE_ID_RE,
   isInternalUniverse,
   hasNoAddress,
+  isHueLamp,
   placeAddressless,
   stripOf,
   stripIssue,
@@ -187,3 +192,13 @@ export {
   overlaps,
   channelReader,
 };
+
+function isHueLamp(fixture: {
+    output?: {
+        protocol: string;
+    } | null;
+}): boolean {
+    return !!fixture.output && fixture.output.protocol === 'hue';
+}
+
+const DEVICE_PROTOCOLS = new Set(['hue', 'ddp', 'openrgb']);
