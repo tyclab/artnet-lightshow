@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import { EventEmitter } from 'node:events';
+import { createRequire } from 'node:module';
 
 import MidiController from '../../src/midi.ts';
+import { DEFAULT_MAP } from '../../src/server/midi-map.ts';
 
 // A stand-in for the state the controller reads and the callbacks it drives, so
 // these tests need neither a MIDI port nor the engine. `refuse` answers the
@@ -104,7 +106,7 @@ test('a relative encoder nudges and clamps', () => {
   assert.strictEqual(h.state.bpm, 122);
 
   h.state.bpm = 299;
-  h.input.emit('cc', { controller: 10, value: 20, channel: 0 });
+  h.input.emit('cc', { controller: 10, value: 10, channel: 0 });
   assert.strictEqual(h.state.bpm, 300, 'clamped at the top of the range');
 });
 
@@ -710,7 +712,7 @@ test('an ambiguous first value does not lock in the wrong encoding', () => {
   // they are not evidence. The next unambiguous detent still settles it.
   const h = harness({ cc: { 10: { action: 'adjustBpm', type: 'relative' } }, notes: {} });
 
-  h.input.emit('cc', { controller: 10, value: 20, channel: 0 });   // no evidence
+  h.input.emit('cc', { controller: 10, value: 10, channel: 0 });   // no evidence
   h.state.bpm = 120;
 
   h.input.emit('cc', { controller: 10, value: 65, channel: 0 });
@@ -845,4 +847,219 @@ test('tempo-match buttons reflect clock-follow mode', () => {
   h.leds.length = 0;
   h.midi.sendFeedback();
   assert.deepStrictEqual(h.leds.map((m) => [m.note, m.velocity]), [[40, 0]]);
+});
+
+// Ports: only the ones the operator picked are opened. connect() used to fall
+// back to the first port matching /x.?touch/i, then to the first port of all.
+const XTOUCH = 'X-TOUCH COMPACT:X-TOUCH COMPACT MIDI 1 28:0';
+const AG06 = 'AG06/AG03:AG06/AG03 MIDI 1 24:0';
+
+// Stand in for the machine's port list, and record which ports get opened.
+function withPorts(inputs, outputs, fn) {
+  const easymidi = createRequire(import.meta.url)('easymidi');
+  const real = { getInputs: easymidi.getInputs, getOutputs: easymidi.getOutputs, Input: easymidi.Input, Output: easymidi.Output };
+  const opened = [];
+  easymidi.getInputs = () => inputs;
+  easymidi.getOutputs = () => outputs;
+  easymidi.Input = class extends EventEmitter { constructor(name) { super(); opened.push(['input', name]); } close() {} };
+  easymidi.Output = class { constructor(name) { opened.push(['output', name]); } send() {} close() {} };
+  try {
+    const h = harness();
+    h.midi.close();
+    fn(h.midi, opened);
+  } finally {
+    Object.assign(easymidi, real);
+  }
+}
+
+test('with no port picked, an X-Touch on the bus is left alone', () => {
+  withPorts([AG06, XTOUCH], [AG06, XTOUCH], (midi, opened) => {
+    assert.strictEqual(midi.connect(null, null), false);
+    assert.strictEqual(midi.enabled, false);
+    assert.deepStrictEqual(opened, []);
+  });
+});
+
+test('the picked ports are the ones opened', () => {
+  withPorts([AG06, XTOUCH], [AG06, XTOUCH], (midi, opened) => {
+    assert.strictEqual(midi.connect(XTOUCH, XTOUCH), true);
+    assert.strictEqual(midi.enabled, true);
+    assert.deepStrictEqual(opened, [['input', XTOUCH], ['output', XTOUCH]]);
+  });
+});
+
+test('a picked input that is not there opens nothing in its place', () => {
+  // The controller came back under another ALSA client number.
+  withPorts([AG06, XTOUCH.replace('28:0', '32:0')], [AG06], (midi, opened) => {
+    assert.strictEqual(midi.connect(XTOUCH, XTOUCH), false);
+    assert.deepStrictEqual(opened, []);
+  });
+});
+
+test('a picked output that is not there connects the input without feedback', () => {
+  withPorts([XTOUCH], [AG06], (midi, opened) => {
+    assert.strictEqual(midi.connect(XTOUCH, XTOUCH), true);
+    assert.deepStrictEqual(opened, [['input', XTOUCH]]);
+  });
+});
+
+test('our own RtMidi ports are not offered to pick', () => {
+  // Left behind by an earlier connection: picking one loops our feedback back in.
+  withPorts([XTOUCH, 'RtMidi Output Client:RtMidi Output 133:0'], [XTOUCH, 'RtMidi Input Client:RtMidi Input 131:0'], (midi) => {
+    assert.deepStrictEqual(midi.listPorts(), { inputs: [XTOUCH], outputs: [XTOUCH] });
+  });
+});
+
+// An X-Touch Compact on its factory settings sends each encoder's position,
+// 0-127, not a step, and takes the ring position it is sent as its own. Read as
+// relative, one turn threw the parameter to an end stop and turning back left
+// it there. Bound 'absolute', every change in position is a step.
+const turn = (h, controller, ...values) => {
+  for (const value of values) h.input.emit('cc', { controller, value, channel: 0 });
+};
+
+test('an encoder sending its position steps by the change, from the ring it was sent', () => {
+  const h = harness({ cc: { 11: { action: 'adjustMasterDimmer', type: 'absolute', scale: 4 } }, notes: {} });
+  h.sent.length = 0;
+  h.state.masterDimmer = 128;
+  h.midi.sendFeedback();
+  assert.deepStrictEqual(h.cc().map((m) => [m.controller, m.value]), [[11, 64]], 'the ring, which the encoder counts on from');
+
+  turn(h, 11, 65, 66);            // two clicks right
+  assert.strictEqual(h.state.masterDimmer, 136);
+  turn(h, 11, 65, 64, 63);        // three left
+  assert.strictEqual(h.state.masterDimmer, 124);
+  turn(h, 11, 66);                // a fast click: three steps in one message
+  assert.strictEqual(h.state.masterDimmer, 136);
+});
+
+test('an encoder sending its position stays put against the end of its ring', () => {
+  const h = harness({ cc: { 11: { action: 'adjustMasterDimmer', type: 'absolute', scale: 4 } }, notes: {} });
+  // The harness's master is at full, so the ring went out at the top.
+  h.patches.length = 0;
+  turn(h, 11, 127, 127);
+  assert.deepStrictEqual(h.patches, [], 'turning on past the top is not a step');
+  turn(h, 11, 126);
+  assert.strictEqual(h.state.masterDimmer, 251);
+});
+
+test('with no ring sent, the first message from an encoder only says where it is', () => {
+  const h = harness({ cc: { 10: { action: 'adjustBpm', type: 'absolute', scale: 1 } }, notes: {} });
+  h.midi._positions.clear();      // as after connecting with feedback off
+  turn(h, 10, 30);
+  assert.strictEqual(h.state.bpm, 120);
+  turn(h, 10, 31, 32);
+  assert.strictEqual(h.state.bpm, 122);
+});
+
+test('an encoder that counted past its ring is sent back to it', () => {
+  const h = harness({ cc: { 10: { action: 'adjustBpm', type: 'absolute', scale: 1 } }, notes: {} });
+  // 120 BPM is ring 45. One BPM is less than one ring step, so a click can
+  // leave the ring where it was while the encoder has counted on.
+  const settle = () => { h.midi._lastCcIn.clear(); h.midi.sendFeedback(); };
+  turn(h, 10, 46);
+  settle();                       // 121 BPM: ring 46, where the encoder is
+  h.sent.length = 0;
+  turn(h, 10, 47);
+  settle();                       // 122 BPM: still ring 46, the encoder at 47
+  assert.deepStrictEqual(h.cc().map((m) => [m.controller, m.value]), [[10, 46]], 'sent again, though it was sent before');
+  turn(h, 10, 47);                // counting on from 46
+  assert.strictEqual(h.state.bpm, 123);
+});
+
+test('the built-in map follows an X-Touch on its factory settings', () => {
+  const h = harness(DEFAULT_MAP);
+  h.state.masterDimmer = 128;
+  h.midi.sendFeedback();          // encoder 2's ring to 64
+  turn(h, 11, 65, 66, 67, 68, 69, 70);
+  assert.strictEqual(h.state.masterDimmer, 152, 'six clicks right');
+  turn(h, 11, 69, 68, 67, 66, 65, 64, 63, 62, 61, 60);
+  assert.strictEqual(h.state.masterDimmer, 112, 'ten clicks back');
+});
+
+// Which kind an encoder is — steps or its position — is a setting on the
+// device, so it is worked out from what it sends; the binding's type is only
+// the guess until then.
+const ring = (h, controller) => h.cc().filter((m) => m.controller === controller).map((m) => m.value);
+
+test('a map saying relative follows an encoder that sends its position', () => {
+  const h = harness({ cc: { 10: { action: 'adjustBpm', type: 'relative', scale: 1 } }, notes: {} });
+  // 120 BPM is ring 45, and 46 is further from 0, 64 and 127 than any step lands.
+  turn(h, 10, 46, 47);
+  assert.strictEqual(h.state.bpm, 122);
+  turn(h, 10, 46, 45, 44);
+  assert.strictEqual(h.state.bpm, 119);
+});
+
+test('a map saying absolute follows an encoder that sends steps', () => {
+  const h = harness({ cc: { 10: { action: 'adjustBpm', type: 'absolute', scale: 1 } }, notes: {} });
+  // Ring 45: binary offset's 65 is too far from it to be where the encoder went.
+  turn(h, 10, 65, 65);
+  assert.strictEqual(h.state.bpm, 122);
+  turn(h, 10, 63);
+  assert.strictEqual(h.state.bpm, 121);
+});
+
+test('next to a landmark, a steps guess moves the ring clear and the next message settles it', () => {
+  // Ring 64: an encoder's 65 there is one up either way.
+  const position = harness({ cc: { 11: { action: 'adjustMasterDimmer', type: 'relative', scale: 4 } }, notes: {} });
+  position.state.masterDimmer = 128;
+  position.midi.sendFeedback();
+  position.sent.length = 0;
+  turn(position, 11, 65);
+  assert.strictEqual(position.state.masterDimmer, 132);
+  assert.deepStrictEqual(ring(position, 11), [96], 'the ring moved clear of every landmark');
+  position.midi._lastCcIn.clear();
+  position.midi.sendFeedback();
+  assert.deepStrictEqual(ring(position, 11), [96], 'and left there for the answer');
+  turn(position, 11, 97, 98, 97);  // counting on from the ring: a position
+  assert.strictEqual(position.state.masterDimmer, 136);
+
+  const steps = harness({ cc: { 11: { action: 'adjustMasterDimmer', type: 'relative', scale: 4 } }, notes: {} });
+  steps.state.masterDimmer = 128;
+  steps.midi.sendFeedback();
+  turn(steps, 11, 65, 65, 63);     // far from the ring it was sent: steps
+  assert.strictEqual(steps.state.masterDimmer, 132);
+});
+
+test('learning an encoder finds out whether it sends steps or its position', async () => {
+  const position = harness({ cc: {}, notes: {} });
+  const learnt = position.midi.startLearn({ action: 'adjustMasterDimmer', type: 'relative' });
+  turn(position, 11, 3);           // next to 0: either kind
+  assert.strictEqual(position.midi.learning, true, 'one message does not say');
+  assert.deepStrictEqual(ring(position, 11), [32], 'the ring moved clear of every landmark');
+  turn(position, 11, 33);          // counting on from it
+  const captured = await learnt;
+  assert.deepStrictEqual([captured.kind, captured.number, captured.type], ['cc', 11, 'absolute']);
+
+  const steps = harness({ cc: {}, notes: {} });
+  const learntSteps = steps.midi.startLearn({ action: 'adjustMasterDimmer' });
+  turn(steps, 11, 65, 65);
+  assert.strictEqual((await learntSteps).type, 'relative');
+
+  const plain = harness({ cc: {}, notes: {} });
+  const learntPlain = plain.midi.startLearn({ action: 'adjustMasterDimmer', type: 'relative' });
+  turn(plain, 11, 40);             // nowhere a step lands: settled at once
+  assert.strictEqual((await learntPlain).type, 'absolute');
+});
+
+test('an encoder that does not say keeps the type its learn asked for', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = harness({ cc: {}, notes: {} });
+  const learnt = h.midi.startLearn({ action: 'adjustBpm', type: 'relative' });
+  turn(h, 10, 1);
+  t.mock.timers.tick(2000);
+  const captured = await learnt;
+  assert.deepStrictEqual([captured.number, captured.type], [10, 'relative']);
+  assert.strictEqual(h.midi.learning, false);
+});
+
+test('while an encoder is being learned, the rest of the surface works', async () => {
+  const h = harness({ cc: {}, notes: { 2: { action: 'togglePlay' } } });
+  const learnt = h.midi.startLearn({ action: 'adjustBpm' });
+  turn(h, 10, 1);
+  h.input.emit('noteon', { note: 2, velocity: 127, channel: 0 });
+  assert.deepStrictEqual(h.patches.at(-1), { running: false });
+  turn(h, 10, 1);
+  assert.strictEqual((await learnt).type, 'relative');
 });

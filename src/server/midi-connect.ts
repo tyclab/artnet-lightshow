@@ -7,6 +7,7 @@ export interface MidiPorts {
   close(): void;
   connect(input: string | null, output: string | null): boolean;
   listPorts(): unknown;
+  refreshPorts(): unknown;
 }
 
 function connectMidi(midi: MidiPorts, payload: unknown): { ok: boolean; enabled: boolean; ports: unknown } {

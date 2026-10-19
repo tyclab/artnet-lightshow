@@ -824,15 +824,22 @@ otherwise configured defaults apply. `/api/audio` reports detector ownership.
 
 ### MIDI
 
-Select input/output ports in Settings → MIDI. Learn binds the next matching
-control to an action; parameters such as cue, fixture, bank and slot belong
-to that binding. Optional MIDI channel restricts matching. Reset restores the
+Select input/output ports in Settings → MIDI. Only the selected ports open;
+**none** leaves that direction disconnected, and an unavailable port is never
+replaced automatically. The list refreshes every two seconds while Settings
+is visible and excludes the server's own RtMidi ports.
+
+Learn binds the next matching control to an action; parameters such as cue,
+fixture, bank and slot belong to that binding. Optional MIDI channel restricts matching. Reset restores the
 built-in X-Touch Compact map. Custom maps live in `config/midi-map.json`.
 
 Actions cover transport, tap/tempo mode, patterns, colour slots, palettes,
 energy holds, pads (`padPress` with bank/slot), cues, fixture controls and
-master/intensity/sync faders. Relative encoders support two's complement and
-binary offset. Button/LED feedback follows the mapping.
+master/intensity/sync faders. Encoders detect whether the device sends positions
+or relative steps, including two's complement and binary offset. Learn captures
+that mode; keep turning until the capture completes. If the messages remain
+ambiguous for two seconds, the requested binding type is retained. Button/LED
+feedback follows the mapping.
 
 Motorised fader feedback defaults on; disable `midi.controlFeedback` for an
 echoing loopback. Touch sensors do not count as absolute fader values.
@@ -841,15 +848,16 @@ echoing loopback. Touch sensors do not count as absolute fader values.
 
 ### Default mapping — Behringer X-Touch Compact
 
-Set the controller to **Standard MIDI mode** (Layer A). The server auto-detects
-the first port matching `/x.?touch/i`.
+Set the controller to **Standard MIDI mode** (Layer A) and select its ports in
+Settings → MIDI. The built-in map accepts factory encoder positions and detects
+encoders configured to send relative steps. The actions remain the same.
 
 | Control | MIDI | Action |
 |---------|------|--------|
-| Encoder 1 | CC 10 (relative) | BPM ±1 |
-| Encoder 2 | CC 11 (relative) | Master dimmer |
-| Encoders 3–6 | CC 12–15 (relative) | Fixture 1–4 dimmer |
-| Encoder 7 | CC 16 (relative) | Strobe speed |
+| Encoder 1 | CC 10 (absolute position or detected steps) | BPM ±1 |
+| Encoder 2 | CC 11 (absolute position or detected steps) | Master dimmer |
+| Encoders 3–6 | CC 12–15 (absolute position or detected steps) | Fixture 1–4 dimmer |
+| Encoder 7 | CC 16 (absolute position or detected steps) | Strobe speed |
 | Faders 1–4 | CC 1–4 (absolute) | Fixture 1–4 dimmer |
 | Fader 8 | CC 8 (absolute) | Auto-show intensity |
 | Fader 9 | CC 9 (absolute) | Master dimmer |

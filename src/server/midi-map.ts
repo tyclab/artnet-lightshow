@@ -94,13 +94,13 @@ type MidiListener = (map: MidiMap) => void;
 
 const DEFAULT_MAP: MidiMap = {
   cc: {
-    10: { action: 'adjustBpm',          type: 'relative', scale: 1 },
-    11: { action: 'adjustMasterDimmer', type: 'relative', scale: 4 },
-    12: { action: 'adjustFixtureDim',   type: 'relative', scale: 4, fixture: 0 },
-    13: { action: 'adjustFixtureDim',   type: 'relative', scale: 4, fixture: 1 },
-    14: { action: 'adjustFixtureDim',   type: 'relative', scale: 4, fixture: 2 },
-    15: { action: 'adjustFixtureDim',   type: 'relative', scale: 4, fixture: 3 },
-    16: { action: 'adjustStrobeSpeed',  type: 'relative', scale: 4 },
+    10: { action: 'adjustBpm',          type: 'absolute', scale: 1 },
+    11: { action: 'adjustMasterDimmer', type: 'absolute', scale: 4 },
+    12: { action: 'adjustFixtureDim',   type: 'absolute', scale: 4, fixture: 0 },
+    13: { action: 'adjustFixtureDim',   type: 'absolute', scale: 4, fixture: 1 },
+    14: { action: 'adjustFixtureDim',   type: 'absolute', scale: 4, fixture: 2 },
+    15: { action: 'adjustFixtureDim',   type: 'absolute', scale: 4, fixture: 3 },
+    16: { action: 'adjustStrobeSpeed',  type: 'absolute', scale: 4 },
     1: { action: 'setFixtureDim', type: 'absolute', fixture: 0 },
     2: { action: 'setFixtureDim', type: 'absolute', fixture: 1 },
     3: { action: 'setFixtureDim', type: 'absolute', fixture: 2 },

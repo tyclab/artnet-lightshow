@@ -64,7 +64,7 @@ export function attachMidiRoutes(app: Express, ctx: RouteContext): void {
     }
 
     const stored = { ...captured.binding };
-    if (captured.kind === 'cc' && !stored.type) stored.type = defaultTypeFor(stored.action);
+    if (captured.kind === 'cc') stored.type = captured.type || stored.type || defaultTypeFor(stored.action);
     if (captured.kind === 'notes') delete stored.type;
 
     try {

@@ -339,6 +339,11 @@ function attachSockets(io: Server, { midi, integrations }: {
       }
     });
 
+    socket.on('midi-ports', () => {
+      const before = JSON.stringify(midi.listPorts());
+      if (JSON.stringify(midi.refreshPorts()) !== before) integrations.broadcast();
+    });
+
     socket.on('disconnect', () => {
       pixelInputs.disconnect(socket.id);
       pictureInput.disconnect(socket.id);
