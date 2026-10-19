@@ -255,7 +255,9 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
   const glowMap = keep(glowTexture());
   const glowMaterial = (size) => keep(new THREE.PointsMaterial({
     size, map: glowMap, vertexColors: true, transparent: true, depthWrite: false,
-    blending: THREE.AdditiveBlending, sizeAttenuation: true,
+    // Bound overlapping halos so adding strip sections cannot turn their colour white.
+    blending: THREE.CustomBlending, blendEquation: THREE.MaxEquation,
+    blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, premultipliedAlpha: true, sizeAttenuation: true,
   }));
   const lampGlowMaterial = glowMaterial(1.1);
   const cellGlowMaterial = glowMaterial(0.5);
@@ -368,9 +370,10 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
     if (!parts || !frame) return;
     const { pars, bulbs, cells, lenses, beams, pools, bulbMesh, cellMesh, lampGlow, cellGlow } = parts;
     const put = (attr, k, level) => {
-      attr.array[k * 3] = Math.max(OFF, rgb[0] * level);
-      attr.array[k * 3 + 1] = Math.max(OFF, rgb[1] * level);
-      attr.array[k * 3 + 2] = Math.max(OFF, rgb[2] * level);
+      const off = Math.max(rgb[0], rgb[1], rgb[2]) === 0;
+      attr.array[k * 3] = off ? OFF : rgb[0] * level;
+      attr.array[k * 3 + 1] = off ? OFF : rgb[1] * level;
+      attr.array[k * 3 + 2] = off ? OFF : rgb[2] * level;
     };
     const glow = (attr, k, level) => {
       attr.array[k * 3] = rgb[0] * level;
