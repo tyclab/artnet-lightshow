@@ -331,7 +331,7 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
       lenses.setMatrixAt(k, tmpM);
       tmpM.compose(new THREE.Vector3(par.position.x, par.position.y, par.position.z), tmpQ, tmpS.set(par.radius, par.length, par.radius));
       beams.setMatrixAt(k, tmpM);
-      const poolRadius = par.radius * (par.aim.y < 0 ? 1.35 / Math.max(0.35, -par.aim.y) : 0);
+      const poolRadius = par.poolRadius;
       tmpM.compose(new THREE.Vector3(par.end.x, 0.006, par.end.z), new THREE.Quaternion(), tmpS.set(poolRadius || 0.0001, 1, poolRadius || 0.0001));
       pools.setMatrixAt(k, tmpM);
       lampGlow.geometry.attributes.position.setXYZ(k, par.position.x + aim.x * 0.05, par.position.y + aim.y * 0.05, par.position.z + aim.z * 0.05);

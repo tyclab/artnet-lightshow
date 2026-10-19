@@ -51,9 +51,9 @@ export function StageView({ compact = false } = {}) {
   useRehearsalTrack(s.autoShow);
   useDmxFeed(!rehearsing);
 
-  // The rig changes only when the patch does: compare its signature.
-  const signature = rigSignature(fixtures, JSON.stringify(Object.keys(profiles)));
-  const rig = useMemo(() => buildRig(fixtures, (f) => profiles[f.profileId] || null), [signature]);
+  // A profile refresh can change cells without changing its ID or the fixtures.
+  const signature = rigSignature(fixtures);
+  const rig = useMemo(() => buildRig(fixtures, (f) => profiles[f.profileId] || null), [signature, profiles]);
   const placed = useMemo(() => room ? roomRig(fixtures, rig, room) : placeRig(fixtures, profiles, rig), [rig, room, fixtures, profiles]);
   const sample = useRehearsalSampler(data);
 

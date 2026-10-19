@@ -28,7 +28,9 @@ function beamLight(light, emission, floor = false, bounds = null) {
     if (Math.abs(aim[axis]) > 1e-6) length = Math.min(length, Math.max(0, (Math.sign(aim[axis]) * size / 2 - from[axis]) / aim[axis]));
   }
   const end = { x: from.x + aim.x * length, y: from.y + aim.y * length, z: from.z + aim.z * length };
-  return { ...light, kind: 'par', aim, length, end, radius: Math.tan((emission.beamAngle ?? 22) * Math.PI / 360) * length };
+  const radius = Math.tan((emission.beamAngle ?? 22) * Math.PI / 360) * length;
+  const poolRadius = aim.y < 0 && Math.abs(end.y) < 1e-6 ? radius * 1.35 / Math.max(0.35, -aim.y) : 0;
+  return { ...light, kind: 'par', aim, length, end, radius, poolRadius };
 }
 
 export function placeRig(fixtures, profiles, rig) {
@@ -57,7 +59,7 @@ export function placeRig(fixtures, profiles, rig) {
       }
       if (height === TRUSS_H) hung.push(at);
       if (emission.kind === 'strip') {
-        const line = lineOf(fixture, 16, fixture.position ? 0 : unplaced), rad = line.angle * Math.PI / 180;
+        const line = lineOf(fixture, Math.max(2, count), fixture.position ? 0 : unplaced), rad = line.angle * Math.PI / 180;
         for (let k = 0; k < 16; k++) {
           const offset = ((k + 0.5) / 16 - 0.5) * line.length / 100;
           cells.push({ unit: start, fixture: fixture.id, size: 0.08,
