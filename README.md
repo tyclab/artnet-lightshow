@@ -442,12 +442,23 @@ navigation and cleanup invalidate pending work. Browsers without WebGL2 retain
 the synchronous 2-D fallback. The helper installs its page functions once per
 connection instead of recompiling them for every capture.
 
+Every 30 seconds each output reports a small JSON summary: acknowledged frames
+per second over the whole reporting interval, capture and acknowledgement latency
+means/maxima, and rejection, stale-frame and failure counts. This is input delivery
+rate, not lighting output or Music Assistant rendering FPS. Latency samples belong
+to the interval in which each operation finishes. An inactive interval with no
+capture attempts has `fps: null`, so disarming does not look like overload.
+Summaries use stdout unless `--telemetry-file` selects an absolute NDJSON path;
+that file and one backup are limited to 1 MiB each. Slow or failed log writes
+cannot block capture. Logs contain no credentials, URLs or device/lease identities.
+
 ```mermaid
 flowchart LR
     Canvas[Music Assistant canvas] --> Capture[GPU downscale / three bounded readback buffers]
     Capture --> Ready[Non-blocking completion / newest fresh picture]
     Ready --> Ack[One frame awaiting acknowledgement per lease]
     Ack --> Latest[Latest accepted picture per lease, up to 60 fps]
+    Ack -.-> Stats[30-second bounded telemetry / existing Alloy and Loki]
     Latest --> Engine[44 Hz lighting engine and flash guard]
     Engine --> Output[DDP and other configured outputs]
 ```
@@ -1393,6 +1404,24 @@ Logs appear in the terminal, the app's Log drawer and `logs/lightshow.log`.
 Files are JSON lines, rotated at 10 MB with three retained rotations.
 `LOG_LEVEL` changes verbosity; `LOG_FORMAT=pretty|json` controls terminal
 format. `/api/logs` supports sequence, level and limit filters.
+
+At info level, the existing health monitor writes one `component=performance`
+JSON record every 30 seconds. It contains measured `actualFps`, configured
+`targetFps`, render/lateness percentiles in milliseconds, event-loop delay,
+memory bytes and whether outputs are armed. Rates use monotonic elapsed time;
+`actualFps`, `intervalMs` and `intervalSkipped` are null on the first sample,
+after a ticker restart or when a worker report has not advanced. Check
+`engineSampleAgeMs` for stale worker reports. `windowFrames` and `lateFrames`
+describe the last 2,640 rendered frames; `skippedFrames` is cumulative for the
+current ticker, while `intervalSkipped` covers `intervalMs`. These are engine
+timings, not confirmation that a device displayed every frame.
+
+The existing Docker log collector can query these records without another
+endpoint or credential. For example, in Loki:
+
+```logql
+{container_name="artnet-lightshow"} | json | component="performance"
+```
 
 The UI shows server refusals as toasts and blocks controls while disconnected.
 An access-token prompt requires a valid token; ordinary disconnects reconnect

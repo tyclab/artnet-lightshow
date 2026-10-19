@@ -21,7 +21,7 @@ export function lightshowConfig(file) {
 
 export function options(args, env = process.env) {
   const result = { fixtureId: 53, width: 68, height: 42, fps: 44, fit: 'cover', preview: false, curtain: false, room: false, roomWidth: 64, roomHeight: 36, output: 'browser-pixel-preview.ppm', controlsUrl: 'http://127.0.0.1:9090/bundles/party-visuals/api/state' };
-  const names = { '--fixture': 'fixtureId', '--width': 'width', '--height': 'height', '--room-width': 'roomWidth', '--room-height': 'roomHeight', '--fps': 'fps', '--fit': 'fit', '--output': 'output', '--browser-profile': 'browserProfile', '--visualizer-url': 'visualizerUrl', '--controls-url': 'controlsUrl', '--nodecg-config': 'nodecgConfig', '--parent-pid': 'parentPid' };
+  const names = { '--fixture': 'fixtureId', '--width': 'width', '--height': 'height', '--room-width': 'roomWidth', '--room-height': 'roomHeight', '--fps': 'fps', '--fit': 'fit', '--output': 'output', '--browser-profile': 'browserProfile', '--visualizer-url': 'visualizerUrl', '--controls-url': 'controlsUrl', '--nodecg-config': 'nodecgConfig', '--parent-pid': 'parentPid', '--telemetry-file': 'telemetryFile' };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--help') { result.help = true; continue; }
     if (args[i] === '--preview' || args[i] === '--dry-run') { result.preview = true; continue; }
@@ -36,6 +36,7 @@ export function options(args, env = process.env) {
   if (!Number.isFinite(result.fps) || result.fps < 1 || result.fps > 60) throw new Error('FPS must be between 1 and 60');
   if (!['cover', 'contain'].includes(result.fit)) throw new Error('Invalid image fit');
   if (result.parentPid !== undefined && (!Number.isInteger(result.parentPid) || result.parentPid < 1)) throw new Error('Invalid parent process');
+  if (result.telemetryFile !== undefined && !path.isAbsolute(result.telemetryFile)) throw new Error('Telemetry file must use an absolute path');
   if (!result.browserProfile || !path.isAbsolute(result.browserProfile)) throw new Error('An absolute dedicated browser profile path is required');
   const visualizer = validatedUrl(result.visualizerUrl);
   const route = new URL(visualizer.hash.slice(1), 'http://route.invalid');

@@ -35,6 +35,9 @@ export interface Spread {
 
 export interface FrameSummary {
   frames: number;
+  totalFrames: number;
+  startedAtMs: number;
+  sampledAtMs: number;
   lateMs: Spread;
   renderMs: Spread;
   lateFrames: number;
@@ -49,8 +52,11 @@ class FrameStats {
   declare _count: number;
   declare _next: number;
   declare skipped: number;
+  declare totalFrames: number;
+  declare startedAtMs: number;
+  declare now: () => number;
 
-  constructor(periodMs = FRAME_MS, windowS = STATS_WINDOW_S) {
+  constructor(periodMs = FRAME_MS, windowS = STATS_WINDOW_S, now = hrtimeMs) {
     this.periodMs = periodMs;
     this._size = Math.max(1, Math.round((windowS * 1000) / periodMs));
     this._late = new Float64Array(this._size);
@@ -58,6 +64,9 @@ class FrameStats {
     this._count = 0;
     this._next = 0;
     this.skipped = 0;
+    this.totalFrames = 0;
+    this.now = now;
+    this.startedAtMs = now();
   }
 
   record(lateMs: number, workMs: number): void {
@@ -65,6 +74,7 @@ class FrameStats {
     this._work[this._next] = Math.max(0, workMs);
     this._next = (this._next + 1) % this._size;
     this._count = Math.min(this._size, this._count + 1);
+    this.totalFrames++;
   }
 
   summary(): FrameSummary {
@@ -75,6 +85,9 @@ class FrameStats {
     for (const v of late) if (v > this.periodMs / 2) lateFrames++;
     return {
       frames: n,
+      totalFrames: this.totalFrames,
+      startedAtMs: this.startedAtMs,
+      sampledAtMs: this.now(),
       lateMs: { p50: round2(quantile(late, 0.5)), p95: round2(quantile(late, 0.95)), max: round2(late[n - 1] || 0) },
       renderMs: { p50: round2(quantile(work, 0.5)), p95: round2(quantile(work, 0.95)), max: round2(work[n - 1] || 0) },
       lateFrames,
@@ -98,7 +111,7 @@ function createTicker({
   phaseMs = 0,
   epochMs = null,
   now = hrtimeMs,
-  stats = new FrameStats(periodMs),
+  stats = new FrameStats(periodMs, STATS_WINDOW_S, now),
 }: {
   onTick: (dueMs: number, nowMs: number) => void;
   periodMs?: number;
