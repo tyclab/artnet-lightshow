@@ -1,4 +1,5 @@
-import { hueChannelsLabel, hueChannels } from '../src/shared/hue-lamp.ts';
+import { hueChannelsLabel, hueChannels, isHueProfile } from '../src/shared/hue-lamp.ts';
+import { hueSectionColour } from '../src/shared/hue-colour.ts';
 import { channelReader, hasNoAddress } from '../src/shared/placement.ts';
 
 // Scale emitter mixes proportionally so white-heavy swatches retain their colour temperature.
@@ -86,7 +87,8 @@ function fixtureReader(fix, profile, all) {
   return channelReader(fix.universe ?? 0, fix.address, profile, (u) => all[u]);
 }
 
-function readLight(at, ch, scale) {
+function readLight(at, ch, scale, profile) {
+  if (isHueProfile(profile)) return { ...hueSectionColour(ch, at, profile.hue), w: 0, a: 0, uv: 0 };
   const k = scale * (ch.dimmer !== undefined ? at(ch.dimmer) / 255 : 1);
   return {
     r:  Math.round(at(ch.red)   * k),
@@ -106,14 +108,14 @@ export function fixtureCellLights(fix, state, dmxSnapshot) {
   const cells = cellsOfProfile(profile);
   if (!cells) return null;
   if (state.masterBlackout) return cells.map(() => BLACK);
-  if (fix.override && fix.override.enabled) {
+  if (fix.override && fix.override.enabled && !isHueProfile(profile)) {
     const light = fix.override.blackout ? BLACK : overrideLight(fix, state);
     return cells.map(() => light);
   }
   const at = fixtureReader(fix, profile, dmxSnapshot || state.dmxSnapshot || {});
   const ch = profile.channelMap || {};
   const barDim = ch.dimmer !== undefined ? at(ch.dimmer) / 255 : 1;
-  return cells.map((cell) => readLight(at, cell.channelMap || {}, barDim));
+  return cells.map((cell) => readLight(at, cell.channelMap || {}, barDim, profile));
 }
 
 export function fixtureCellColors(fix, state, dmxSnapshot) {
@@ -132,18 +134,18 @@ export function meanLight(lights) {
 export function fixtureLight(fix, state, dmxSnapshot) {
   if (!fix) return null;
   if (state.masterBlackout) return BLACK;
-  if (fix.override && fix.override.enabled) return fix.override.blackout ? BLACK : overrideLight(fix, state);
   const profile = state.profiles && state.profiles[fix.profileId];
+  if (fix.override && fix.override.enabled && !isHueProfile(profile)) return fix.override.blackout ? BLACK : overrideLight(fix, state);
   if (!profile || !profile.channelMap || cellsOfProfile(profile)) return null;
   const at = fixtureReader(fix, profile, dmxSnapshot || state.dmxSnapshot || {});
-  return readLight(at, profile.channelMap, 1);
+  return readLight(at, profile.channelMap, 1, profile);
 }
 
 export function fixtureOutputColor(fix, state, dmxSnapshot) {
   if (!fix) return '#000';
   if (state.masterBlackout) return '#000';
 
-  if (fix.override && fix.override.enabled) {
+  if (fix.override && fix.override.enabled && !isHueProfile(state.profiles?.[fix.profileId])) {
     if (fix.override.blackout) return '#000';
     return colorToCss(overrideLight(fix, state));
   }

@@ -19,6 +19,8 @@ import { seedFrom } from '../../src/shared/effects/hash.ts';
 import { createPreviewSampler } from '../../src/shared/preview.ts';
 import { bundleSpec } from '../../src/shared/effects/bundle.ts';
 import { buildRig } from '../../src/shared/rig.ts';
+import { isHueProfile } from '../../src/shared/hue-lamp.ts';
+import { hueSectionColour } from '../../src/shared/hue-colour.ts';
 import { anchorStep, beatPositionAt, localBpm, makeGrid } from '../../src/shared/beat-clock.ts';
 import { HOLD_STROBE } from '../../src/shared/look-math.ts';
 
@@ -89,13 +91,17 @@ const voice = (id, spec, extra = {}) => ({
 const EMITTER_KEYS = { red: 'r', green: 'g', blue: 'b', white: 'w', coolWhite: 'w', amber: 'a', warmWhite: 'a', uv: 'uv' };
 
 /** What the rig drives each light's emitters at: one entry per par, one per cell of a bar. */
-function rigLights(store, fixtures) {
+function rigLights(store, fixtures, hueRgb) {
   const lights = [];
   for (const f of fixtures) {
     const profile = getProfile(f);
     const maps = profile.cells?.length >= 2 ? profile.cells.map((c) => c.channelMap) : [profile.channelMap];
     const dmx = store.getBuffer(f.universe);
     for (const ch of maps) {
+      if (hueRgb && isHueProfile(profile)) {
+        lights.push({ ...hueSectionColour(ch, (offset) => offset === undefined ? 0 : dmx[f.address - 1 + offset], profile.hue), w: 0, a: 0, uv: 0 });
+        continue;
+      }
       const light = {};
       for (const [name, key] of Object.entries(EMITTER_KEYS)) if (ch[name] !== undefined) light[key] = dmx[f.address - 1 + ch[name]];
       lights.push(light);
@@ -111,14 +117,14 @@ const BASE_INPUT = {
 };
 
 /** The renderer at each of `times`; `at(t)` gives that frame's input fields and, optionally, its reading (GRID's otherwise). */
-function rigRun(fixtures, times, at) {
+function rigRun(fixtures, times, at, hueRgb = false) {
   const store = universes.createUniverseStore(universes.allocateShared());
   const renderer = createRenderer({ profileOf: getProfile, profilesRevision, now: times[0] });
   return times.map((t) => {
     const { reading, ...patch } = at(t);
     const { bpm: _bpm, ...look } = patch;
     renderer.frame({ ...BASE_INPUT, fixtures, ...look }, reading ?? { beatPos: beat(t), bpm: localBpm(beatGrid, t), epoch: 0 }, t, store, 0);
-    return rigLights(store, fixtures);
+    return rigLights(store, fixtures, hueRgb);
   });
 }
 
@@ -930,7 +936,7 @@ for (const policy of ['max', 'hold', 'exclude']) {
     const profiles = Object.fromEntries(fixtures.map((f) => [f.profileId, getProfile(f)]));
     const times = frames(0, 2500);
     const effect = OWN.twinkle8;
-    const rendered = rigRun(fixtures, times, () => ({ pattern: 'twinkle8', effect, hardware }));
+    const rendered = rigRun(fixtures, times, () => ({ pattern: 'twinkle8', effect, hardware }), true);
     const sample = createPreviewSampler([{ timeMs: 0, action: 'patch', data: { pattern: 'twinkle8', ...LOOK } }], GRID,
       { resolveEffect, hardware, profiles });
     assertSame(rendered, previewRun(sample, fixtures, times), times);
@@ -944,7 +950,7 @@ test('classic patterns obey individual limits in renderer and preview', () => {
   const hardware = { technologies: {}, products: {} }, times = frames(0, 2500);
   const profiles = Object.fromEntries(fixtures.map((f) => [f.profileId, getProfile(f)]));
   const look = { ...LOOK, pattern: 'hit', beatDivision: 4 };
-  const rendered = rigRun(fixtures, times, () => ({ ...look, hardware }));
+  const rendered = rigRun(fixtures, times, () => ({ ...look, hardware }), true);
   const sample = createPreviewSampler([{ timeMs: 0, action: 'patch', data: look }], GRID, { hardware, profiles });
   assertSame(rendered, previewRun(sample, fixtures, times), times);
 });
@@ -954,7 +960,7 @@ test('legacy strobe on a rate-limited Hue matches preview', () => {
   const hardware = { technologies: {}, products: {} }, times = frames(0, 2000);
   const profiles = { [LAMP.profileId]: getProfile(LAMP) };
   const look = { ...LOOK, pattern: 'strobe', strobeSpeed: 255 };
-  const rendered = rigRun(fixtures, times, () => ({ ...look, hardware }));
+  const rendered = rigRun(fixtures, times, () => ({ ...look, hardware }), true);
   const sample = createPreviewSampler([{ timeMs: 0, action: 'patch', data: look }], GRID, { hardware, profiles });
   assertSame(rendered, previewRun(sample, fixtures, times), times);
   assert.ok(rendered.some((frame) => frame[0].r === 0));

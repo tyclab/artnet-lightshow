@@ -1,5 +1,7 @@
 import { drawnByTheShow, strobeLevel } from './strobe-fx.ts';
 import { outputEmitters } from './emitter-capability.ts';
+import { hueEmitterColour } from './hue-colour.ts';
+import { isHueProfile } from './hue-lamp.ts';
 import { HardwareClock } from './hardware-clock.ts';
 import { HardwareGuard } from './hardware-guard.ts';
 import { hardwareStrobe } from './hardware-strobe.ts';
@@ -336,6 +338,13 @@ const unitLight = (c: Colour, dim: number, strobe = 0): UnitLight => ({
   r: c.r, g: c.g, b: c.b, w: c.w || 0, a: c.a || 0, uv: c.uv || 0, dim, strobe,
 });
 
+function previewOutput(colour: Colour, scale: number, map: ChannelMap | undefined, profile: Profile | undefined): Colour {
+  const emitters = outputEmitters(colour, scale, map);
+  if (!map || !isHueProfile(profile)) return emitters;
+  const dimmer = Math.round(Math.max(0, Math.min(255, 255 * scale)));
+  return { ...hueEmitterColour(emitters, dimmer, map, profile.hue), w: 0, a: 0, uv: 0 };
+}
+
 function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSource | null = null,
   options: PreviewOptions = {}): PreviewSample {
   const beatGrid = gridFromAnalysis(grid);
@@ -552,7 +561,8 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
         dim *= strobeLevel(fn, raw, beatAt(positionMs, frame), frame.look.bpm, u, 1000 / maxHz);
       }
       const scale = (dim / 255) * ((fixture.maxBrightness ?? 255) / 255);
-      return outputEmitters(color, scale, rig.cellMaps[i]?.[cell] ?? options.profiles?.[fixtures[i]?.profileId ?? '']?.channelMap);
+      const profile = options.profiles?.[fixture.profileId ?? ''];
+      return previewOutput(color, scale, rig.cellMaps[i]?.[cell] ?? profile?.channelMap, profile);
     });
   }
 
@@ -853,7 +863,8 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
     for (let u = 0; u < n; u++) {
       const { fixture: i, cell } = rig.units[u];
       const scale = (dims[u] / 255) * ((fixtures[i]?.maxBrightness ?? 255) / 255);
-      out[u] = outputEmitters(cols[u], scale, rig.cellMaps[i]?.[cell] ?? options.profiles?.[fixtures[i]?.profileId ?? '']?.channelMap);
+      const profile = options.profiles?.[fixtures[i]?.profileId ?? ''];
+      out[u] = previewOutput(cols[u], scale, rig.cellMaps[i]?.[cell] ?? profile?.channelMap, profile);
     }
     return out;
   }

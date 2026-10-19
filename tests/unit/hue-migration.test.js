@@ -37,6 +37,19 @@ test('legacy Hue migration preserves every fixture and its binding identity with
   assert.deepEqual(snapshotShow(), saved, 'a second load does not create profiles or change IDs');
 }));
 
+test('embedded older built-in profiles retain current Hue compatibility traits on show load', () => preservingShow(() => {
+  const canonical = listProfiles()[HUE_COLOR_PROFILE_ID];
+  const older = { ...canonical };
+  delete older.hue;
+  applyShow({ profiles: [older], fixtures: [legacy(9, 3)] });
+  assert.deepEqual(getProfile(state.fixtures[0]), canonical);
+  assert.deepEqual(state.fixtures[0].output, { protocol: 'hue', bridge: 'b1', channels: [3] });
+  const saved = snapshotShow();
+  assert.deepEqual(saved.profiles, [], 'built-in profiles are canonical, not copied into the show');
+  applyShow(saved);
+  assert.deepEqual(snapshotShow(), saved);
+}));
+
 test('saved gradient channel order and rendered section colours survive migration and reload', () => preservingShow(() => {
   const lamp = areaLamp({ id: 'saved-strip', channels: [9, 2, 7] });
   const profile = hueProfile(lamp, 'b1');

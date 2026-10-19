@@ -52,7 +52,7 @@ function applyShow(rawShow: unknown): ShowFile {
   const incoming: Record<string, Profile> = Object.create(null);
   for (const id of BUILTIN_PROFILE_IDS) incoming[id] = listProfiles()[id];
   if (Array.isArray(show.profiles)) {
-    for (const p of show.profiles) if (p && p.id) incoming[p.id] = p;
+    for (const p of show.profiles) if (p && p.id && !isBuiltinProfile(p.id)) incoming[p.id] = p;
   }
 
   const showUniverse = (show.artnet && show.artnet.universe !== undefined)
