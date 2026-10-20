@@ -111,6 +111,7 @@ interface ClipEntertainmentConfig {
   id: string;
   metadata?: { name?: string };
   status?: string;
+  active_streamer?: { rid?: string };
   channels?: ClipChannel[];
 }
 
@@ -135,7 +136,9 @@ const STREAM_PORT = 2100;
 const CIPHER_SUITE = 'TLS_PSK_WITH_AES_128_GCM_SHA256' as const;
 
 const REST_TIMEOUT_MS = 5000;
-const HANDSHAKE_TIMEOUT_MS = 5000;
+// node-dtls-client never retransmits a flight, so a lost datagram costs the whole try; a good handshake takes under 200 ms.
+const HANDSHAKE_TIMEOUT_MS = 1000;
+const HANDSHAKE_TRIES = 5;
 
 const DISCOVERY_URL = 'https://discovery.meethue.com/';
 
@@ -429,6 +432,16 @@ async function setStreaming(host: string, key: string, configId: string, active:
   });
 }
 
+// The bridge accepts a start on an area another app is streaming, so only the area itself says who holds it.
+async function activeStreamer(host: string, key: string, configId: string): Promise<string | null> {
+  const parsed = await bridgeRequest(host, {
+    path: `/clip/v2/resource/entertainment_configuration/${encodeURIComponent(configId)}`,
+    key,
+  }) as ClipList<ClipEntertainmentConfig> | null;
+  const area = parsed && Array.isArray(parsed.data) ? parsed.data[0] : null;
+  return (area && area.status === 'active' && area.active_streamer?.rid) || null;
+}
+
 const HEADER = Buffer.from('HueStream', 'ascii');    // 9 bytes
 const CONFIG_ID_BYTES = 36;                          // a UUID, as ASCII
 const CHANNEL_BYTES = 7;                             // id + 3 × 16-bit colour
@@ -578,11 +591,21 @@ class HueSession {
       this.fail(`could not start the entertainment session: ${messageOf(err)}`);
       return;
     }
+    const holder = await activeStreamer(config.host, config.username, config.entertainmentId).catch(() => null);
     if (this.config !== config || this.status !== CONNECTING) {
       this.teardown();
       return;
     }
+    // A username fallback cannot be compared; a stop would end the other app's stream.
+    if (holder && identity !== config.username && holder !== identity) {
+      this.sessionOpen = false;
+      this.fail(`the entertainment area is held by ${holder}`);
+      return;
+    }
+    this.handshake(config, identity, 1);
+  }
 
+  private handshake(config: HueBridgeConfig, identity: string, attempt: number): void {
     let pending: dtls.Socket;
     try {
       pending = dtls.createSocket({
@@ -611,6 +634,13 @@ class HueSession {
 
     pending.on('error', (err: Error) => {
       if (this.socket !== pending) return;
+      if (/timed out/.test(err.message) && attempt < HANDSHAKE_TRIES && this.status === CONNECTING && this.sessionOpen) {
+        console.warn(`[hue] ${this.name}: ${err.message}, try ${attempt + 1} of ${HANDSHAKE_TRIES}`);
+        this.socket = null;
+        try { pending.close(); } catch (_) { /* already gone */ }
+        this.handshake(config, identity, attempt + 1);
+        return;
+      }
       this.fail(err.message);
     });
 
@@ -649,6 +679,7 @@ class HueSession {
     if (this.status === IDLE && !this.socket && !this.sessionOpen) return;
     this.status = IDLE;
     this.lastError = null;
+    this.retryDelay = RETRY_BASE_MS;
     this.teardown();
   }
 
