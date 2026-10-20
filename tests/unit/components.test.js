@@ -831,12 +831,12 @@ test('Perform grades the visualizer picture while it paints the room, and only t
   const html = card(ui.html(ui.h(ui.Perform, {})));
   assert.match(html, /aria-label="Picture colour grade"/);
   assert.deepStrictEqual([...html.matchAll(/class="picture-grade-value">(\d+)%</g)].map((m) => Number(m[1])), [60, 125, 70, 50]);
-  assert.match(html, /Graded: less white, more colour/);
+  assert.match(html, /Graded: the sliders below apply/);
   assert.strictEqual(count(html, 'disabled'), 0);
   assert.strictEqual(count(html, 'type="range"'), 4);
   given({ picture: { source: 'visualizer', input: null, grade: { ...grade, enabled: false } } });
   const off = card(ui.html(ui.h(ui.Perform, {})));
-  assert.match(off, /Off: the picture as sent/);
+  assert.match(off, /Off: the picture(&#39;|')s own colours/);
   assert.strictEqual([...off.matchAll(/<input type="range"[^>]*disabled/g)].length, 4, 'the sliders wait while the grade is off');
 });
 

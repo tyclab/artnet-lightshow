@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createRenderer } from '../../src/server/renderer.ts';
 import { allocateShared, createUniverseStore } from '../../src/server/universes.ts';
 import { channelReader } from '../../src/shared/placement.ts';
+import { SRGB_DECODE } from '../../src/shared/color.ts';
 
 // Two RGB pars and one 2 x 1 matrix: the picture paints the pars' units, never the matrix.
 const par = { id: 'picture-par', name: 'Par', channelCount: 3, channelMap: { red: 0, green: 1, blue: 2 } };
@@ -23,6 +24,8 @@ const base = (patch = {}) => ({
 // Units in rig order: par (1), bar (2), grid (2) = 5 units.
 const picture = (data, expiresAt = 2000) => ({ leaseId: 'lease', signature: 'rig', units: 5, expiresAt, data: Uint8Array.from(data) });
 const colours = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150];
+// The picture's bytes are sRGB; each unit is driven with the linear light they stand for, then the masters.
+const linear = (bytes, gain = 1) => bytes.map((v) => Math.round(SRGB_DECODE[v] * gain));
 
 function rig() {
   const store = createUniverseStore(allocateShared());
@@ -41,8 +44,8 @@ test('the picture paints every non-matrix unit in rig order and leaves the matri
   const r = rig();
   const plain = r.draw(100);
   const painted = r.draw(100, { picture: picture(colours) });
-  assert.deepEqual(painted.par, [10, 20, 30]);
-  assert.deepEqual(painted.bar, [40, 50, 60, 70, 80, 90]);
+  assert.deepEqual(painted.par, linear(colours.slice(0, 3)));
+  assert.deepEqual(painted.bar, linear(colours.slice(3, 9)));
   assert.deepEqual(painted.grid, plain.grid);
 });
 
@@ -51,8 +54,8 @@ test('voices and overrides stay above the picture; the master dimmer and blackou
   fx[0].override = { enabled: true, blackout: false, r: 0, g: 255, b: 0, w: 0, a: 0, uv: 0, dim: 255, strobe: 0 };
   const out = rig().draw(100, { picture: picture(colours), fixtures: fx });
   assert.deepEqual(out.par, [0, 255, 0]);
-  assert.deepEqual(out.bar, [40, 50, 60, 70, 80, 90]);
-  assert.deepEqual(rig().draw(100, { picture: picture(colours), masterDimmer: 128 }).par, [5, 10, 15]);
+  assert.deepEqual(out.bar, linear(colours.slice(3, 9)));
+  assert.deepEqual(rig().draw(100, { picture: picture(colours), masterDimmer: 128 }).bar, linear(colours.slice(3, 9), 128 / 255));
   assert.deepEqual(rig().draw(100, { picture: picture(colours), masterBlackout: true }).bar, [0, 0, 0, 0, 0, 0]);
 });
 

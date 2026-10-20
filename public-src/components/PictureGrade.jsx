@@ -38,7 +38,7 @@ export function PictureGrade() {
         <legend>Picture colour grade</legend>
         <label class="picture-grade-toggle">
           <input type="checkbox" checked={grade.enabled} onChange={(e) => save({ enabled: e.target.checked })} />
-          {grade.enabled ? 'Graded: less white, more colour' : 'Off: the picture as sent'}
+          {grade.enabled ? 'Graded: the sliders below apply' : 'Off: the picture\'s own colours'}
         </label>
         {SLIDERS.map(([id, label, min, max, hint]) => (
           <GradeSlider key={id} id={id} label={label} min={min} max={max} hint={hint} value={grade[id]} disabled={!grade.enabled} />

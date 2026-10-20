@@ -9,6 +9,10 @@ import { ddpRoutes } from '../../src/server/ddp-routes.ts';
 import { seedFrom } from '../../src/shared/effects/hash.ts';
 import { channelReader } from '../../src/shared/placement.ts';
 import { hrtimeMs } from '../../src/server/frame-clock.ts';
+import { SRGB_DECODE } from '../../src/shared/color.ts';
+
+// Screen bytes are sRGB; the panel is driven with the linear light they stand for.
+const linear = (bytes) => [...bytes].map((v) => Math.round(SRGB_DECODE[v]));
 
 const grid = (width, height, reverse = false) => ({
   id: 'pixel-input-grid', name: 'Screen', channelCount: width * height * 3, channelMap: {}, grid: { columns: width, rows: height },
@@ -45,7 +49,7 @@ test('external RGB follows the profile grid and channel mapping across universes
   const profile = grid(17, 11, true), r = rig(profile);
   const data = Uint8Array.from({ length: 17 * 11 * 3 }, (_, i) => (i * 13 + 7) % 256);
   const before = r.draw(100), after = r.draw(100, { pixelInputs: [frame(profile, data)] });
-  const expected = profile.cells.flatMap(({ at }) => [...data.slice((at.y * 17 + at.x) * 3, (at.y * 17 + at.x) * 3 + 3)]);
+  const expected = profile.cells.flatMap(({ at }) => linear(data.slice((at.y * 17 + at.x) * 3, (at.y * 17 + at.x) * 3 + 3)));
   assert.deepEqual(after.pixels, expected);
   assert.deepEqual(after.other, before.other);
   assert.ok(r.store.getBuffer(2).some(v => v !== 0));
@@ -54,7 +58,8 @@ test('external RGB follows the profile grid and channel mapping across universes
 test('pixels obey master, fixture trim, manual override, fixture blackout and master blackout', () => {
   const p = grid(2, 1), pixels = [frame(p, [255, 128, 64, 80, 160, 240])], fixtures = base(p).fixtures;
   fixtures[0].maxBrightness = 128;
-  assert.deepEqual(rig(p).draw(100, { pixelInputs: pixels, fixtures, masterDimmer: 128 }).pixels, [64, 32, 16, 20, 40, 60]);
+  // Decoded first (255, 55.0, 13.1, 20.5, 89.6, 222.2), then a quarter for the master and the trim.
+  assert.deepEqual(rig(p).draw(100, { pixelInputs: pixels, fixtures, masterDimmer: 128 }).pixels, [64, 14, 3, 5, 23, 56]);
   fixtures[0].maxBrightness = 255;
   fixtures[0].override = { enabled: true, blackout: false, r: 0, g: 255, b: 0, w: 0, a: 0, uv: 0, dim: 255, strobe: 0 };
   assert.deepEqual(rig(p).draw(100, { pixelInputs: pixels, fixtures }).pixels, [0, 255, 0, 0, 255, 0]);
@@ -67,14 +72,14 @@ test('stream does not inherit legacy strobe and safety revocation restores the a
   const p = grid(2, 1), r = rig(p), data = [10, 20, 30, 40, 50, 60];
   for (let now = 0; now < 1000; now += 25) assert.deepEqual(r.draw(now, {
     pattern: 'strobe', strobeSpeed: 255, pixelInputs: [frame(p, data)],
-  }).pixels, data);
+  }).pixels, linear(data));
   const baseline = rig(p).draw(100).pixels;
   assert.deepEqual(rig(p).draw(100, { pixelInputs: [frame(p, data)], safety: { acknowledged: false, hdFlashIntervalMs: 350 } }).pixels, baseline);
 });
 
 test('expired or incompatible frames fall back to the running authored look', () => {
-  const p = grid(2, 1), r = rig(p), pixels = [frame(p, [1, 2, 3, 4, 5, 6], 100)];
-  assert.deepEqual(r.draw(99, { pixelInputs: pixels }).pixels, [1, 2, 3, 4, 5, 6]);
+  const p = grid(2, 1), r = rig(p), pixels = [frame(p, [10, 20, 30, 40, 50, 60], 100)];
+  assert.deepEqual(r.draw(99, { pixelInputs: pixels }).pixels, [1, 2, 3, 5, 8, 12]);
   assert.deepEqual(r.draw(100, { pixelInputs: pixels }).pixels, rig(p).draw(100).pixels);
   assert.deepEqual(r.draw(50, { pixelInputs: [{ ...pixels[0], width: 1, height: 2 }] }).pixels, rig(p).draw(50).pixels);
 });
