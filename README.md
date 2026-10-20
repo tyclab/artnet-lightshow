@@ -566,7 +566,12 @@ export marks `role: screen` (the TV and the monitors in a house-model export).
 Each device is a fixture, with one RGB cell per LED and no DMX address.
 The server allocates its internal rendering space and sends only its own pixels.
 The patch keeps the device name as well as its number so discovery can resolve
-renumbered devices. Devices must support a direct LED colour mode.
+renumbered devices, and its location (where OpenRGB says it is plugged in) so
+two devices of one model, such as identical monitors, keep their fixtures
+whichever wakes first; while one is away, its fixture stays dark rather than
+driving the other. A device patched before locations were kept is matched in
+order, as before, and its location is learned the first time every device of
+its name is listed. Devices must support a direct LED colour mode.
 
 Disarm or removal sends darkness and closes the connection. OpenRGB has no
 realtime timeout: another client/profile must restore the desired hardware
@@ -574,7 +579,9 @@ effect. Unavailable PCs generate warnings; other outputs continue. Missing devic
 retry after 1 second, doubling to at most 30 seconds. Frames pause briefly while
 discovery validates device numbers, then healthy devices resume at the normal
 frame rate without replaying dropped frames. A device-list update or reconnect
-retries immediately.
+retries immediately. OpenRGB never answers a request for a device it no longer
+lists, so a device-list update that arrives while a device is being read
+reconnects at once, without a back-off, instead of holding every reply behind it.
 
 ### Philips Hue
 
@@ -1199,7 +1206,7 @@ Transport routes answer `{ ok, status }`; with no sequence loaded they answer
 | GET · POST | `/api/show` | Export / import the patch |
 | GET | `/api/wled/discover` | Ask the network for WLEDs (mDNS): `{ devices: [{ host, name, leds, rgbw, matrix, version, segments, patched }] }` |
 | POST | `/api/wled/add` | Add a WLED to the patch from `{ host, label?, segments? }`: its profile from `/json/info`, with internal allocation and no DMX address, sent DDP. With `segments: true`, a fixture for each segment in its `/json/state` not patched yet: `{ fixtures, profiles, info, segments }` |
-| GET | `/api/openrgb/discover?host=&port=` | Ask an OpenRGB SDK server for its devices: `{ host, port, devices: [{ index, name, type, leds, direct, patched }] }` |
+| GET | `/api/openrgb/discover?host=&port=` | Ask an OpenRGB SDK server for its devices: `{ host, port, devices: [{ index, name, type, leds, direct, location, patched }] }` |
 | POST | `/api/openrgb/add` | Add devices of an OpenRGB server to the patch from `{ host, port?, devices?: [index], label? }` — those named, or every one with LEDs not patched yet — each a fixture with a cell per LED and no DMX address, sent over the SDK: `{ fixtures, profiles, devices }` |
 
 ### Outputs
@@ -1375,8 +1382,9 @@ of `front`, `back`, `room`, `floor`, or `null`; `geometry` is an LED bar's line
 `{ protocol: 'ddp', host, port?, at?, rowStride? }` to send the fixture's
 pixels to a WLED — from its LED `at` for a segment, a row every `rowStride`
 LEDs for a rectangle of a panel — `{ protocol: 'openrgb', host, port?, device,
-name?, leds }` to send them to device `device` of the OpenRGB SDK server at
-`host` (found by `name` when the server has renumbered it), `leds` LEDs long
+name?, location?, leds }` to send them to device `device` of the OpenRGB SDK server at
+`host` (found by `name` when the server has renumbered it, and by `location`
+among devices of one name), `leds` LEDs long
 (as `POST /api/openrgb/add` patches it) — or `null` for
 Art-Net and sACN. A device's protocol cannot be changed here: only its destination
 within the same protocol can be edited, and supplied DMX addresses are ignored.

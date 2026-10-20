@@ -180,13 +180,14 @@ export interface DdpOutput {
   areas?: [number, number, number, number][];
 }
 
-/** OpenRGB resolves the saved device by name when device indices change. */
+/** OpenRGB resolves the saved device by name, and by location among same-name devices, when device indices change. */
 export interface OpenRgbOutput {
   protocol: 'openrgb';
   host: string;
   port?: number;
   device: number;
   name?: string;
+  location?: string;
   leds: number;
 }
 

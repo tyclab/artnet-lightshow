@@ -174,6 +174,8 @@ export interface ControllerData {
   activeMode: number;
   /** The colour each LED shows now, three bytes a LED. */
   colors: Uint8Array;
+  /** Where it is plugged in (a HID path, an I2C bus and address): what tells two of one model apart. */
+  location: string;
 }
 
 /**
@@ -188,7 +190,8 @@ function parseControllerData(buf: Buffer, version: number): ControllerData {
   const type = r.i32();
   const name = r.string();
   if (version >= 1) r.string();              // vendor
-  for (let k = 0; k < 4; k++) r.string();    // description, firmware, serial, location
+  for (let k = 0; k < 3; k++) r.string();    // description, firmware, serial
+  const location = r.string();
   const modeCount = r.u16();
   const activeMode = r.i32();
   const modes: OpenRgbMode[] = [];
@@ -233,7 +236,7 @@ function parseControllerData(buf: Buffer, version: number): ControllerData {
       colors[c * 3 + 2] = buf[at + 2];
     }
   }
-  return { name: name.trim() || `Device ${type}`, type: DEVICE_TYPES[type] ?? 'Unknown', leds: ledCount, modes, activeMode, colors };
+  return { name: name.trim() || `Device ${type}`, type: DEVICE_TYPES[type] ?? 'Unknown', leds: ledCount, modes, activeMode, colors, location };
 }
 
 /** The mode a device is painted LED by LED in: one called Direct, else any that takes a colour a LED. */
@@ -243,13 +246,39 @@ function directMode(data: ControllerData): OpenRgbMode | null {
 
 // ── The connection ──────────────────────────────────────────────────────────
 
-/** A device as the patch refers to it: the server's number for it when it was added, and its name then, when kept. */
+/** A device as the patch refers to it: the server's number for it when it was added, and its name and location then, when kept. */
 export interface OpenRgbDeviceRef {
   device: number;
   name?: string;
+  location?: string;
 }
 
 const deviceKey = (ref: OpenRgbDeviceRef) => `${ref.device}:${ref.name ?? ''}`;
+
+/**
+ * Which of the server's devices of one name each patched device of that name
+ * is, those given in the order they were patched: the one at its location,
+ * when that is known and listed; the rest take the others in order, the k-th
+ * for the k-th. A location two of them share tells nothing.
+ */
+function matchSameName(locations: readonly (string | undefined)[], devices: readonly { index: number; location: string }[]): (number | undefined)[] {
+  const at = new Map<string, number | null>();
+  for (const d of devices) if (d.location) at.set(d.location, at.has(d.location) ? null : d.index);
+  const taken = new Set<number>();
+  const matched = locations.map((location) => {
+    const index = location ? at.get(location) : undefined;
+    if (index === undefined || index === null || taken.has(index)) return undefined;
+    taken.add(index);
+    return index;
+  });
+  const rest = devices.filter((d) => !taken.has(d.index));
+  let k = 0;
+  return matched.map((index) => index ?? rest[k++]?.index);
+}
+
+/** Where each same-name device patched without a location was found, by server and reference: kept across connections. */
+const learnedLocations = new Map<string, string>();
+
 interface PreparationFailure { until: number; delay: number; run: Promise<ControllerData> }
 
 interface Pending {
@@ -261,6 +290,7 @@ interface Pending {
 }
 
 const timedOut = (what: string, ms: number) => Object.assign(new Error(`${what} did not answer within ${ms / 1000} s`), { code: 'ETIMEDOUT' });
+const listChanged = (where: string) => Object.assign(new Error(`${where}: device list changed`), { code: 'ECHANGED' });
 
 const LOG_INTERVAL_MS = 5000;
 let lastLoggedAt = 0;
@@ -382,8 +412,8 @@ export class OpenRgbConnection {
     for (const ref of this.wanted.values()) this.prepare(ref).catch(() => { /* logged by prepare */ });
   }
 
-  /** The connection is gone: fail what waited on it and, unless ended, allow a retry after the back-off. */
-  lost(err: unknown): void {
+  /** The connection is gone: fail what waited on it and, unless ended, allow a retry after the back-off, or `redial` at once. */
+  lost(err: unknown, { redial = false } = {}): void {
     const socket = this.socket;
     if (!socket) return;
     this.socket = null;
@@ -410,6 +440,10 @@ export class OpenRgbConnection {
     settle?.reject(error);
     // A one-shot connection (discover, identify) reports to whoever asked.
     if (this.ended || !this.reconnect) return;
+    if (redial) {
+      this.open().catch(() => { /* a failed dial backs off in lost */ });
+      return;
+    }
     logFailure(`${this.where()}: ${error.message}`);
     this.backoff = this.backoff ? Math.min(this.backoff * 2, BACKOFF_MAX_MS) : BACKOFF_MIN_MS;
     const timer = setTimeout(() => { this.retry = null; }, this.backoff);
@@ -471,6 +505,13 @@ export class OpenRgbConnection {
 
   onPacket(header: { device: number; id: number }, data: Buffer): void {
     if (header.id === PACKET.DEVICE_LIST_UPDATED) {
+      // A description asked for may be of a device the server no longer
+      // lists, which it never answers; replies carry no token, so every one
+      // after it would wait out its timeout. A new connection owes nothing.
+      if (this.pending.some((p) => p.id === PACKET.REQUEST_CONTROLLER_DATA)) {
+        this.lost(listChanged(this.where()), { redial: true });
+        return;
+      }
       // The PC's devices came or went: read them again, and find each of
       // ours again, before the next frame.
       this.revision++;
@@ -504,7 +545,10 @@ export class OpenRgbConnection {
 
   /** What device `index` is. */
   async controllerData(index: number, timeoutMs = REQUEST_TIMEOUT_MS): Promise<ControllerData> {
+    const revision = this.revision;
     const count = await this.controllerCount();
+    // A count answered before the list changed may take in a device now gone.
+    if (revision !== this.revision) throw listChanged(this.where());
     if (index >= count) throw new HttpError(404, `${this.where()} has no device #${index}: it lists ${count}`);
     const version = Buffer.alloc(4);
     version.writeUInt32LE(this.version, 0);
@@ -542,7 +586,7 @@ export class OpenRgbConnection {
         const data = await this.controllerData(index, remaining);
         current();
         const before = this.described.get(index) ?? this.devices.get(index);
-        if (before && (before.name !== data.name || before.type !== data.type || before.leds !== data.leds)) changed();
+        if (before && (before.name !== data.name || before.type !== data.type || before.leds !== data.leds || before.location !== data.location)) changed();
         descriptions.set(index, data);
       }
       current();
@@ -562,10 +606,12 @@ export class OpenRgbConnection {
    * Which of the server's devices `ref` is today. OpenRGB numbers its devices
    * in the order it finds them, so a stick pulled, a monitor off or a
    * wireless mouse asleep at boot shifts the others: a device patched under
-   * its name is looked for by name, whatever its number today — the k-th of
-   * that name on the server for the k-th of that name in the patch, so four
-   * identical RAM sticks keep their order. One patched by number alone is
-   * that number.
+   * its name is looked for by name, whatever its number today: of several
+   * of one name, the one at its location (kept when it was added, or learned
+   * here once all of them are listed), else the k-th of that name on the
+   * server for the k-th of that name in the patch — so four identical RAM
+   * sticks keep their order, and two identical monitors keep their fixtures
+   * whichever wakes first. One patched by number alone is that number.
    */
   async resolve(ref: OpenRgbDeviceRef): Promise<number> {
     const key = deviceKey(ref), revision = this.revision;
@@ -574,16 +620,31 @@ export class OpenRgbConnection {
     const count = Math.min(MAX_DEVICES, await this.controllerCount());
     let index = ref.device;
     if (ref.name) {
-      const named: number[] = [];
-      for (let i = 0; i < count; i++) if ((await this.describe(i)).name === ref.name) named.push(i);
-      const siblings = [...this.wanted.values()].filter((w) => w.name === ref.name).map((w) => w.device).sort((a, b) => a - b);
-      const found = named[Math.max(0, siblings.indexOf(ref.device))];
+      const named: { index: number; location: string }[] = [];
+      for (let i = 0; i < count; i++) {
+        if (revision !== this.revision) throw listChanged(this.where());
+        const data = await this.describe(i);
+        if (data.name === ref.name) named.push({ index: i, location: data.location });
+      }
+      const siblings = [...new Map([...this.wanted.values(), ref].filter((w) => w.name === ref.name).map((w) => [deviceKey(w), w])).values()]
+        .sort((a, b) => a.device - b.device);
+      const learned = (w: OpenRgbDeviceRef) => `${keyOf(this.host, this.port)}#${deviceKey(w)}`;
+      const matched = matchSameName(siblings.map((w) => w.location ?? learnedLocations.get(learned(w))), named);
+      const found = matched[siblings.findIndex((w) => deviceKey(w) === key)];
       if (found === undefined) throw new HttpError(404, `${this.where()} has no device named "${ref.name}" (it was #${ref.device})`);
+      if (revision !== this.revision) throw listChanged(this.where());
+      // All of them listed, the order is the patch's: each is where it was found from now on.
+      if (named.length >= siblings.length) {
+        siblings.forEach((w, r) => {
+          const location = named.find((d) => d.index === matched[r])?.location;
+          if (!w.location && location && named.filter((d) => d.location === location).length === 1) learnedLocations.set(learned(w), location);
+        });
+      }
       index = found;
     } else if (index >= count) {
       throw new HttpError(404, `${this.where()} has no device #${index}: it lists ${count}`);
     }
-    if (revision !== this.revision) throw new Error(`${this.where()}: device list changed`);
+    if (revision !== this.revision) throw listChanged(this.where());
     this.live.set(key, index);
     return index;
   }
@@ -723,6 +784,7 @@ export interface OpenRgbDevice {
   leds: number;
   /** Does it have a mode that takes a colour a LED, which the show needs. */
   direct: boolean;
+  location: string;
 }
 
 export interface OpenRgbClient {
@@ -734,6 +796,7 @@ export interface OpenRgbClient {
 function asHttpError(err: unknown, where: string): HttpError {
   if (err instanceof HttpError) return err;
   if (codeOf(err) === 'ETIMEDOUT') return new HttpError(504, messageOf(err));
+  if (codeOf(err) === 'ECHANGED') return new HttpError(503, `${messageOf(err)}; try again`);
   return new HttpError(502, `Cannot reach ${where} (${messageOf(err)}); is OpenRGB running with its SDK server on?`);
 }
 
@@ -746,7 +809,7 @@ async function discover(host: string, port = OPENRGB_PORT): Promise<OpenRgbDevic
     const devices: OpenRgbDevice[] = [];
     for (let index = 0; index < count; index++) {
       const data = await connection.controllerData(index);
-      devices.push({ index, name: data.name, type: data.type, leds: data.leds, direct: directMode(data) !== null });
+      devices.push({ index, name: data.name, type: data.type, leds: data.leds, direct: directMode(data) !== null, location: data.location });
     }
     return devices;
   } catch (err) {
@@ -767,6 +830,7 @@ export {
   parseUpdateLeds,
   parseControllerData,
   directMode,
+  matchSameName,
   sendOpenRgb,
   closeOpenRgb,
   discover as discoverOpenRgb,
