@@ -963,7 +963,7 @@ measurements are under [Memory](docs/audio-analysis.md#memory).
 ```mermaid
 flowchart LR
   Decode[Decode and preprocess] --> Main[Main thread: features, rhythm, bands, dynamics, structure, events]
-  Decode --> Models[CPU model thread: Beat This, Demucs, MuQ-MuLan and MuQ, S-KEY in turn]
+  Main -- features done --> Models[CPU model thread: Beat This, S-KEY, Demucs, MuQ-MuLan and MuQ in turn]
   Files[(Checkpoint files)] -. mapped weights .-> Models
   Models -- beats, stems, genre, embeddings, key --> Main
   Main --> Document[Analysis document]

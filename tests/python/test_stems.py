@@ -149,5 +149,51 @@ class StereoInput(unittest.TestCase):
         self.assertEqual(float(seen['tensor'][0, 1, 0]), -1.0)
 
 
+
+@needs_audio
+class StreamedDemucs(unittest.TestCase):
+    # apply_model on a whole track held it as four stereo stems at 44.1 kHz,
+    # twice: 4 MB a second, more than tychome had for a long track. The
+    # segments are now run one at a time; for the same random shift the stems
+    # must be the ones apply_model gives, bit for bit.
+    def test_the_stems_are_apply_models(self):
+        import random
+        import numpy as np
+        import torch
+        import librosa
+        from demucs.apply import BagOfModels, apply_model
+        from demucs.htdemucs import HTDemucs
+        torch.manual_seed(0)
+        net = HTDemucs(sources=['drums', 'bass', 'other', 'vocals'], channels=4, depth=2,
+                       t_layers=1, t_heads=2, dconv_comp=2, segment=1, samplerate=44100).eval()
+        pair = (0.1 * np.random.default_rng(3).standard_normal((2, 44100 * 3 + 777))).astype(np.float32)
+        size = (pair.shape[1] + 1) // 2
+        for model in (net, BagOfModels([net])):
+            random.seed(11)
+            with torch.no_grad():
+                whole = apply_model(model, torch.tensor(pair)[None], split=True, overlap=0.10)[0]
+            random.seed(11)
+            with torch.no_grad():
+                streamed = stems._demucs(model, pair, 'cpu', 0.10, None, 22050, size)
+            for name, source in zip(model.sources, whole):
+                want = librosa.resample(source.mean(dim=0).numpy(), orig_sr=44100, target_sr=22050)
+                want = np.pad(want, (0, max(0, size - want.size)))[:size]
+                np.testing.assert_array_equal(streamed[name], want, err_msg=f'{type(model).__name__} {name}')
+
+    def test_a_span_reads_what_load_for_separation_returns(self):
+        import numpy as np
+        from analysis import preprocess
+        source = np.random.default_rng(5).standard_normal((2, 50000)).astype(np.float32)
+        audio = preprocess.PreparedAudio(
+            mono=np.zeros(1), levelled=np.zeros(1), harmonic=np.zeros(1), percussive=np.zeros(1),
+            sample_rate=22050, duration=1.0, trim_offset=0.25, applied_gain_db=-3.5,
+            source=source, source_rate=44100, source_channels=2)
+        whole = preprocess.load_for_separation(audio, 44100)
+        span = preprocess.separation_span(audio, 44100)
+        self.assertEqual(span.shape, whole.shape)
+        np.testing.assert_array_equal(np.concatenate([span.read(a, a + 777) for a in range(0, span.shape[1], 777)],
+                                                     axis=1), whole)
+
+
 if __name__ == '__main__':
     unittest.main()

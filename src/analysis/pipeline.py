@@ -32,6 +32,7 @@ nested objects; the flat fields are a compatibility surface.
 import os
 import sys
 import time
+import threading
 import hashlib
 import contextlib
 import functools
@@ -114,24 +115,42 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
         pools.append(shared)
 
     timings = Timings()
+    features_done, bands_done = threading.Event(), threading.Event()
 
     def start(name, fn, *args):
         pool = shared
         if pool is None:
             pool = ThreadPoolExecutor(max_workers=1)
             pools.append(pool)
+        else:
+            fn = _trimmed(fn)
         return pool.submit(timings.timed(name, fn), *args)
 
     try:
         with timings.stage('preprocess'):
             audio = preprocess_stage.prepare(path, config.preprocess, target_duration_sec)
+            models.trim()
 
+        if shared is not None:
+            # On the CPU the passes start once the features are done, and the
+            # rest wait for the bands after the beats: beside the DSP each
+            # pass's working memory sat on the DSP's peak, and by then the
+            # signals only the DSP reads have been let go (`_release`).
+            shared.submit(features_done.wait)
         beat_turn = models.reserve_first_turn()
         beat_future = start('beats', _beat_pass, audio, config.rhythm, beat_turn)
 
         # Tag the preprocessed 32 kHz normalised mono: no second decode, and two masters of a track tag alike.
         if tagging:
             tag_future = start('tagger', _safe_tag, path, audio)
+
+        if shared is not None:
+            shared.submit(bands_done.wait)
+
+        # Before the separator: S-KEY is a second's work, and once both are done
+        # nothing reads the decoded source again (`_release`).
+        if model_adapters.skey_available():
+            key_future = start('skey', _safe_skey, audio)
 
         if config.separate_sources:
             stem_future = start('separation', _safe_separate, audio)
@@ -142,23 +161,31 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
         if songformer.wanted(config.structure_model):
             form_future = start('songformer', _safe_songformer, audio)
 
-        if model_adapters.skey_available():
-            key_future = start('skey', _safe_skey, audio)
-
         with timings.stage('features'):
             frames = features_stage.extract(audio, config.preprocess)
+            if tag_future is None:
+                _release(audio, 'wideband')
+            models.trim()
+        features_done.set()
 
         with timings.stage('wait.beats'):
             beat_future.exception()
         with timings.stage('rhythm'):
             rhythm = rhythm_stage.analyse(audio, frames, config.rhythm,
                                           model_result=beat_future.result)
+        _release(audio, 'levelled', 'harmonic', 'side_curve')
         with timings.stage('bands'):
             band_map = bands_stage.analyse(frames, rhythm.beats)
+        # Only the bands read it: the top octave, for `high` and `air`.
+        frames.wideband_magnitude = np.zeros((0, 0), dtype=frames.wideband_magnitude.dtype)
+        models.trim()
+        bands_done.set()
 
         with timings.stage('wait.models'):
             tags = _collect(tag_future)
             stems = _collect(stem_future)
+            if all(f is None or f.done() for f in (key_future, form_future)):
+                _release(audio, 'source')
             muq = _collect(mulan_future) or {}
         mulan = muq.get('scores') or {}
         embeddings = muq.get('embeddings') or []
@@ -249,6 +276,8 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
         # Passes still queued for a track that failed are dropped, not run.
         for pool in pools:
             pool.shutdown(wait=False, cancel_futures=True)
+        features_done.set()
+        bands_done.set()
         # A beat pass that never reached the card must not keep it from the
         # next track.
         models.cancel_turn(beat_turn)
@@ -260,6 +289,31 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
             models.release_memory()
         except Exception:
             pass
+
+
+def _release(audio, *names):
+    """
+    Drop signals of `audio` that no later stage reads. On a fifteen-minute
+    track each is 80 to 320 MB, held to the end of the track for nothing.
+    """
+    for name in names:
+        setattr(audio, name, None)
+    models.trim()
+
+
+def _trimmed(fn):
+    """
+    `fn`, then the freed heap handed back. glibc keeps what a stage frees for
+    the thread that freed it, so on the CPU each pass's leftovers, and the
+    DSP's, sat beside the next pass's working memory until the track ended.
+    """
+    @functools.wraps(fn)
+    def run(*args):
+        try:
+            return fn(*args)
+        finally:
+            models.trim()
+    return run
 
 
 def _beat_pass(audio, config, turn):
@@ -296,7 +350,7 @@ def _safe_separate(audio):
     try:
         return stems_stage.separate(
             audio.mono, audio.sample_rate,
-            stereo_loader=lambda rate: preprocess_stage.load_for_separation(audio, rate))
+            stereo_loader=lambda rate: preprocess_stage.separation_span(audio, rate))
     except Exception as exc:
         _log(f'separation failed ({exc}); instrument roles fall back to bands')
         return None

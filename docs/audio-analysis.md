@@ -947,10 +947,12 @@ cannot use (a typo, or `cuda` on a CPU build) is named in the log and ignored.
 A GPU turns the separation row from a minute into a few seconds, which is most
 of why the numbers above are the pessimistic case.
 
-**The beat model goes first.** It runs on its own thread from the moment the
-audio is decoded, beside the feature extraction. On a GPU it holds a reserved
-turn, so the separator and MuQ, started just after, queue behind it instead of
-in front of it. Everything from the rhythm stage on waits for the grid, and
+**The beat model goes first.** On a GPU it runs on its own thread from the
+moment the audio is decoded, beside the feature extraction, and holds a
+reserved turn, so the separator and MuQ, started just after, queue behind it
+instead of in front of it. On the CPU it starts once the features are done:
+beside them its working memory sat on the features' peak (see
+[Memory](#memory)). Everything from the rhythm stage on waits for the grid, and
 nothing waits for the separator until later.
 
 **The file is decoded once**, at its own rate. The analysis signal, the wideband
@@ -960,8 +962,9 @@ decode. There used to be four decodes per track.
 **Separation runs beside the main thread**, which carries on with features,
 rhythm and bands. On a GPU every model pass has its own thread and they take
 turns on the card, so that genuinely overlaps. On the CPU the passes share one
-thread and run in the order the pipeline collects them: beats, tags, separation,
-MuQ, SongFormer, S-KEY. Side by side they gained almost nothing, because each
+thread and run in turn: beats, tags, S-KEY, separation, MuQ, SongFormer. S-KEY
+goes before the separator because it is a second's work and, once both are
+done, nothing reads the decoded source again. Side by side they gained almost nothing, because each
 already uses every core the process has, and they held all their working memory
 at once (see [Memory](#memory)). The numbers above are the argument for
 `separate_sources=False` on a machine analysing a queue during a set rather than
@@ -988,45 +991,63 @@ of JSON travelling to a browser that draws it 900 pixels wide.
 
 ### Memory
 
-Measured on tychome, the 16-core, 16 GB, no-swap CPU host the worker shares with
-Home Assistant and voice services, with a 210 s track. Each run was a container
-capped so that at least 2 GB of the host stayed free. *Anon* is memory the kernel
-can only take back by killing the worker; the rest of a peak is mapped checkpoint
-pages it can drop and reread. Rows marked † are from the same image, environment
-and models on a 32 GB machine, where nothing has to be killed.
+The worker's peak is a fixed part — about 0.6 GB of libraries and resident
+weights, plus one model pass's working memory, of which Demucs's is the largest
+at about 1 GB — and a part per second of audio. Measured with a container per
+run: on tychome, the 16 GB, no-swap CPU host shared with Home Assistant and
+voice services, capped so that 2 GB of the host stayed free; and, uncapped for
+the true peak, with the same image, environment and models on a 32 GB Ryzen 7
+5800X, which takes about 1.5 times as long per track. *Anon* is memory the
+kernel can only take back by killing the worker; the rest of a peak is mapped
+checkpoint pages it can drop and reread.
 
-| Stage, run on its own after preprocessing | Before | Now |
-|---|---|---|
-| preprocess and features | 1.24 GB peak, 15 s | unchanged |
-| Beat This | +0.44 GB, 4 s | unchanged |
-| S-KEY | +0.05 GB, 0.7 s | unchanged |
-| Demucs | +1.37 GB, 51 s | unchanged |
-| MuQ, loading | 3.26 GB peak, 2.02 GB kept | 2.06 GB peak, 0.79 GB kept |
-| MuQ, embeddings | 2.74 GB anon, 59 s | 2.29 GB anon, 59 s |
-| MuQ-MuLan, loading | killed at a 3.3 GB cap; † 5.64 GB anon, 4.98 GB kept | 2.06 GB anon, 0.77 GB kept |
-| MuQ-MuLan, scores | — | 1.43 GB anon, 20 s |
+| Warm-up, then one track | 210 s | 561 s | 900 s |
+|---|---|---|---|
+| tychome, 3.1 GB cap | 2.16 GB anon, 175 s | 2.40 GB anon, 444 s | 3.04 GB anon, 1034 s |
+| 32 GB machine, uncapped | 2.43 GB anon, 244 s | 2.69 GB anon, 655 s | 3.01 GB anon, 1033 s |
 
-| The worker: warm-up, then one track | Before | Now |
-|---|---|---|
-| warm-up | killed at a 3.3 GB cap after 5.7 s; † 6.93 GB anon | 2.09 GB anon |
-| idle after warm-up | † 5.38 GB | 0.77 GB |
-| 210 s track | killed; † 8.40 GB anon, 177 s | 3.03 GB anon under a 3.6 GB cap, 149 s |
-| 561 s track | † 10.27 GB anon, 633 s | † 4.71 GB anon, 539 s |
+At 3.1 GB MuQ's 3.7 GB of mapped weights are read back from disk as they are
+used, which is most of the time a long track takes there; on the 32 GB machine
+it is the CPU. Either way fifteen minutes of audio takes longer than the
+worker's 600 s timeout. The 32 GB machine's 210 s and 561 s runs are without
+the 16 MB mapping threshold below, which took 0.5 GB off tychome's 561 s peak.
 
-Three things added up. The model passes ran side by side, each with every core,
-so their working memory stacked; on the CPU they now take turns on one thread.
-MuQ-MuLan's 2.6 GB checkpoint was read into RAM beside the model it was loading
-into, and both towers then kept a private copy of their weights;
-`models.map_weights` leaves the weights as pages of the checkpoint files. And
-glibc kept each track's freed heap for the idle worker; `models.trim` hands it
-back after every track. The documents are unchanged: on one machine the before
-and after documents of both tracks are identical field for field.
+What is still per second of audio is what the track is: the decoded source and
+the five signals derived from it (0.9 MB/s, let go as their last reader
+finishes), the four spectrograms of the frame grid (0.9 MB/s), the stems
+(0.35 MB/s), and the chroma's CQT while it is computed (1.6 MB/s, then handed
+back). The rest is run a stretch at a time, and every stretch is cut so that the
+result is the whole-track call's, sample for sample:
 
-What remains is the track itself: the decoded signals and spectrograms (1.0 GB
-for 210 s, 2.4 GB for 561 s) and Demucs's track-length output buffers. Under a
-cap tighter than the mapped weights need, they are read back from disk instead
-of the worker being killed: a 3.5 GB cap on the 32 GB machine finished the
-210 s track in 312 s instead of 196 s.
+- **Demucs** (`stems._demucs`) runs `apply_model`'s own segments, weights and
+  random shift one segment at a time, folding each finished stretch to mono and
+  resampling it as soon as no later segment overlaps it. Whole, it held the
+  track as four stereo stems at 44.1 kHz twice over: 4 MB per second of audio.
+  The stereo it reads is a `preprocess.SeparationSpan`, gained a stretch at a
+  time.
+- **HPSS** (`preprocess.hpss`) runs on 30 s stretches with 64 frames of the
+  signal either side, on the frame grid; whole, it held a dozen spectrograms.
+  The true peak is oversampled a million samples at a time.
+- **Features** (`features._magnitude`, `_by_frames`, `_flux`): the spectrograms
+  are built a stretch of frames at a time, in librosa's memory layout so that
+  per-frame sums round alike, and the per-frame features are computed from them
+  the same way. The chroma and the spectral contrast stay whole: one estimates
+  the tuning over the track, the other clips its decibels against the track's
+  loudest band.
+
+The documents are the ones the whole-track calls give, field for field, with
+one exception: on the CPU MuQ encodes one window per pass, where four held a
+gigabyte, and one in two thousand embedding values comes out a unit apart in
+the fourth decimal.
+
+On the CPU the passes wait for the features, and all but the beat model for the
+bands: beside the DSP each pass's working memory sat on the DSP's peak. After
+each pass, and when a signal's last reader is done (`pipeline._release`), the
+freed heap is handed back (`models.trim`): glibc keeps it for the thread that
+freed it, and the next pass, on another thread, could not reuse it. For the
+same reason allocations of 16 MB and more get mappings of their own
+(`models._map_large_allocations`): glibc otherwise lets that threshold climb to
+32 MB and keeps everything below it.
 
 ## Testing
 
@@ -1065,6 +1086,11 @@ and `ARTNET_MUQ_TEXT_MODEL` (retain `xlm-roberta` in the text directory name,
 as the upstream loader uses it to select the architecture).
 MuQ-MuLan supports the published `pytorch_model.bin` checkpoint as well as
 safetensors. Its text encoder must be provisioned locally before analysis.
+
+MuQ encodes `ARTNET_MUQ_BATCH` windows per pass: four on a card, where they
+avoid the 4 GB cuDNN workspace six or more select on an 8 GB GPU, and one on the
+CPU, where four windows' attention was a gigabyte of working memory and no
+faster.
 
 The analysis document exposes `embeddings` (rounded to four places, which
 halves the document) and `semantic_scores` with separate

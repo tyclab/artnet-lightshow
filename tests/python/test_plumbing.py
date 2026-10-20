@@ -397,7 +397,8 @@ class PipelineThreads(AudioTestCase):
                 patches.enter_context(item)
             pipeline.analyze(path, config=AnalysisConfig(
                 separate_sources=True, enable_semantics=True, enable_tagger=True))
-        self.assertEqual(seen['order'], ['beats', 'tagger', 'separation', 'muq', 'skey'])
+        # S-KEY before the separator: after both, nothing reads the decoded source.
+        self.assertEqual(seen['order'], ['beats', 'tagger', 'skey', 'separation', 'muq'])
         self.assertEqual(seen['most'], 1)
 
     def test_passes_still_queued_for_a_failed_track_are_dropped(self):
@@ -409,10 +410,8 @@ class PipelineThreads(AudioTestCase):
         seen, stack = self.cpu_passes(gate=gate)
 
         def fail(*_args, **_kwargs):
-            # Once the beat pass holds the model thread, so the rest are still queued.
-            deadline = time.monotonic() + 5
-            while not seen['order'] and time.monotonic() < deadline:
-                time.sleep(0.01)
+            # On the CPU the passes wait for the features, so all of them are still queued.
+            time.sleep(0.1)
             raise RuntimeError('boom')
 
         stack.append(patch.object(pipeline.features_stage, 'extract', fail))
@@ -427,7 +426,7 @@ class PipelineThreads(AudioTestCase):
             while seen['active'] and time.monotonic() < deadline:
                 time.sleep(0.01)
             time.sleep(0.2)
-        self.assertEqual(seen['order'], ['beats'])
+        self.assertEqual(seen['order'], [])
 
     def test_a_tagger_without_its_weights_is_not_started(self):
         from analysis import pipeline, tagger

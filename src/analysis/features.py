@@ -68,48 +68,79 @@ def spectral_flux(magnitude, lag=1):
     return np.concatenate([np.zeros(magnitude.shape[1] - flux.size), flux])
 
 
+def cqt_chroma(audio, config: PreprocessConfig = None):
+    """
+    The chroma `extract` uses, or None when the CQT fails.
+
+    Whole, not a stretch at a time: its tuning estimate and its resampling
+    are track-wide. Its working memory, 1.6 MB per second of audio, is handed
+    back as soon as it is done.
+    """
+    import librosa
+    from . import models
+    config = config or PreprocessConfig()
+    try:
+        return librosa.feature.chroma_cqt(y=audio.harmonic, sr=audio.sample_rate,
+                                          hop_length=config.hop_length)
+    except Exception:
+        return None
+    finally:
+        models.trim()
+
+
 def extract(audio, config: PreprocessConfig = None) -> FrameFeatures:
-    """Compute the shared frame grid from a `PreparedAudio`."""
+    """
+    Compute the shared frame grid from a `PreparedAudio`.
+
+    Whatever is per frame is computed a stretch of frames at a time
+    (`_magnitude`, `_by_frames`): on a whole track each step's temporaries were
+    one to four more spectrograms, and the spectrograms the grid keeps were
+    already held. The chroma is computed first, before there are
+    spectrograms to sit beside it.
+    """
     import librosa
 
     config = config or PreprocessConfig()
     sr = audio.sample_rate
     hop, n_fft = config.hop_length, config.n_fft
 
-    magnitude = np.abs(librosa.stft(audio.mono, n_fft=n_fft, hop_length=hop))
-    harmonic_mag = np.abs(librosa.stft(audio.harmonic, n_fft=n_fft, hop_length=hop))
-    percussive_mag = np.abs(librosa.stft(audio.percussive, n_fft=n_fft, hop_length=hop))
+    chroma = cqt_chroma(audio, config)
+
+    magnitude = _magnitude(audio.mono, n_fft, hop)
+    harmonic_mag = _magnitude(audio.harmonic, n_fft, hop)
+    percussive_mag = _magnitude(audio.percussive, n_fft, hop)
     magnitude, harmonic_mag, percussive_mag = _trim_to(
         magnitude, harmonic_mag, percussive_mag)
 
     frequencies = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
     times = dsp.frames_to_times(magnitude.shape[1], sr, hop)
 
-    rms = librosa.feature.rms(S=magnitude, frame_length=n_fft, hop_length=hop)[0]
-    centroid = librosa.feature.spectral_centroid(S=magnitude, sr=sr)[0]
-    rolloff = librosa.feature.spectral_rolloff(S=magnitude, sr=sr, roll_percent=0.85)[0]
-    rolloff_low = librosa.feature.spectral_rolloff(S=magnitude, sr=sr, roll_percent=0.20)[0]
-    flatness = librosa.feature.spectral_flatness(S=magnitude)[0]
+    rms = _by_frames(lambda S: librosa.feature.rms(S=S, frame_length=n_fft, hop_length=hop)[0], magnitude)
+    centroid = _by_frames(lambda S: librosa.feature.spectral_centroid(S=S, sr=sr)[0], magnitude)
+    rolloff = _by_frames(lambda S: librosa.feature.spectral_rolloff(S=S, sr=sr, roll_percent=0.85)[0],
+                         magnitude)
+    rolloff_low = _by_frames(lambda S: librosa.feature.spectral_rolloff(S=S, sr=sr, roll_percent=0.20)[0],
+                             magnitude)
+    flatness = _by_frames(lambda S: librosa.feature.spectral_flatness(S=S)[0], magnitude)
     zcr = librosa.feature.zero_crossing_rate(
         audio.mono, frame_length=n_fft, hop_length=hop)[0]
     try:
+        # Whole: its decibels are clipped against the track's loudest band.
         contrast = np.mean(
             librosa.feature.spectral_contrast(S=magnitude, sr=sr), axis=0)
     except Exception:
         contrast = np.zeros(magnitude.shape[1])
 
-    flux = spectral_flux(magnitude)
+    flux = _flux(magnitude)
     percussive_onset = librosa.onset.onset_strength(
         S=librosa.amplitude_to_db(percussive_mag, ref=np.max), sr=sr, hop_length=hop)
 
-    try:
-        chroma = librosa.feature.chroma_cqt(y=audio.harmonic, sr=sr, hop_length=hop)
-    except Exception:
+    if chroma is None:
         chroma = librosa.feature.chroma_stft(S=harmonic_mag, sr=sr)
 
     # K-weighting-shaped tilt per frame, not full BS.1770; absolute calibration comes from stage 1's integrated value.
     weights = _k_weight_response(frequencies)
-    weighted_power = np.sum((magnitude ** 2) * weights[:, None], axis=0)
+    weighted_power = _by_frames(lambda S: np.sum((S ** 2) * weights[:, None], axis=0), magnitude)
     with np.errstate(divide='ignore'):
         loudness = -0.691 + 10.0 * np.log10(np.maximum(weighted_power, 1e-12))
 
@@ -149,6 +180,53 @@ def extract(audio, config: PreprocessConfig = None) -> FrameFeatures:
     )
 
 
+# Frames per stretch: 47 s at the analysis rate.
+_STRETCH = 2048
+
+
+def _magnitude(y, n_fft, hop):
+    """
+    `np.abs(librosa.stft(y, n_fft=n_fft, hop_length=hop))`, a stretch of frames at a time.
+
+    A frame reads only the window around its centre, so each stretch is cut on
+    the frame grid with half a window and a frame to spare on either side, and
+    its frames are the whole-track call's; the complex spectrogram of the
+    whole track is never held.
+    """
+    import librosa
+    frames = 1 + y.size // hop
+    guard = (n_fft // (2 * hop) + 2) * hop
+    out = None
+    for first in range(0, frames, _STRETCH):
+        last = min(frames, first + _STRETCH)
+        lo, hi = max(0, first * hop - guard), min(y.size, (last - 1) * hop + guard)
+        part = np.abs(librosa.stft(y[lo:hi], n_fft=n_fft, hop_length=hop))
+        if out is None:
+            # librosa's layout: a frame's bins are contiguous, and numpy sums them pairwise.
+            out = np.empty((part.shape[0], frames), dtype=part.dtype, order='F')
+        skip = (first * hop - lo) // hop
+        out[:, first:last] = part[:, skip:skip + last - first]
+    return out
+
+
+def _by_frames(fn, S):
+    """`fn(S)` for a feature computed frame by frame, a stretch of frames at a time."""
+    if S.shape[1] <= _STRETCH:
+        return fn(S)
+    return np.concatenate([fn(S[:, a:a + _STRETCH]) for a in range(0, S.shape[1], _STRETCH)], axis=-1)
+
+
+def _flux(magnitude):
+    """`spectral_flux(magnitude)` a stretch at a time: each stretch carries the frame before it."""
+    if magnitude.shape[1] <= _STRETCH:
+        return spectral_flux(magnitude)
+    flux = np.zeros(magnitude.shape[1])
+    for a in range(1, magnitude.shape[1], _STRETCH):
+        b = min(magnitude.shape[1], a + _STRETCH)
+        flux[a:b] = np.sum(np.maximum(np.diff(magnitude[:, a - 1:b], n=1, axis=1), 0.0), axis=0)
+    return flux
+
+
 def _wideband_spectrogram(audio, config, n_frames):
     """
     STFT of the wideband pass, resampled onto the main frame grid.
@@ -167,7 +245,7 @@ def _wideband_spectrogram(audio, config, n_frames):
     hop = max(1, int(round(config.hop_length * ratio)))
     n_fft = max(256, int(2 ** round(np.log2(config.n_fft * ratio))))
     try:
-        magnitude = np.abs(librosa.stft(audio.wideband, n_fft=n_fft, hop_length=hop))
+        magnitude = _magnitude(audio.wideband, n_fft, hop)
     except Exception:
         return np.zeros((0, 0)), np.zeros(0)
     if magnitude.shape[1] >= n_frames:
