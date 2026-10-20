@@ -409,6 +409,21 @@ Removing a fixture or disarming sends darkness and stops updates. WLED resumes
 its own effects after its configured realtime timeout. Set its fallback preset
 accordingly. Preflight checks reachability and changed LED counts.
 
+DDP has no reply, so a board that drops the stream is silent. While the outputs
+are armed, the server reads each patched WLED's `/json/si` every 10 s (3 s
+timeout, one request per board at a time, backing off to 60 s while it does not
+answer). A board in live override (`lor` 1 or 2, as the WLED app sets it) keeps
+its own effect and ignores the show; one that answers with `live: false` twice
+in a row is not taking the stream either. Either is logged once as a warning
+under `component=wled`, its return once at info, and both appear in the live
+state's `wled` list and in `/api/health` (`outputs.wled`, and a problem that
+makes the status `degraded`). Two missed polls in a row report the board as
+`unreachable`. The server never changes `lor`. Each `wled` entry is
+`{ host, fixtures, status, lor, live, problem }` with `status` one of
+`checking`, `live`, `override`, `not-live` or `unreachable` and `problem` the
+sentence to show, or null; the list is empty while disarmed, and it changes only
+on a transition.
+
 ### Screen pictures on an LED panel
 
 An external RGB picture can replace the base picture of one patched DDP panel.
@@ -1088,7 +1103,7 @@ All endpoints return JSON. When a token is configured, send it as an
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/state` | Full current state (`armed` says whether anything leaves the machine) |
+| GET | `/api/state` | Full current state (`armed` says whether anything leaves the machine; `wled`, while armed, whether each WLED takes the stream — see [WLED](#wled)) |
 | GET · PUT · DELETE | `/api/stage/room` | Private Stage room model; writes require the current `If-Match` revision. See [room format](docs/stage-room.md) |
 | POST | `/api/set` | Patch state fields (JSON body) |
 | POST | `/api/tap` | Tap tempo |

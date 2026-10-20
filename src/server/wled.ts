@@ -19,6 +19,12 @@ export interface WledInfo {
   mac: string | null;
 }
 
+/** `lor` 1 or 2 is WLED's live override: it keeps its own effect and drops realtime data. */
+export interface WledLive {
+  lor: number;
+  live: boolean | null;
+}
+
 export interface WledSegment {
   id: number;
   name: string;
@@ -150,6 +156,11 @@ async function segments(host: string, wled: WledInfo,
   return readSegments(await getJson(host, '/json/state', { fetchImpl, port }), wled, host);
 }
 
+// One request for state and info, so a board streaming the show answers once per poll.
+async function liveState(host: string, { fetchImpl = fetch, port }: { fetchImpl?: typeof fetch; port?: number } = {}): Promise<WledLive> {
+  return readLive(await getJson(host, '/json/si', { fetchImpl, port }), host);
+}
+
 async function getJson(host: string, path: string, { fetchImpl = fetch, port }: { fetchImpl?: typeof fetch; port?: number }): Promise<unknown> {
   let raw: unknown;
   try {
@@ -207,6 +218,15 @@ function readInfo(raw: unknown, host: string): WledInfo {
     matrix,
     mac: typeof body.mac === 'string' && /^[0-9a-f]{12}$/i.test(body.mac) ? body.mac.toLowerCase() : null,
   };
+}
+
+function readLive(raw: unknown, host: string): WledLive {
+  const body = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const part = (v: unknown) => (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
+  const lor = part(body.state).lor;
+  if (!Number.isInteger(lor)) throw new HttpError(502, `${host} is not a WLED: its state says nothing about live override`);
+  const live = part(body.info).live;
+  return { lor: lor as number, live: typeof live === 'boolean' ? live : null };
 }
 
 // Address segment LEDs in logical order because WLED applies the physical wiring map.
@@ -377,7 +397,9 @@ export {
   discover,
   info as wledInfo,
   segments as wledSegments,
+  liveState as wledLive,
   readInfo,
+  readLive,
   readSegments,
   wledProfile,
   wledSpan,

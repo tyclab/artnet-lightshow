@@ -9,8 +9,10 @@ import { isArmed } from './armed.ts';
 import { state, voices, getSequenceStatus } from './state.ts';
 import { KINDS } from '../shared/effects/registry.ts';
 import { supervision } from './supervised.ts';
+import { wledStatus } from './wled-watch.ts';
 import type { Supervision } from './supervised.ts';
 import type { EngineStatus } from './engine.ts';
+import type { WledBoardStatus } from './wled-watch.ts';
 
 export type HealthStatus = 'ok' | 'degraded' | 'failing';
 
@@ -35,6 +37,7 @@ export interface HealthInputs {
   auto: { status: string; error: string | null } | null;
   /** Whether anything leaves the machine (armed.ts); left out, nothing is said about it. */
   armed?: boolean;
+  wled?: WledBoardStatus[];
 }
 
 const WINDOW_MS = 30_000;
@@ -64,6 +67,7 @@ export function assess(inputs: HealthInputs): { status: HealthStatus; problems: 
     problems.push({ level: 'warn', what: `${errors.count} error${errors.count === 1 ? '' : 's'} logged in the last ten minutes.${last}` });
   }
   if (auto && auto.status === 'error' && auto.error) problems.push({ level: 'warn', what: `The auto show: ${auto.error}` });
+  for (const board of inputs.wled || []) if (board.problem) problems.push({ level: 'warn', what: `${board.problem}.` });
   // Disarmed explains a dark rig without marking a healthy engine as degraded.
   if (inputs.armed === false) problems.push({ level: 'info', what: 'The outputs are disarmed: nothing goes out to the rig until they are armed.' });
   if (supervisor.restarts > 0) {
@@ -186,6 +190,7 @@ export function health({ autoShow = null }: HealthDeps = {}) {
     supervisor: supervision(),
     auto: autoShow ? { status: String(autoShow.status || 'idle'), error: autoShow.error ?? null } : null,
     armed: isArmed(),
+    wled: wledStatus(),
   };
   const { status, problems } = assess(inputs);
   return {
@@ -205,6 +210,7 @@ export function health({ autoShow = null }: HealthDeps = {}) {
       armed: inputs.armed,
       artnet: { enabled: state.artnet.enabled !== false, host: state.artnet.host },
       hue: output.getHueStatus(),
+      wled: inputs.wled,
     },
     auto: autoShow ? { status: inputs.auto?.status, running: !!autoShow.running, error: inputs.auto?.error ?? null } : null,
     log: { errors10m: recentErrors.length, lastError },

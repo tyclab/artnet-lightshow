@@ -36,6 +36,7 @@ import { openBrowser, shouldOpenBrowser } from './server/open-browser.ts';
 import { createApplier } from './server/apply.ts';
 import { createIdleDisarm } from './server/idle-disarm.ts';
 import { isArmed } from './server/armed.ts';
+import { startWledWatch, wledBoards } from './server/wled-watch.ts';
 import { pixelInputs } from './server/pixel-input-live.ts';
 import { midiMap } from './server/midi-map.ts';
 import { cues } from './server/cues.ts';
@@ -212,6 +213,9 @@ const idleDisarm = createIdleDisarm({
   },
 });
 setInterval(() => idleDisarm.tick(), 10_000).unref();
+
+// Read-only: the live override is HA's to clear, at the party's edges.
+startWledWatch({ boards: () => wledBoards(state.fixtures), armed: isArmed });
 
 // Do not await Spotify sign-in because network failures must not prevent the rig from starting.
 function restoreSpotifySession() {
