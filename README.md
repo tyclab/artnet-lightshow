@@ -574,7 +574,9 @@ effect. Unavailable PCs generate warnings; other outputs continue. Missing devic
 retry after 1 second, doubling to at most 30 seconds. Frames pause briefly while
 discovery validates device numbers, then healthy devices resume at the normal
 frame rate without replaying dropped frames. A device-list update or reconnect
-retries immediately.
+retries immediately. OpenRGB never answers a request for a device it no longer
+lists, so a device-list update that arrives while a device is being read
+reconnects at once, without a back-off, instead of holding every reply behind it.
 
 ### Philips Hue
 

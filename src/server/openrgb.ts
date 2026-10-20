@@ -261,6 +261,7 @@ interface Pending {
 }
 
 const timedOut = (what: string, ms: number) => Object.assign(new Error(`${what} did not answer within ${ms / 1000} s`), { code: 'ETIMEDOUT' });
+const listChanged = (where: string) => Object.assign(new Error(`${where}: device list changed`), { code: 'ECHANGED' });
 
 const LOG_INTERVAL_MS = 5000;
 let lastLoggedAt = 0;
@@ -382,8 +383,8 @@ export class OpenRgbConnection {
     for (const ref of this.wanted.values()) this.prepare(ref).catch(() => { /* logged by prepare */ });
   }
 
-  /** The connection is gone: fail what waited on it and, unless ended, allow a retry after the back-off. */
-  lost(err: unknown): void {
+  /** The connection is gone: fail what waited on it and, unless ended, allow a retry after the back-off, or `redial` at once. */
+  lost(err: unknown, { redial = false } = {}): void {
     const socket = this.socket;
     if (!socket) return;
     this.socket = null;
@@ -410,6 +411,10 @@ export class OpenRgbConnection {
     settle?.reject(error);
     // A one-shot connection (discover, identify) reports to whoever asked.
     if (this.ended || !this.reconnect) return;
+    if (redial) {
+      this.open().catch(() => { /* a failed dial backs off in lost */ });
+      return;
+    }
     logFailure(`${this.where()}: ${error.message}`);
     this.backoff = this.backoff ? Math.min(this.backoff * 2, BACKOFF_MAX_MS) : BACKOFF_MIN_MS;
     const timer = setTimeout(() => { this.retry = null; }, this.backoff);
@@ -471,6 +476,13 @@ export class OpenRgbConnection {
 
   onPacket(header: { device: number; id: number }, data: Buffer): void {
     if (header.id === PACKET.DEVICE_LIST_UPDATED) {
+      // A description asked for may be of a device the server no longer
+      // lists, which it never answers; replies carry no token, so every one
+      // after it would wait out its timeout. A new connection owes nothing.
+      if (this.pending.some((p) => p.id === PACKET.REQUEST_CONTROLLER_DATA)) {
+        this.lost(listChanged(this.where()), { redial: true });
+        return;
+      }
       // The PC's devices came or went: read them again, and find each of
       // ours again, before the next frame.
       this.revision++;
@@ -504,7 +516,10 @@ export class OpenRgbConnection {
 
   /** What device `index` is. */
   async controllerData(index: number, timeoutMs = REQUEST_TIMEOUT_MS): Promise<ControllerData> {
+    const revision = this.revision;
     const count = await this.controllerCount();
+    // A count answered before the list changed may take in a device now gone.
+    if (revision !== this.revision) throw listChanged(this.where());
     if (index >= count) throw new HttpError(404, `${this.where()} has no device #${index}: it lists ${count}`);
     const version = Buffer.alloc(4);
     version.writeUInt32LE(this.version, 0);
@@ -575,7 +590,10 @@ export class OpenRgbConnection {
     let index = ref.device;
     if (ref.name) {
       const named: number[] = [];
-      for (let i = 0; i < count; i++) if ((await this.describe(i)).name === ref.name) named.push(i);
+      for (let i = 0; i < count; i++) {
+        if (revision !== this.revision) throw listChanged(this.where());
+        if ((await this.describe(i)).name === ref.name) named.push(i);
+      }
       const siblings = [...this.wanted.values()].filter((w) => w.name === ref.name).map((w) => w.device).sort((a, b) => a - b);
       const found = named[Math.max(0, siblings.indexOf(ref.device))];
       if (found === undefined) throw new HttpError(404, `${this.where()} has no device named "${ref.name}" (it was #${ref.device})`);
@@ -583,7 +601,7 @@ export class OpenRgbConnection {
     } else if (index >= count) {
       throw new HttpError(404, `${this.where()} has no device #${index}: it lists ${count}`);
     }
-    if (revision !== this.revision) throw new Error(`${this.where()}: device list changed`);
+    if (revision !== this.revision) throw listChanged(this.where());
     this.live.set(key, index);
     return index;
   }
@@ -734,6 +752,7 @@ export interface OpenRgbClient {
 function asHttpError(err: unknown, where: string): HttpError {
   if (err instanceof HttpError) return err;
   if (codeOf(err) === 'ETIMEDOUT') return new HttpError(504, messageOf(err));
+  if (codeOf(err) === 'ECHANGED') return new HttpError(503, `${messageOf(err)}; try again`);
   return new HttpError(502, `Cannot reach ${where} (${messageOf(err)}); is OpenRGB running with its SDK server on?`);
 }
 

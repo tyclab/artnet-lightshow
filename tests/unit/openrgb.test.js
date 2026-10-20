@@ -56,10 +56,10 @@ const DIRECT = ['Direct', { flags: 1 << 5, colorMode: 1 }];
 const RAINBOW = ['Rainbow', { flags: 1, colors: 0 }];
 
 /** A controller's description: `leds` LEDs in one zone, with a matrix map when asked, at protocol `version`. */
-function encodeController({ name, type = 1, leds = 8, modes = [DIRECT, RAINBOW], activeMode = 0, colors = null, matrix = false }, version) {
+function encodeController({ name, type = 1, leds = 8, modes = [DIRECT, RAINBOW], activeMode = 0, colors = null, matrix = false, location = 'bus' }, version) {
   const parts = [i32(type), str(name)];
   if (version >= 1) parts.push(str('Vendor'));
-  parts.push(str('A device'), str('1.0'), str('SN'), str('bus'));
+  parts.push(str('A device'), str('1.0'), str('SN'), str(location));
   parts.push(u16(modes.length), i32(activeMode));
   for (const [modeName, opts] of modes) parts.push(encodeMode(modeName, opts, version));
   parts.push(u16(1), str('Zone'), i32(1), u32(leds), u32(leds), u32(leds));
@@ -95,9 +95,9 @@ const rig = () => [
 ];
 
 async function fakeServer(devices = rig(), { version = 4, answerVersion = true } = {}) {
-  const log = { leds: [], modes: [], names: [], connections: 0, closed: 0 };
+  const log = { leds: [], modes: [], names: [], described: [], connections: 0, closed: 0 };
   const sockets = new Set(), heldDescriptions = [];
-  let holdDescriptions = false;
+  let holdDescriptions = false, intercept = null;
   const server = net.createServer((socket) => {
     log.connections++;
     sockets.add(socket);
@@ -110,6 +110,8 @@ async function fakeServer(devices = rig(), { version = 4, answerVersion = true }
         const data = buf.subarray(16, 16 + header.length);
         buf = buf.subarray(16 + header.length);
         const reply = (d) => socket.write(buildPacket(header.device, header.id, d));
+        if (header.id === PACKET.REQUEST_CONTROLLER_DATA) log.described.push(header.device);
+        if (intercept?.(header, socket)) continue;
         if (header.id === PACKET.REQUEST_PROTOCOL_VERSION) { if (answerVersion) reply(u32(version)); }
         else if (header.id === PACKET.SET_CLIENT_NAME) log.names.push(data.toString('utf8').replace(/\0$/, ''));
         else if (header.id === PACKET.REQUEST_CONTROLLER_COUNT) reply(u32(devices.length));
@@ -138,6 +140,8 @@ async function fakeServer(devices = rig(), { version = 4, answerVersion = true }
     holdDescriptions: () => { holdDescriptions = true; },
     heldDescriptions: () => heldDescriptions.length,
     releaseDescriptions: () => { holdDescriptions = false; for (const answer of heldDescriptions.splice(0)) answer(); },
+    // Sees each packet first; true when it has dealt with it.
+    intercept: (fn) => { intercept = fn; },
     close: () => new Promise((resolve) => server.close(() => resolve())),
   };
 }
@@ -468,6 +472,10 @@ test('OpenRGB resolves renumbered devices by name and occurrence', async () => {
   }
 });
 
+/** Two monitors of one model, told apart only by where each is plugged in. */
+const LEFT = { name: 'LG 27GN950-B Monitor', type: 11, leds: 2, location: 'HID: left' };
+const RIGHT = { name: 'LG 27GN950-B Monitor', type: 11, leds: 2, location: 'HID: right' };
+
 test('missing OpenRGB devices back off independently while healthy frames remain unthrottled', async () => {
   const server = await fakeServer([{ name: 'Keyboard', leds: 1 }]);
   let now = 0;
@@ -653,6 +661,59 @@ test('OpenRGB device-list updates clear failed preparation without waiting for b
   }
 });
 
+test('OpenRGB starts over at once when the device list changes under a description the server will never answer', async () => {
+  // Both monitors unregister 150 ms apart while the client is reading the list again after the first.
+  const server = await fakeServer([{ name: 'Keyboard', leds: 1 }, { ...LEFT }, { ...RIGHT }]);
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port });
+  const keyboard = { device: 0, name: 'Keyboard' }, left = { device: 1, name: LEFT.name }, right = { device: 2, name: RIGHT.name };
+  const paint = () => { connection.send(keyboard, Uint8Array.of(90, 0, 0), 1); connection.send(left, new Uint8Array(6), 2); connection.send(right, new Uint8Array(6), 2); };
+  let gone = 0;
+  try {
+    await connection.open();
+    await until(() => [0, 1, 2].every((d) => server.log.leds.some((p) => p.device === d)), { each: paint, what: 'all three lit' });
+    server.devices.splice(1, 1);
+    // The second goes between the count and its description: OpenRGB answers nothing for a device it no longer lists.
+    server.intercept((header) => {
+      if (header.id === PACKET.REQUEST_CONTROLLER_DATA && header.device === 1 && !gone) { gone = performance.now(); server.devices.splice(1, 1); }
+      return false;
+    });
+    server.changed();
+    await until(() => gone, { each: paint, what: 'the description of a device that is gone' });
+    const mark = server.log.leds.length;
+    setTimeout(() => server.changed(), 150).unref();
+    await until(() => server.log.leds.slice(mark).some((p) => p.device === 0 && p.rgb[0] === 90), { ms: 1000, each: paint, what: 'the keyboard lit again within a second' });
+    assert.ok(performance.now() - gone < 1000);
+    assert.strictEqual(server.log.connections, 2, 'one fresh connection, nothing owed on it');
+    assert.deepStrictEqual([connection.backoff, connection.retry], [0, null], 'no back-off: the server did not fail');
+  } finally {
+    connection.end();
+    await server.close();
+  }
+});
+
+test('OpenRGB never describes a device by a count the device list has since changed', async () => {
+  const server = await fakeServer([{ name: 'Keyboard', leds: 1 }, { name: 'Monitor', leds: 1 }]);
+  const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port });
+  let counted = false;
+  // The count is answered as the monitor goes, and the update follows it in the same read.
+  server.intercept((header, socket) => {
+    if (header.id !== PACKET.REQUEST_CONTROLLER_COUNT || counted) return false;
+    counted = true;
+    server.devices.pop();
+    socket.write(Buffer.concat([buildPacket(0, PACKET.REQUEST_CONTROLLER_COUNT, u32(2)), buildPacket(0, PACKET.DEVICE_LIST_UPDATED)]));
+    return true;
+  });
+  try {
+    await connection.open();
+    await assert.rejects(connection.controllerData(1, 1000), /device list changed/);
+    assert.deepStrictEqual(server.log.described, [], 'no request the server would never answer');
+    assert.strictEqual((await connection.controllerData(0)).name, 'Keyboard', 'the next request is answered');
+  } finally {
+    connection.end();
+    await server.close();
+  }
+});
+
 test('OpenRGB reconnect clears device failures and an ended connection never retries', async () => {
   const server = await fakeServer([]);
   const connection = new OpenRgbConnection({ host: '127.0.0.1', port: server.port, clock: () => 0 });
@@ -756,6 +817,26 @@ test('a device that takes another\'s old OpenRGB number gets its own profile, ne
       assert.notStrictEqual(fixture.profileId, ring);
       assert.strictEqual(getProfile(state.fixtures.find((f) => f.output?.name === 'Monitor L')).cells.length, 48, 'the monitor keeps all its LEDs');
       assert.strictEqual(getProfile(fixture).cells.length, 2);
+    });
+  } finally {
+    await server.close();
+  }
+});
+
+test('discover answers a device list changing under it at once, as worth trying again', async () => {
+  const server = await fakeServer([{ name: 'Keyboard', leds: 1 }, { name: 'Monitor', leds: 1 }]);
+  server.intercept((header, socket) => {
+    if (header.id !== PACKET.REQUEST_CONTROLLER_DATA || header.device !== 1) return false;
+    server.devices.pop();
+    socket.write(buildPacket(0, PACKET.DEVICE_LIST_UPDATED));
+    return true;
+  });
+  try {
+    await withApp(async (call) => {
+      const started = performance.now();
+      const found = await call(`/api/openrgb/discover?host=127.0.0.1&port=${server.port}`);
+      assert.deepStrictEqual([found.status, found.body.error], [503, `OpenRGB at 127.0.0.1:${server.port}: device list changed; try again`]);
+      assert.ok(performance.now() - started < 1000, 'not after the request timeout');
     });
   } finally {
     await server.close();
