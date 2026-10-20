@@ -501,6 +501,7 @@ def on_gpu():
 def release_memory():
     """Release unused allocator blocks between stages/tracks; per-window calls would synchronize the GPU."""
     if not on_gpu():
+        trim()
         return
     try:
         import torch
@@ -520,12 +521,41 @@ def gc_collect():
     gc.collect()
 
 
+def trim():
+    """Hand freed heap back to the system: glibc keeps it, and the idle worker held a track's peak."""
+    gc_collect()
+    if sys.platform.startswith('linux'):
+        try:
+            import ctypes
+            ctypes.CDLL('libc.so.6').malloc_trim(0)
+        except (OSError, AttributeError):
+            pass
+
+
+def map_weights(module, path):
+    """
+    Load a checkpoint by mapping its file, not copying it: the kernel can drop and
+    reread mapped pages under pressure, and reclaims a copy only by killing the
+    worker. `path` (safetensors or torch zip) must hold every weight of `module`.
+    """
+    import torch
+    if str(path).endswith('.safetensors'):
+        from safetensors.torch import load_file
+        state = load_file(str(path))
+    else:
+        state = torch.load(path, map_location='cpu', weights_only=True, mmap=True)
+    module.load_state_dict(state, strict=True, assign=True)
+    del state
+    trim()
+    return module
+
+
 @contextlib.contextmanager
 def inference(label='model', first=False, modules=()):
     """Serialize one model's GPU pass and release cached allocations afterwards.
     first=True prioritizes the beat model without interrupting an active pass.
     Move modules to the device for the turn and back to RAM when offloading.
-    On CPU this context is a no-op, preserving pipeline parallelism.
+    On CPU this context is a no-op: the pipeline runs CPU passes one at a time itself.
     """
     if not on_gpu():
         yield

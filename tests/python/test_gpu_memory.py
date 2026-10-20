@@ -187,5 +187,63 @@ class OutOfMemory(unittest.TestCase):
         self.assertEqual(calls, ['cpu'])
 
 
+
+@needs_torch
+class MappedWeights(unittest.TestCase):
+    """A 2.6 GB checkpoint copied into RAM beside the model it was loading
+    into got the worker OOM-killed on a 16 GB machine."""
+
+    def mapped(self, suffix, save, name, loader):
+        import tempfile
+        import torch
+        saved = torch.nn.Linear(4, 3)
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, f'weights{suffix}')
+            save(saved.state_dict(), path)
+            loaded = {}
+
+            def record(*args, **kwargs):
+                loaded.update(loader(*args, **kwargs))
+                return loaded
+
+            target = torch.nn.Linear(4, 3)
+            with patch(name, record):
+                self.assertIs(models.map_weights(target, path), target)
+            torch.testing.assert_close(target.weight, saved.weight)
+            torch.testing.assert_close(target.bias, saved.bias)
+            self.assertEqual(target.weight.data_ptr(), loaded['weight'].data_ptr(),
+                             'the module holds the checkpoint\'s own tensors, not a copy')
+
+    def test_a_torch_checkpoint_is_mapped_not_copied(self):
+        import torch
+        self.mapped('.bin', torch.save, 'torch.load', torch.load)
+
+    @unittest.skipUnless(_importable('safetensors'), 'safetensors is not installed')
+    def test_a_safetensors_checkpoint_is_mapped_not_copied(self):
+        from safetensors import torch as st
+        self.mapped('.safetensors', st.save_file, 'safetensors.torch.load_file', st.load_file)
+
+    def test_a_checkpoint_missing_a_weight_is_refused(self):
+        import tempfile
+        import torch
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'weights.bin')
+            torch.save({'weight': torch.zeros(3, 4)}, path)
+            with self.assertRaisesRegex(RuntimeError, 'bias'):
+                models.map_weights(torch.nn.Linear(4, 3), path)
+
+
+class HeapRelease(unittest.TestCase):
+    def test_on_the_cpu_a_track_hands_its_heap_back(self):
+        with patch.object(models, 'on_gpu', return_value=False), \
+             patch.object(models, 'trim') as trim:
+            models.release_memory()
+        trim.assert_called_once_with()
+
+    def test_a_libc_without_malloc_trim_is_not_an_error(self):
+        with patch('ctypes.CDLL', return_value=types.SimpleNamespace()):
+            models.trim()
+
+
 if __name__ == '__main__':
     unittest.main()

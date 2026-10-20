@@ -320,6 +320,25 @@ test('a worker that dies at once rejects the request without crashing the server
   } finally { w.shutdown(); }
 });
 
+// The OOM killer ends a warming-up worker with SIGKILL while no request is
+// pending. That exit went unlogged, so a host losing its memory at every start
+// showed nothing in the lightshow's own log.
+test('a worker killed while idle is logged with its signal', async (t) => {
+  const warned = [];
+  t.mock.method(console, 'warn', (line) => { warned.push(String(line)); });
+  const w = worker('killed');
+  try {
+    w.prewarm();
+    const deadline = Date.now() + 5000;
+    while (!warned.some((line) => line.includes('while idle')) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    const line = warned.find((entry) => entry.includes('while idle'));
+    assert.ok(line, 'the idle exit is logged');
+    if (process.platform !== 'win32') assert.match(line, /signal SIGKILL/);
+  } finally { w.shutdown(); }
+});
+
 // Setting the analysis environment up replaces the Python the worker runs
 // from (python-setup.ts): it is stopped for the while, and nothing is lost.
 test('paused requests resume on a new worker', async () => {

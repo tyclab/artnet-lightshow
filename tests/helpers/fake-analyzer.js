@@ -1,9 +1,10 @@
-// NDJSON worker fixture; FAKE_MODE selects success, hangs, crashes, malformed replies or GPU faults.
+// NDJSON worker fixture; FAKE_MODE selects success, hangs, crashes, kills, malformed replies or GPU faults.
 // hangslow delays "late" inputs and never answers "slow" inputs to exercise worker recycling.
 import readline from 'node:readline';
 
 const mode = process.env.FAKE_MODE || 'ok';
 if (mode === 'exitnow') process.exit(3);
+if (mode === 'killed') process.kill(process.pid, 'SIGKILL');
 const rl = readline.createInterface({ input: process.stdin });
 let served = 0;
 

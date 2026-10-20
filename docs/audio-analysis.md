@@ -957,13 +957,15 @@ nothing waits for the separator until later.
 pass, the separator's stereo and S-KEY's input are all resampled from that one
 decode. There used to be four decodes per track.
 
-**Separation runs in its own thread** alongside preprocessing and features. On a
-GPU that genuinely overlaps. On CPU it buys almost nothing, because Demucs is
-already using every core the process has — the numbers above are what that looks
-like, and they are the argument for `separate_sources=False` on a machine
-analysing a queue during a set rather than a library overnight. The tagger, when
-installed, starts even earlier: it reads the file directly and needs nothing from
-the rest. Structure and perception run side by side.
+**Separation runs beside the main thread**, which carries on with features,
+rhythm and bands. On a GPU every model pass has its own thread and they take
+turns on the card, so that genuinely overlaps. On the CPU the passes share one
+thread and run in the order the pipeline collects them: beats, tags, separation,
+MuQ, SongFormer, S-KEY. Side by side they gained almost nothing, because each
+already uses every core the process has, and they held all their working memory
+at once (see [Memory](#memory)). The numbers above are the argument for
+`separate_sources=False` on a machine analysing a queue during a set rather than
+a library overnight. Structure and perception run side by side.
 
 **Weights are cached, and the cache is checked before the network.** Loading a
 checkpoint by short name sends the resolver to the network even when the file is
@@ -975,10 +977,56 @@ The worker loads the beat model, then the separator, then the optional models
 from disk when it starts. It keeps them, with librosa's imports and numba's JIT
 caches, resident between tracks. The server starts it at boot, so that cost
 lands while the operator is still opening the UI and not on the first track.
+MuQ and MuQ-MuLan are built from their configs and then pointed at their
+checkpoint files (`models.map_weights`), so what stays resident is page cache
+the kernel can reclaim. Building them at start-up, with no track in memory, is
+also when their construction costs least.
 
 Curves are decimated to one point every half second before they enter the
 document. Undecimated, eleven curves on a four-minute track is tens of megabytes
 of JSON travelling to a browser that draws it 900 pixels wide.
+
+### Memory
+
+Measured on tychome, the 16-core, 16 GB, no-swap CPU host the worker shares with
+Home Assistant and voice services, with a 210 s track. Each run was a container
+capped so that at least 2 GB of the host stayed free. *Anon* is memory the kernel
+can only take back by killing the worker; the rest of a peak is mapped checkpoint
+pages it can drop and reread. Rows marked † are from the same image, environment
+and models on a 32 GB machine, where nothing has to be killed.
+
+| Stage, run on its own after preprocessing | Before | Now |
+|---|---|---|
+| preprocess and features | 1.24 GB peak, 15 s | unchanged |
+| Beat This | +0.44 GB, 4 s | unchanged |
+| S-KEY | +0.05 GB, 0.7 s | unchanged |
+| Demucs | +1.37 GB, 51 s | unchanged |
+| MuQ, loading | 3.26 GB peak, 2.02 GB kept | 2.06 GB peak, 0.79 GB kept |
+| MuQ, embeddings | 2.74 GB anon, 59 s | 2.29 GB anon, 59 s |
+| MuQ-MuLan, loading | killed at a 3.3 GB cap; † 5.64 GB anon, 4.98 GB kept | 2.06 GB anon, 0.77 GB kept |
+| MuQ-MuLan, scores | — | 1.43 GB anon, 20 s |
+
+| The worker: warm-up, then one track | Before | Now |
+|---|---|---|
+| warm-up | killed at a 3.3 GB cap after 5.7 s; † 6.93 GB anon | 2.09 GB anon |
+| idle after warm-up | † 5.38 GB | 0.77 GB |
+| 210 s track | killed; † 8.40 GB anon, 177 s | 3.03 GB anon under a 3.6 GB cap, 149 s |
+| 561 s track | † 10.27 GB anon, 633 s | † 4.71 GB anon, 539 s |
+
+Three things added up. The model passes ran side by side, each with every core,
+so their working memory stacked; on the CPU they now take turns on one thread.
+MuQ-MuLan's 2.6 GB checkpoint was read into RAM beside the model it was loading
+into, and both towers then kept a private copy of their weights;
+`models.map_weights` leaves the weights as pages of the checkpoint files. And
+glibc kept each track's freed heap for the idle worker; `models.trim` hands it
+back after every track. The documents are unchanged: on one machine the before
+and after documents of both tracks are identical field for field.
+
+What remains is the track itself: the decoded signals and spectrograms (1.0 GB
+for 210 s, 2.4 GB for 561 s) and Demucs's track-length output buffers. Under a
+cap tighter than the mapped weights need, they are read back from disk instead
+of the worker being killed: a 3.5 GB cap on the 32 GB machine finished the
+210 s track in 312 s instead of 196 s.
 
 ## Testing
 

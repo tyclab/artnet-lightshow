@@ -10,16 +10,60 @@ from analysis import model_adapters as adapters, models
 
 
 class ModelLoading(unittest.TestCase):
-    def test_model_is_reused_and_uses_selected_device(self):
-        module = MagicMock()
-        with patch.object(adapters, '_optional', return_value=module), \
-             patch.object(models, 'device', return_value='cuda'), \
-             patch.object(models, '_OFFLOAD', False), \
-             patch.dict(models._CACHE, {}, clear=True):
-            first = adapters._load_muq('MuQ', '/tmp/test-muq')
-            self.assertIs(first, adapters._load_muq('MuQ', '/tmp/test-muq'))
-        module.MuQ.from_pretrained.assert_called_once_with('/tmp/test-muq', local_files_only=True)
-        module.MuQ.from_pretrained.return_value.float.return_value.to.assert_called_once_with('cuda')
+    def checkpoint(self, root, weights, config=None):
+        root.mkdir(parents=True, exist_ok=True)
+        (root / 'config.json').write_text(json.dumps(config or {'encoder_dim': 1024}))
+        for name in weights:
+            (root / name).write_bytes(b'')
+        return root
+
+    def test_model_is_built_from_its_config_mapped_reused_and_on_the_selected_device(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.checkpoint(Path(directory) / 'muq', ['model.safetensors', 'pytorch_model.bin'])
+            module = MagicMock()
+            with patch.object(adapters, '_optional', return_value=module), \
+                 patch.object(models, 'map_weights', side_effect=lambda model, path: model) as mapped, \
+                 patch.object(models, 'device', return_value='cuda'), \
+                 patch.object(models, '_OFFLOAD', False), \
+                 patch.dict(models._CACHE, {}, clear=True):
+                first = adapters._load_muq('MuQ', str(root))
+                self.assertIs(first, adapters._load_muq('MuQ', str(root)))
+        module.MuQ.assert_called_once_with(config={'encoder_dim': 1024})
+        module.MuQ.from_pretrained.assert_not_called()
+        mapped.assert_called_once_with(module.MuQ.return_value, root / 'model.safetensors')
+        module.MuQ.return_value.float.return_value.to.assert_called_once_with('cuda')
+
+    def test_mulan_maps_its_pytorch_checkpoint_onto_the_local_towers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = self.checkpoint(base / 'muq_mulan', ['pytorch_model.bin'],
+                                   {'audio_model': {'name': 'OpenMuQ/MuQ-large-msd-iter'},
+                                    'text_model': {'name': 'xlm-roberta-base'}})
+            (base / 'xlm-roberta-base').mkdir()
+            module = MagicMock()
+            with patch.object(adapters, '_optional', return_value=module), \
+                 patch.object(models, 'map_weights', side_effect=lambda model, path: model) as mapped, \
+                 patch.object(models, 'device', return_value='cpu'), \
+                 patch.dict('os.environ', {'ARTNET_MODEL_DIR': directory, 'ARTNET_MUQ_MODEL': '',
+                                           'ARTNET_MUQ_TEXT_MODEL': ''}), \
+                 patch.dict(models._CACHE, {}, clear=True):
+                adapters._load_muq('MuQMuLan', str(root))
+        config = module.MuQMuLan.call_args.kwargs['config']
+        self.assertEqual(config['audio_model']['name'], str(base / 'muq'))
+        self.assertEqual(config['text_model']['name'], str(base / 'xlm-roberta-base'))
+        mapped.assert_called_once_with(module.MuQMuLan.return_value, root / 'pytorch_model.bin')
+
+    def test_a_checkpoint_without_weights_is_named_not_fetched(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.checkpoint(Path(directory) / 'muq', [])
+            module = MagicMock()
+            with patch.object(adapters, '_optional', return_value=module), \
+                 patch.object(models, 'device', return_value='cpu'), \
+                 patch.dict(models._CACHE, {}, clear=True):
+                with self.assertRaisesRegex(FileNotFoundError, 'weights missing'):
+                    adapters._load_muq('MuQ', str(root))
+        module.MuQ.assert_not_called()
+        module.MuQ.from_pretrained.assert_not_called()
 
     def test_missing_text_encoder_does_not_attempt_hub_download(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -33,6 +77,7 @@ class ModelLoading(unittest.TestCase):
                 with self.assertRaisesRegex(FileNotFoundError, 'text model missing'):
                     adapters._load_muq('MuQMuLan', str(root))
             module.MuQMuLan.from_pretrained.assert_not_called()
+            module.MuQMuLan.assert_not_called()
 
 
 @needs_audio

@@ -15,11 +15,12 @@ exist, the bands are recomputed with the correlation term filled in. It costs
 one extra pass over already-computed spectrograms and it is what makes the
 `importance` score mean anything.
 
-*The learned classifiers run in parallel with the DSP.* Neither needs anything
-from the rest of the pipeline — the AudioSet tagger reads the file directly and
-MuQ-MuLan needs only the decoded waveform — and on CPU both are several seconds.
-Started as early as their input exists and collected just before the stage that
-consumes them, they cost close to nothing.
+*The learned models run beside the DSP.* None needs anything from the rest of
+the pipeline but the decoded audio, so each starts as soon as that exists and is
+collected just before the stage that consumes it. On a GPU each has its own
+thread and they take turns on the card. On the CPU they share one thread, in the
+order they are collected: each already uses every core, and side by side they
+held all their working memory at once (docs/audio-analysis.md, Memory).
 
 The document it returns keeps every field name the previous analyser emitted,
 at the top level, alongside the new structured sections. That is deliberate:
@@ -93,12 +94,9 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
         raise FileNotFoundError(path)
 
     # Declared before the try so `finally` shuts them down whichever stage failed.
-    tag_pool, tag_future = None, None
-    mulan_pool, mulan_future = None, None
-    stem_pool, stem_future = None, None
-    beat_pool, beat_turn = None, None
-    key_pool, key_future = None, None
-    form_pool, form_future = None, None
+    pools = []
+    tag_future = mulan_future = stem_future = key_future = form_future = None
+    beat_turn = None
     # Only a tagger whose weights are already here. The analysis never
     # downloads: 310 MB fetched mid-track on venue wifi is a track that does
     # not get analysed, and possibly the one after it.
@@ -111,36 +109,41 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
     # `analyze.py track.wav` did, and lost both its stems and its beats.
     import torch  # noqa: F401
     models.device()
+    shared = None if models.on_gpu() else ThreadPoolExecutor(max_workers=1)
+    if shared is not None:
+        pools.append(shared)
 
     timings = Timings()
+
+    def start(name, fn, *args):
+        pool = shared
+        if pool is None:
+            pool = ThreadPoolExecutor(max_workers=1)
+            pools.append(pool)
+        return pool.submit(timings.timed(name, fn), *args)
+
     try:
         with timings.stage('preprocess'):
             audio = preprocess_stage.prepare(path, config.preprocess, target_duration_sec)
 
         beat_turn = models.reserve_first_turn()
-        beat_pool = ThreadPoolExecutor(max_workers=1)
-        beat_future = beat_pool.submit(timings.timed('beats', _beat_pass), audio, config.rhythm, beat_turn)
+        beat_future = start('beats', _beat_pass, audio, config.rhythm, beat_turn)
 
         # Tag the preprocessed 32 kHz normalised mono: no second decode, and two masters of a track tag alike.
         if tagging:
-            tag_pool = ThreadPoolExecutor(max_workers=1)
-            tag_future = tag_pool.submit(timings.timed('tagger', _safe_tag), path, audio)
+            tag_future = start('tagger', _safe_tag, path, audio)
 
         if config.separate_sources:
-            stem_pool = ThreadPoolExecutor(max_workers=1)
-            stem_future = stem_pool.submit(timings.timed('separation', _safe_separate), audio)
+            stem_future = start('separation', _safe_separate, audio)
 
         if config.enable_semantics:
-            mulan_pool = ThreadPoolExecutor(max_workers=1)
-            mulan_future = mulan_pool.submit(timings.timed('muq', _safe_muq), audio)
+            mulan_future = start('muq', _safe_muq, audio)
 
         if songformer.wanted(config.structure_model):
-            form_pool = ThreadPoolExecutor(max_workers=1)
-            form_future = form_pool.submit(timings.timed('songformer', _safe_songformer), audio)
+            form_future = start('songformer', _safe_songformer, audio)
 
         if model_adapters.skey_available():
-            key_pool = ThreadPoolExecutor(max_workers=1)
-            key_future = key_pool.submit(timings.timed('skey', _safe_skey), audio)
+            key_future = start('skey', _safe_skey, audio)
 
         with timings.stage('features'):
             frames = features_stage.extract(audio, config.preprocess)
@@ -243,9 +246,9 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
              f'{len(dynamics.drops)} drops, {len(stream)} events)')
         return document
     finally:
-        for pool in (beat_pool, stem_pool, tag_pool, mulan_pool, key_pool, form_pool):
-            if pool is not None:
-                pool.shutdown(wait=False)
+        # Passes still queued for a track that failed are dropped, not run.
+        for pool in pools:
+            pool.shutdown(wait=False, cancel_futures=True)
         # A beat pass that never reached the card must not keep it from the
         # next track.
         models.cancel_turn(beat_turn)

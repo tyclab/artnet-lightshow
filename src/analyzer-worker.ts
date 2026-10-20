@@ -310,6 +310,9 @@ class AnalyzerWorker {
     this._stdoutBuf = '';
     if (!this._shuttingDown && this._pending) {
       console.warn(`[analyzer] ${reason} — pending request will be rejected`);
+    } else if (!this._shuttingDown) {
+      // An OOM kill during the warm-up shows only here: no request is waiting to fail.
+      console.warn(`[analyzer] ${reason} while idle; the next analysis starts a new worker`);
     }
     this._failPending(reason);
   }
