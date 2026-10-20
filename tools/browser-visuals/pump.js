@@ -11,11 +11,19 @@ export const panelProtocol = {
   image: (pump, image) => image && image.width === pump.width && image.height === pump.height && image.data instanceof Uint8Array && image.data.length === pump.width * pump.height * 3 ? image.data : null,
 };
 
+/** An unavailable browser decides first; otherwise the lightshow's reason wins, so a disarmed rig never counts as an idle visualizer. */
+export function targetWithSource(source, lightshow) {
+  const checked = source();
+  if (!checked.ok && !checked.idle) return checked;
+  const target = lightshow();
+  return !target.ok || checked.ok ? target : checked;
+}
+
 export class LeasePump {
   constructor({ transport, capture, target, fixtureId, width, height, fps = 44, now = () => performance.now(), wait = sleep, report = () => {}, protocol = panelProtocol }) {
     Object.assign(this, { transport, capture, target, fixtureId, width, height, fps, now, wait, report, protocol });
     this.generation = 0; this.lease = null; this.busy = false; this.retryAt = 0; this.failures = 0; this.frames = 0; this.stopped = false;
-    this.nextCaptureAt = 0; this.nextSendAt = 0;
+    this.nextCaptureAt = 0; this.nextSendAt = 0; this.waiting = null;
   }
   async release(lease, connectionId) {
     if (!lease || !this.transport.connected || this.transport.id !== connectionId) return;
@@ -32,6 +40,13 @@ export class LeasePump {
     this.retryAt = this.now() + Math.min(10_000, 1000 * 2 ** Math.min(this.failures++, 4));
     this.report(reason);
   }
+  /** Nothing to send yet. Not a failure, so no backoff: frames resume on the first tick the target is back. */
+  pause(reason, idle = false) {
+    if (idle && this.waiting !== reason) this.telemetry?.count('idlePauses');
+    this.waiting = reason;
+    this.nextCaptureAt = this.now() + 250;
+    this.report(reason);
+  }
   valid(generation, connectionId, key) {
     const target = this.target();
     return !this.stopped && generation === this.generation && this.transport.connected && connectionId === this.transport.id && target.ok && target.key === key;
@@ -41,10 +56,10 @@ export class LeasePump {
     const target = this.target();
     if (!this.transport.connected || !target.ok) {
       await this.invalidate();
-      this.nextCaptureAt = this.now() + 250;
-      this.report(this.transport.connected ? target.reason : 'Lightshow disconnected');
+      this.pause(this.transport.connected ? target.reason : 'Lightshow disconnected', this.transport.connected && target.idle === true);
       return;
     }
+    this.waiting = null;
     if (this.lease && this.lease.key !== target.key) await this.invalidate();
     if (this.now() < this.retryAt || this.now() < this.nextCaptureAt) return;
     this.busy = true;
@@ -88,7 +103,9 @@ export class LeasePump {
       }
       this.nextCaptureAt = Math.max(captureStarted + period, this.now());
       this.failures = 0; this.frames++; this.report('Streaming');
-    } catch {
+    } catch (error) {
+      // Music Assistant faded the visualizer out under this capture: the source is idle, not failing.
+      if (error?.idle === true) { await this.invalidate(); this.pause('Visualizer idle', true); return; }
       this.telemetry?.count(failure);
       await this.invalidate();
       this.backoff('Capture or pixel connection unavailable');

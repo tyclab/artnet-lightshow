@@ -47,3 +47,25 @@ test('stop after the UTF-8 BOM that Windows PowerShell writes to redirected stdi
   await run(settings, { stdin, log: () => {}, connectPage: async () => browser, readControls: async () => ({ ok: true, visible: true }) });
   assert.equal(closes, 1); assert.equal(stdin.paused, true);
 });
+
+test('output mode streams only a live visualizer and holds the displays awake while the lightshow reports armed', async () => {
+  const stdin = input(), sources = [], holds = [];
+  let actions = 0, armed = false, source = null, stops = 0;
+  const pump = { nextCaptureAt: 0, retryAt: 0, step: async () => { sources.push(source()); }, stop: async () => {}, invalidate: async () => {} };
+  const browser = { connected: true, close: async () => {}, action: async () => {
+    actions++;
+    if (actions === 4) armed = true;
+    if (actions === 7) stdin.emit('data', Buffer.from('stop\n'));
+    return { ok: true, live: actions < 4 || actions > 5 };
+  } };
+  await run({ ...settings, curtain: true }, {
+    stdin, log: () => {}, connectPage: async () => browser, readControls: async () => ({ ok: true, visible: true }),
+    connectCurtain: async (_settings, _capture, ready) => { source = ready; return { pump, armed: () => armed, stop: async () => { stops++; } }; },
+    displayHold: { held: false, update: wanted => holds.push(wanted), stop: () => holds.push('stop') },
+  });
+  assert.deepEqual(sources.slice(0, 6).map(value => value.ok ? 'live' : value.reason), ['live', 'live', 'live', 'Visualizer idle', 'Visualizer idle', 'live']);
+  assert.equal(sources[3].idle, true);
+  assert.deepEqual(holds.slice(0, 4), [false, false, false, true]);
+  assert.equal(holds.at(-1), 'stop', 'the hold ends with the helper');
+  assert.equal(stops, 1);
+});

@@ -14,7 +14,7 @@ export class PumpTelemetry {
   reset() {
     this.capture = { count: 0, total: 0, max: 0 };
     this.ack = { count: 0, total: 0, max: 0 };
-    this.counts = { captureFailures: 0, ackFailures: 0, claimFailures: 0, rejectedFrames: 0, staleFrames: 0, revokedFrames: 0 };
+    this.counts = { captureFailures: 0, ackFailures: 0, claimFailures: 0, rejectedFrames: 0, staleFrames: 0, revokedFrames: 0, idlePauses: 0 };
   }
   count(name) { this.counts[name]++; }
   async measure(name, operation) {
@@ -31,7 +31,7 @@ export class PumpTelemetry {
     const summary = sample => ({ samples: sample.count, mean: sample.count ? round(sample.total / sample.count) : null, max: sample.count ? round(sample.max) : null });
     const record = {
       event: 'browser_visuals_telemetry', time: new Date().toISOString(), output: this.output,
-      active, intervalMs: round(intervalMs), acceptedFrames: frames,
+      active, reason: active ? null : this.pump.waiting ?? null, intervalMs: round(intervalMs), acceptedFrames: frames,
       fps: active || frames || this.capture.count ? round(frames * 1000 / Math.max(1, intervalMs)) : null,
       requestedFps: this.pump.fps, negotiatedFps: this.pump.lease ? Math.min(this.pump.fps, this.pump.lease.claim.maxFps) : null,
       captureMs: summary(this.capture), ackMs: summary(this.ack), ...this.counts,
@@ -63,12 +63,12 @@ export function telemetryWriter(file, warn = () => {}, maxBytes = MAX_LOG_BYTES)
   };
 }
 
-export function startTelemetry(feeds, file, log = console.log) {
+export function startTelemetry(feeds, file, log = console.log, extra = () => ({})) {
   if (!feeds.length) return () => {};
   const emit = file ? telemetryWriter(file, log) : records => { for (const record of records) log(JSON.stringify(record)); };
   const metrics = feeds.map(([output, pump]) => (pump.telemetry = new PumpTelemetry(pump, output)));
   const timer = setInterval(() => {
-    try { void Promise.resolve(emit(metrics.map(metric => metric.snapshot()))).catch(() => {}); } catch {}
+    try { void Promise.resolve(emit(metrics.map(metric => ({ ...metric.snapshot(), ...extra() })))).catch(() => {}); } catch {}
   }, TELEMETRY_INTERVAL_MS);
   timer.unref();
   return () => { clearInterval(timer); for (const [, pump] of feeds) pump.telemetry = null; };

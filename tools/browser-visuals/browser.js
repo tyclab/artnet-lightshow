@@ -99,6 +99,7 @@ export async function connectPage(profile, expected, onClose = () => {}, discove
 
 export async function captureCanvas(browser, settings, visible = true) {
   const result = await browser.action({ mode: 'capture', width: settings.width, height: settings.height, fit: settings.fit, visible, ...(settings.fps ? { fps: settings.fps } : {}) });
+  if (result.idle === true) throw Object.assign(new Error('Visualizer idle'), { idle: true });
   if (!result.ok || result.width !== settings.width || result.height !== settings.height || !Array.isArray(result.data) || result.data.length !== settings.width * settings.height * 3 || !result.data.every(value => Number.isInteger(value) && value >= 0 && value <= 255)) throw new Error('Music Assistant canvas unavailable');
   return { width: result.width, height: result.height, data: Buffer.from(result.data) };
 }
@@ -125,15 +126,17 @@ export function pageAction(options, matches, gpu = null) {
   }
   const display = options.visible === false ? 'off' : 'on';
   if (view.getAttribute('data-party-display') !== display) view.setAttribute('data-party-display', display);
-  if (options.mode !== 'capture') return { ok: true };
   const canvas = view.querySelector('.visualizer-layer__canvas');
-  if (!canvas || !canvas.width || !canvas.height || doc.visibilityState !== 'visible') return { ok: false };
-  const valid = () => {
-    const layer = canvas.closest('.visualizer-layer');
-    return canvas.isConnected && doc.visibilityState === 'visible' && matches(globalThis.location.href, options.expected)
-      && (!options.visible || !layer || Number(globalThis.getComputedStyle(layer).opacity) > 0.001);
+  // Music Assistant fades the visualizer out about a second after playback stops; a covered display never reads it.
+  const faded = () => {
+    const layer = options.visible ? canvas.closest('.visualizer-layer') : null;
+    return !!layer && Number(globalThis.getComputedStyle(layer).opacity) <= 0.001;
   };
-  if (gpu) return gpu(options, canvas, view, valid).then((result) => result ?? pageAction(options, matches));
+  if (options.mode !== 'capture') return { ok: true, live: !!canvas && !!canvas.width && !!canvas.height && !faded() };
+  if (!canvas || !canvas.width || !canvas.height || doc.visibilityState !== 'visible') return { ok: false };
+  const valid = () => canvas.isConnected && doc.visibilityState === 'visible' && matches(globalThis.location.href, options.expected) && !faded();
+  const idle = (result) => result.ok || !faded() ? result : { ok: false, idle: true };
+  if (gpu) return gpu(options, canvas, view, valid).then((result) => result ? idle(result) : pageAction(options, matches));
   return new Promise(resolve => {
     let done = false;
     const timer = globalThis.setTimeout(() => { done = true; resolve({ ok: false }); }, 250);
@@ -141,8 +144,8 @@ export function pageAction(options, matches, gpu = null) {
       if (done) return;
       globalThis.clearTimeout(timer);
       try {
-        const layer = canvas.closest('.visualizer-layer');
-        if (!canvas.isConnected || !matches(globalThis.location.href, options.expected) || (options.visible && layer && Number(globalThis.getComputedStyle(layer).opacity) <= 0.001)) { resolve({ ok: false }); return; }
+        if (!canvas.isConnected || !matches(globalThis.location.href, options.expected)) { resolve({ ok: false }); return; }
+        if (faded()) { resolve({ ok: false, idle: true }); return; }
         const { width, height } = options, key = `${width}x${height}`;
         const cache = view.__tyclabCaptureCanvases ??= new Map();
         let out = cache.get(key);

@@ -21,6 +21,8 @@ export class StateMirror {
     this.versions.set(patch.d, patch.v);
     return true;
   }
+  /** Armed outputs in state fresh enough to trust; clock and acknowledgement do not matter to the rig's power. */
+  armed() { return !!this.state && this.now() - this.receivedAt < 1500 && this.state.armed === true; }
   /** What every sender needs before a lease: fresh state with a clock, armed outputs, the acknowledgement. */
   base() {
     const state = this.state;

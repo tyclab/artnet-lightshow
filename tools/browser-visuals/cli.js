@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { options } from './config.js';
 import { connectPage, captureCanvas, ppm } from './browser.js';
 import { startTelemetry } from './telemetry.js';
+import { displayHold } from './awake.js';
 
 const help = `Usage: node cli.js --browser-profile PATH --visualizer-url URL [options]
 Default: display only, with no lightshow connection or fixture lease.
@@ -24,6 +25,7 @@ Chrome must use a dedicated profile with an ephemeral loopback debugging port.
 Only the configured Music Assistant now-playing player page is accessed.
 Wash on/off controls display visibility; wash intensity does not dim MilkDrop.
 Curtain mode never arms outputs. Ctrl+C or stdin 'stop' releases its lease.
+With curtain or room output on Windows, the displays stay awake while outputs are armed.
 Credentials stay in this process and are never sent to the browser.
 `;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -57,19 +59,21 @@ export async function preview(settings) {
 export async function run(settings, dependencies = {}) {
   const attach = dependencies.connectPage ?? connectPage, readState = dependencies.readControls ?? readControls;
   const stdin = dependencies.stdin ?? process.stdin, log = dependencies.log ?? console.log;
-  let stopped = false, browser = null, curtain = null, room = null, browserRetryAt = 0, ready = false;
+  const attachCurtain = dependencies.connectCurtain ?? (async (...args) => (await import('./curtain.js')).connectCurtain(...args));
+  const attachRoom = dependencies.connectRoom ?? (async (...args) => (await import('./room.js')).connectRoom(...args));
+  let stopped = false, browser = null, curtain = null, room = null, browserRetryAt = 0, ready = false, live = false;
   let controls = { ok: false, visible: false }, controlsAt = -Infinity, lastStatus = '', input = '';
   const report = status => { if (status !== lastStatus) { lastStatus = status; log(status); } };
-  const sourceReady = () => !stopped && ready && browser?.connected && controls.ok && performance.now() - controlsAt < 1500;
-  if (settings.curtain) {
-    const { connectCurtain } = await import('./curtain.js');
-    curtain = await connectCurtain(settings, () => captureCanvas(browser, settings, controls.visible), sourceReady, report);
-  }
+  // A visualizer Music Assistant faded out after playback stopped is idle: wait for it rather than fail captures.
+  const source = () => stopped || !ready || !browser?.connected || !controls.ok || performance.now() - controlsAt >= 1500
+    ? { ok: false, reason: 'Browser display or controls unavailable' } : live ? { ok: true } : { ok: false, reason: 'Visualizer idle', idle: true };
+  if (settings.curtain) curtain = await attachCurtain(settings, () => captureCanvas(browser, settings, controls.visible), source, report);
   if (settings.room) {
-    const { connectRoom } = await import('./room.js');
     const small = { ...settings, width: settings.roomWidth, height: settings.roomHeight, fit: 'cover' };
-    room = await connectRoom(settings, () => captureCanvas(browser, small, controls.visible), sourceReady, report);
+    room = await attachRoom(settings, () => captureCanvas(browser, small, controls.visible), source, report);
   }
+  // Only an output mode learns whether the lightshow is armed.
+  const hold = curtain || room ? dependencies.displayHold ?? displayHold(log) : null;
   const stop = () => { stopped = true; ready = false; void curtain?.pump.stop(); void room?.pump.stop(); };
   const onInput = chunk => {
     // Windows PowerShell's redirected stdin starts with a UTF-8 BOM.
@@ -78,7 +82,7 @@ export async function run(settings, dependencies = {}) {
   };
   process.on('SIGINT', stop); process.on('SIGTERM', stop); stdin.on('data', onInput);
   const parentTimer = setInterval(() => { if (!parentAlive(settings.parentPid)) stop(); }, 1000);
-  const stopTelemetry = startTelemetry([['curtain', curtain?.pump], ['room', room?.pump]].filter(([, pump]) => pump), settings.telemetryFile, log);
+  const stopTelemetry = startTelemetry([['curtain', curtain?.pump], ['room', room?.pump]].filter(([, pump]) => pump), settings.telemetryFile, log, () => ({ displayHeld: hold ? hold.held : null }));
   report(settings.curtain || settings.room ? `Browser display with ${[settings.curtain && 'curtain', settings.room && 'room picture'].filter(Boolean).join(' and ')} output` : 'Browser display only; no lightshow connection');
   try {
     while (!stopped) {
@@ -92,15 +96,18 @@ export async function run(settings, dependencies = {}) {
       }
       if (!stopped && browser?.connected) {
         try {
-          ready = (await browser.action({ mode: 'display', visible: controls.visible })).ok;
+          const shown = await browser.action({ mode: 'display', visible: controls.visible });
+          ready = shown.ok; live = shown.live === true;
           if (!settings.curtain && !settings.room) report(!controls.ok ? 'Controls unavailable; display covered' : ready ? controls.visible ? 'Music Assistant visible' : 'Music Assistant covered' : 'Waiting for Music Assistant login or player page');
         } catch { ready = false; await browser.close(); browser = null; browserRetryAt = performance.now() + 1000; }
       } else ready = false;
+      hold?.update([curtain, room].some(feed => feed?.armed()));
       await Promise.all([curtain, room].filter(Boolean).map((feed) => feed.pump.step()));
       const pumps = [curtain, room].filter(Boolean).map((feed) => feed.pump);
       await sleep(pumps.length ? Math.min(250, Math.max(1, Math.min(...pumps.map((pump) => Math.max(pump.nextCaptureAt, pump.retryAt))) - performance.now())) : 250);
     }
   } finally {
+    hold?.stop();
     stopTelemetry();
     clearInterval(parentTimer); await curtain?.stop(); await room?.stop(); await browser?.close();
     process.removeListener('SIGINT', stop); process.removeListener('SIGTERM', stop); stdin.removeListener('data', onInput); stdin.pause();

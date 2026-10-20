@@ -1,6 +1,6 @@
 import { lightshowConfig } from './config.js';
 import { StateMirror } from './state.js';
-import { LeasePump } from './pump.js';
+import { LeasePump, targetWithSource } from './pump.js';
 import { requester } from './request.js';
 
 /** One colour per rig unit: the small cover-fitted capture read at each unit's plan position
@@ -45,7 +45,7 @@ export function roomTarget(state, units) {
   return { ok: true, key: units.signature, signature: units.signature };
 }
 
-export async function connectRoom(settings, capture, sourceReady, report) {
+export async function connectRoom(settings, capture, source, report) {
   const { io } = await import('socket.io-client');
   const config = lightshowConfig(settings.nodecgConfig), mirror = new StateMirror();
   const socket = io(config.origin, { path: config.socketPath, auth: { token: config.token, protocol: 2 }, transports: ['websocket'], autoConnect: false, reconnection: true, reconnectionDelay: 1000, reconnectionDelayMax: 10_000, timeout: 3000 });
@@ -55,7 +55,7 @@ export async function connectRoom(settings, capture, sourceReady, report) {
     transport: { get connected() { return socket.connected; }, get id() { return socket.id; }, request },
     capture, fixtureId: 0, width: settings.roomWidth, height: settings.roomHeight, fps: settings.fps, now: () => performance.now(), report,
     protocol: roomProtocol,
-    target: () => sourceReady() ? roomTarget(mirror.base(), units) : { ok: false, reason: 'Browser display or controls unavailable' },
+    target: () => targetWithSource(source, () => roomTarget(mirror.base(), units)),
   });
   const refreshUnits = async () => {
     if (!socket.connected || stopped) return;
@@ -90,6 +90,7 @@ export async function connectRoom(settings, capture, sourceReady, report) {
   socket.connect();
   return {
     pump,
+    armed: () => socket.connected && mirror.armed(),
     async stop() { stopped = true; clearInterval(syncTimer); await pump.stop(); socket.disconnect(); },
   };
 }
