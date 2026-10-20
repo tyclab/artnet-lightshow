@@ -4,6 +4,20 @@ import * as output from './output.ts';
 import { generateCid } from './sacn.ts';
 import * as pythonEnv from '../python-env.ts';
 import { messageOf } from '../errors.ts';
+import { logger } from './log.ts';
+
+/** Where an arm or disarm came from, for its log line: never a token, query string or other header. */
+export interface ArmOrigin {
+  via: 'rest' | 'companion' | 'schedule' | 'boot';
+  route?: string;
+  remote?: string;
+  forwardedFor?: string;
+  userAgent?: string;
+  client?: string;
+  reason?: string;
+}
+
+const outputsLog = logger('outputs');
 
 export interface ApplierDeps {
   midi: {
@@ -183,7 +197,7 @@ function createApplier({ midi, spotify, smtc, live = null, midiClock = null, dee
   }
 
   // Start disarmed and clear voices on disarm so restarts or later arming cannot revive a strobe.
-  function applyOutputs({ boot = false } = {}) {
+  function applyOutputs({ boot = false, origin }: { boot?: boolean; origin?: ArmOrigin } = {}) {
     let wanted = !!settings.get('outputs.armed');
     if (boot) {
       if (wanted) {
@@ -191,21 +205,22 @@ function createApplier({ midi, spotify, smtc, live = null, midiClock = null, dee
         catch (err) { console.warn(`[outputs] could not store the disarmed state: ${messageOf(err)}`); }
         wanted = false;
       }
-      console.log('[outputs] disarmed at start: nothing goes out to the rig until the outputs are armed '
+      outputsLog.info({ armed: false, via: 'boot' }, 'disarmed at start: nothing goes out to the rig until the outputs are armed '
         + '(Perform, Settings → Show, or POST /api/outputs/arm)');
     }
     if (!output.setArmed(wanted)) return;
+    const from = { armed: wanted, via: 'unknown', ...origin };
     if (wanted) {
-      console.log('[outputs] armed: frames go out to the rig');
+      outputsLog.info(from, 'armed: frames go out to the rig');
       return;
     }
-    console.log('[outputs] disarmed: the streams are being ended and the patterns stopped');
+    outputsLog.info(from, 'disarmed: the streams are being ended and the patterns stopped');
     voices.stopAll();
     state.heldEnergy = null;
     applyPatch({ running: false, energyOverride: null });
   }
 
-  const HANDLERS: { match: (key: string) => boolean; run: () => unknown }[] = [
+  const HANDLERS: { match: (key: string) => boolean; run: (origin: ArmOrigin | undefined) => unknown }[] = [
     { match: (k) => k.startsWith('artnet.'), run: applyArtnet },
     { match: (k) => k.startsWith('sacn.'), run: applySacn },
     { match: (k) => k.startsWith('hue.'), run: applyHue },
@@ -225,7 +240,7 @@ function createApplier({ midi, spotify, smtc, live = null, midiClock = null, dee
     { match: (k) => k === 'analysis.gpuMemory', run: applyGpuMemory },
     { match: (k) => k === 'safety.flashLimit', run: applySafety },
     { match: (k) => k === 'clock.tempoMode', run: applyClock },
-    { match: (k) => k === 'outputs.armed', run: applyOutputs },
+    { match: (k) => k === 'outputs.armed', run: (origin) => applyOutputs({ origin }) },
   ];
 
   return {
@@ -246,10 +261,10 @@ function createApplier({ midi, spotify, smtc, live = null, midiClock = null, dee
       if (settings.get('sources.prolink')) applyProlink();
     },
 
-    applyChanged(changed: string[]) {
+    applyChanged(changed: string[], origin?: ArmOrigin) {
       for (const { match, run } of HANDLERS) {
         if (changed.some(match)) {
-          try { run(); } catch (err) { console.warn(`[settings] apply failed: ${messageOf(err)}`); }
+          try { run(origin); } catch (err) { console.warn(`[settings] apply failed: ${messageOf(err)}`); }
         }
       }
       broadcast();

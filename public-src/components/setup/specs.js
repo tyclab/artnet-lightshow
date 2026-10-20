@@ -15,7 +15,7 @@ export function engineNote(data) {
   const where = e.thread === 'worker' ? 'its own thread' : 'the main thread';
   const timing = e.frames
     ? ` — ${e.rate} frames a second, ${e.renderMs.p95} ms to render (p95), `
-      + `${e.lateFrames + e.skippedFrames} late or dropped in the last minute`
+      + `${(e.lateFrames || 0) + (e.skippedFramesLastMinute || 0)} late or dropped in the last minute`
     : '';
   if (e.fellBack) return { ok: false, text: `Currently: ${where}, because ${e.fellBack}${timing}.` };
   return { ok: true, text: `Currently: ${where}${timing}.` };

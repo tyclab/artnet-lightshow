@@ -409,6 +409,21 @@ Removing a fixture or disarming sends darkness and stops updates. WLED resumes
 its own effects after its configured realtime timeout. Set its fallback preset
 accordingly. Preflight checks reachability and changed LED counts.
 
+DDP has no reply, so a board that drops the stream is silent. While the outputs
+are armed, the server reads each patched WLED's `/json/si` every 10 s (3 s
+timeout, one request per board at a time, backing off to 60 s while it does not
+answer). A board in live override (`lor` 1 or 2, as the WLED app sets it) keeps
+its own effect and ignores the show; one that answers with `live: false` twice
+in a row is not taking the stream either. Either is logged once as a warning
+under `component=wled`, its return once at info, and both appear in the live
+state's `wled` list and in `/api/health` (`outputs.wled`, and a problem that
+makes the status `degraded`). Two missed polls in a row report the board as
+`unreachable`. The server never changes `lor`. Each `wled` entry is
+`{ host, fixtures, status, lor, live, problem }` with `status` one of
+`checking`, `live`, `override`, `not-live` or `unreachable` and `problem` the
+sentence to show, or null; the list is empty while disarmed, and it changes only
+on a transition.
+
 ### Screen pictures on an LED panel
 
 An external RGB picture can replace the base picture of one patched DDP panel.
@@ -1080,6 +1095,15 @@ counts as stopped), no auto show and no pixel input at every 10 s check for
 would. Surface a 409 safety refusal to the operator instead of retrying it as
 an acknowledgement.
 
+Each arm or disarm that changes the state logs one info line under
+`component=outputs` with `armed` and `via`: `rest` (the three
+`/api/outputs/*` routes or `PUT /api/settings`), `companion` (a request that
+sends `X-Lightshow-Client: companion`, as the Companion module does),
+`schedule` (the idle disarm, with its `reason`) or `boot` (the forced disarm
+at start). A request also gives its `route` (method and path, without the
+query string), `remote` address and, when sent, `forwardedFor`, `userAgent`
+and `client`. Tokens, the query string and other headers are never logged.
+
 ## REST API
 
 All endpoints return JSON. When a token is configured, send it as an
@@ -1089,7 +1113,7 @@ All endpoints return JSON. When a token is configured, send it as an
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/state` | Full current state (`armed` says whether anything leaves the machine) |
+| GET | `/api/state` | Full current state (`armed` says whether anything leaves the machine; `wled`, while armed, whether each WLED takes the stream — see [WLED](#wled)) |
 | GET · PUT · DELETE | `/api/stage/room` | Private Stage room model; writes require the current `If-Match` revision. See [room format](docs/stage-room.md) |
 | POST | `/api/set` | Patch state fields (JSON body) |
 | POST | `/api/tap` | Tap tempo |
@@ -1411,7 +1435,13 @@ it: by the backend's id (`auto_null`) as well as by name.
 
 `/healthz` is an unauthenticated liveness probe. `/api/health` reports
 `ok`, `degraded` or `failing`, problems, uptime, engine timing, memory, outputs,
-supervisor and effect/voice/sequence counts. Disarmed is informational.
+supervisor and effect/voice/sequence counts. Disarmed is informational. In
+`engine`, `skippedFramesLastMinute` counts frames dropped in the last 60 s and
+`skippedFramesTotal` every frame dropped since the engine's ticker started; the
+pre-show engine check and the Settings → Engine note read the last minute only,
+so a stall at start-up stops warning a minute later. `eventLoop` gives the
+main thread's delay in milliseconds over the last 30 s window: the excess over
+the 10 ms sampling timer, so an idle loop reads 0.
 
 Logs appear in the terminal, the app's Log drawer and `logs/lightshow.log`.
 Files are JSON lines, rotated at 10 MB with three retained rotations.
@@ -1425,9 +1455,11 @@ memory bytes and whether outputs are armed. Rates use monotonic elapsed time;
 `actualFps`, `intervalMs` and `intervalSkipped` are null on the first sample,
 after a ticker restart or when a worker report has not advanced. Check
 `engineSampleAgeMs` for stale worker reports. `windowFrames` and `lateFrames`
-describe the last 2,640 rendered frames; `skippedFrames` is cumulative for the
-current ticker, while `intervalSkipped` covers `intervalMs`. These are engine
-timings, not confirmation that a device displayed every frame.
+describe the last 2,640 rendered frames; `skippedFramesTotal` is cumulative for
+the current ticker, while `intervalSkipped` covers `intervalMs`.
+`eventLoopP50Ms`, `eventLoopP99Ms` and `eventLoopMaxMs` exclude the 10 ms
+sampling interval. These are engine timings, not confirmation that a device
+displayed every frame.
 
 The existing Docker log collector can query these records without another
 endpoint or credential. For example, in Loki:

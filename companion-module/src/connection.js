@@ -205,7 +205,7 @@ export class LightshowConnection {
 	async request(method, path, body) {
 		const res = await fetch(`${this.base}${path}`, {
 			method,
-			headers: { 'Content-Type': 'application/json', 'X-Lightshow-Token': this.token },
+			headers: { 'Content-Type': 'application/json', 'X-Lightshow-Token': this.token, 'X-Lightshow-Client': 'companion' },
 			body: body === undefined ? undefined : JSON.stringify(body),
 			signal: AbortSignal.timeout(REST_TIMEOUT_MS),
 		})

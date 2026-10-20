@@ -8,7 +8,7 @@ import { pythonSetup, pythonSetupSchema } from '../python-setup.ts';
 import * as pythonEnv from '../../python-env.ts';
 import { HttpError, messageOf } from '../../errors.ts';
 import type { Express } from 'express';
-import { asyncHandler } from './common.ts';
+import { asyncHandler, requestOrigin } from './common.ts';
 import type { RouteContext } from './common.ts';
 
 const restartKeysFor = (pending: string[]): string[] =>
@@ -75,7 +75,7 @@ export function attachSetupRoutes(app: Express, ctx: RouteContext): void {
   app.put('/api/settings', (req, res) => {
     try {
       const changed = settings.update(req.body || {});
-      applier.applyChanged(changed);
+      applier.applyChanged(changed, requestOrigin(req));
       const { settings: values, secrets } = settings.redacted();
       const pendingRestart = applier.pendingRestart();
       res.json({

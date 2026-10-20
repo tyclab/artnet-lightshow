@@ -71,7 +71,7 @@ test("server settings mask configured secrets", () => {
     secrets: { 'server.token': true },
     restartKeys: ['server.host', 'server.port', 'server.token', 'engine.thread'],
     pendingRestart: ['server.port'],
-    engine: { thread: 'worker', rate: 44, frames: 100, renderMs: { p95: 0.4 }, lateFrames: 1, skippedFrames: 0 },
+    engine: { thread: 'worker', rate: 44, frames: 100, renderMs: { p95: 0.4 }, lateFrames: 1, skippedFramesLastMinute: 0, skippedFramesTotal: 0 },
   };
   const server = ui.html(ui.h(ui.SettingsSection, ui.SERVER));
   assert.match(server, /id="set-server.token" type="password"/);
@@ -85,7 +85,7 @@ test("server settings mark restart requirements and unchanged values", () => {
     secrets: { 'server.token': true },
     restartKeys: ['server.host', 'server.port', 'server.token', 'engine.thread'],
     pendingRestart: ['server.port'],
-    engine: { thread: 'worker', rate: 44, frames: 100, renderMs: { p95: 0.4 }, lateFrames: 1, skippedFrames: 0 },
+    engine: { thread: 'worker', rate: 44, frames: 100, renderMs: { p95: 0.4 }, lateFrames: 1, skippedFramesLastMinute: 0, skippedFramesTotal: 0 },
   };
   const server = ui.html(ui.h(ui.SettingsSection, ui.SERVER));
   assert.strictEqual(server.split('class="setting-badge ').length - 1, 3, 'host, port and token restart');
@@ -99,10 +99,10 @@ test("engine settings show resolved runtime values", () => {
     secrets: { 'server.token': true },
     restartKeys: ['server.host', 'server.port', 'server.token', 'engine.thread'],
     pendingRestart: ['server.port'],
-    engine: { thread: 'worker', rate: 44, frames: 100, renderMs: { p95: 0.4 }, lateFrames: 1, skippedFrames: 0 },
+    engine: { thread: 'worker', rate: 44, frames: 100, renderMs: { p95: 0.4 }, lateFrames: 1, skippedFramesLastMinute: 2, skippedFramesTotal: 900 },
   };
   const engine = ui.html(ui.h(ui.SettingsSection, ui.ENGINE));
-  assert.match(engine, /Currently: its own thread — 44 frames a second, 0.4 ms to render \(p95\), 1 late or dropped/);
+  assert.match(engine, /Currently: its own thread — 44 frames a second, 0.4 ms to render \(p95\), 3 late or dropped in the last minute/);
 });
 
 test('a select keeps a stored value the list no longer has, and says so', () => {

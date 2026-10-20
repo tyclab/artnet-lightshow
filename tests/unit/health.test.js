@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { assess, health, performanceSample, startHealthMonitor } from '../../src/server/health.ts';
+import { assess, health, performanceSample, startHealthMonitor, loopDelayOf, LOOP_RESOLUTION_MS } from '../../src/server/health.ts';
 import { buffer } from '../../src/server/log.ts';
 import { supervision, startHeartbeat, EXIT_RESTART, EXIT_CONFIG } from '../../src/server/supervised.ts';
 import { attachRoutes } from '../../src/server/routes.ts';
@@ -59,6 +59,15 @@ test('the heartbeat stops sending after teardown', (t) => {
   assert.deepEqual(sent, ['ready', 'heartbeat', 'heartbeat', 'heartbeat']);
 });
 
+test('event-loop delay is what the loop added to the sampling timer', () => {
+  const ms = 1e6;
+  const histogram = (p50, p99, max) => ({ count: 100, percentile: (p) => (p === 50 ? p50 : p99) * ms, max: max * ms });
+  assert.equal(LOOP_RESOLUTION_MS, 10);
+  assert.deepEqual(loopDelayOf(histogram(10.3, 14, 57)), { p50Ms: 0.3, p99Ms: 4, maxMs: 47 });
+  assert.deepEqual(loopDelayOf(histogram(9.77, 10.89, 10.89)), { p50Ms: 0, p99Ms: 0.9, maxMs: 0.9 }, 'an idle loop reads nothing, never less');
+  assert.equal(loopDelayOf({ count: 0, percentile: () => 0, max: 0 }), null);
+});
+
 test('heartbeat teardown works without a supervisor', () => {
   assert.doesNotThrow(() => startHeartbeat(undefined)());
 });
@@ -67,7 +76,7 @@ const timing = {
   thread: 'worker', running: true, rate: 44, fellBack: null,
   commands: { submitted: 0, processed: 0, applied: 0 },
   startedAtMs: 100, sampledAtMs: 1000, totalFrames: 40,
-  frames: 40, lateFrames: 1, skippedFrames: 2,
+  frames: 40, lateFrames: 1, skippedFramesTotal: 2, skippedFramesLastMinute: 2,
   renderMs: { p50: 1, p95: 2, max: 5 }, lateMs: { p50: 0, p95: 3, max: 10 },
 };
 const memory = { rss: 1024, heapUsed: 512 };
@@ -75,14 +84,15 @@ const sample = (engine, previous = null, now = 31_010) => performanceSample(engi
 
 test('performance summaries measure elapsed throughput without leaking health details', (t) => {
   t.mock.method(Date, 'now', () => -1_000_000);
-  const next = { ...timing, sampledAtMs: 31_000, totalFrames: 1240, frames: 1000, lateFrames: 20, skippedFrames: 122,
+  const next = { ...timing, sampledAtMs: 31_000, totalFrames: 1240, frames: 1000, lateFrames: 20, skippedFramesTotal: 122, skippedFramesLastMinute: 3,
     fellBack: 'private diagnostic', host: 'private host', token: 'private token' };
   const s = sample(next, timing);
   assert.equal(s.actualFps, 40, 'measured throughput differs from the configured target');
   assert.equal(s.targetFps, 44);
   assert.equal(s.intervalMs, 30_000);
   assert.equal(s.intervalSkipped, 120);
-  assert.equal(s.skippedFrames, 122);
+  assert.equal(s.skippedFramesTotal, 122);
+  assert.ok(!('skippedFrames' in s));
   assert.equal(s.windowFrames, 1000);
   assert.equal(s.lateFrames, 20);
   assert.equal(s.engineSampleAgeMs, 10);
@@ -96,12 +106,12 @@ test('performance summaries measure elapsed throughput without leaking health de
 });
 
 test('performance deltas reject startup, restart, fallback and stale or reset counters', () => {
-  const next = { ...timing, sampledAtMs: 31_000, totalFrames: 1240, skippedFrames: 10 };
+  const next = { ...timing, sampledAtMs: 31_000, totalFrames: 1240, skippedFramesTotal: 10 };
   assert.equal(sample(next).actualFps, null);
   for (const patch of [
     { startedAtMs: 2000 }, { thread: 'main' }, { running: false },
     { sampledAtMs: timing.sampledAtMs }, { sampledAtMs: -100 },
-    { totalFrames: 0 }, { skippedFrames: 0 }, { startedAtMs: undefined },
+    { totalFrames: 0 }, { skippedFramesTotal: 0 }, { startedAtMs: undefined },
   ]) {
     const s = sample({ ...next, ...patch }, timing);
     assert.equal(s.actualFps, null, JSON.stringify(patch));

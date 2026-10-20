@@ -392,33 +392,47 @@ test('each Hue bridge and orphaned lamp receives a preflight result', async () =
 // ── Engine ──────────────────────────────────────────────────────────────────
 
 import { checkEngine } from '../../src/server/preflight.ts';
+import { FrameStats } from '../../src/server/frame-clock.ts';
 
 const timing = { frames: 2640, rate: 44, renderMs: { p50: 0.2, p95: 0.8, max: 3 }, lateMs: { p50: 0, p95: 0.4, max: 2 } };
 
 test('an engine on its own thread, on time, passes', () => {
-  const r = checkEngine({ thread: 'worker', fellBack: null, lateFrames: 0, skippedFrames: 0, ...timing });
+  const r = checkEngine({ thread: 'worker', fellBack: null, lateFrames: 0, skippedFramesLastMinute: 0, skippedFramesTotal: 0, ...timing });
   assert.strictEqual(r.status, 'ok');
   assert.ok(r.detail);
 });
 
-test('dropped frames, or many late ones, are a warning with the fix for where it runs', () => {
-  const onMain = checkEngine({ thread: 'main', fellBack: null, lateFrames: 3, skippedFrames: 9, ...timing });
+test('frames dropped in the last minute, or many late ones, are a warning with the fix for where it runs', () => {
+  const onMain = checkEngine({ thread: 'main', fellBack: null, lateFrames: 3, skippedFramesLastMinute: 9, skippedFramesTotal: 9, ...timing });
   assert.strictEqual(onMain.status, 'warn');
   assert.ok(onMain.detail);
   assert.ok(onMain.fix);
-  const onWorker = checkEngine({ thread: 'worker', fellBack: null, lateFrames: 40, skippedFrames: 0, ...timing });
+  const onWorker = checkEngine({ thread: 'worker', fellBack: null, lateFrames: 40, skippedFramesLastMinute: 0, skippedFramesTotal: 0, ...timing });
   assert.strictEqual(onWorker.status, 'warn', 'forty of 2,640 is more than one in a hundred');
   assert.ok(onWorker.fix);
 });
 
+test('a stall at start-up stops warning once it is a minute old', () => {
+  let now = 0;
+  const stats = new FrameStats(1000 / 44, 60, () => now);
+  stats.skip(120, now);
+  const engine = () => ({ thread: 'worker', fellBack: null, rate: 44, ...stats.summary() });
+  now = 5_000;
+  assert.strictEqual(checkEngine(engine()).status, 'warn', 'just dropped');
+  now = 2 * 60_000;
+  const later = checkEngine(engine());
+  assert.strictEqual(later.status, 'ok', later.detail);
+  assert.doesNotMatch(later.detail, /120/);
+});
+
 test('the odd frame a little late is noted, not warned about', () => {
-  const r = checkEngine({ thread: 'worker', fellBack: null, lateFrames: 1, skippedFrames: 0, ...timing });
+  const r = checkEngine({ thread: 'worker', fellBack: null, lateFrames: 1, skippedFramesLastMinute: 0, skippedFramesTotal: 0, ...timing });
   assert.strictEqual(r.status, 'ok');
   assert.ok(r.detail);
 });
 
 test('an engine that fell back to the main thread says why', () => {
-  const r = checkEngine({ thread: 'main', fellBack: 'the engine thread could not start (exit 1)', lateFrames: 0, skippedFrames: 0, ...timing });
+  const r = checkEngine({ thread: 'main', fellBack: 'the engine thread could not start (exit 1)', lateFrames: 0, skippedFramesLastMinute: 0, skippedFramesTotal: 0, ...timing });
   assert.strictEqual(r.status, 'warn');
   assert.ok(r.detail);
 });

@@ -128,6 +128,8 @@ test('a stall longer than a couple of frames skips ahead instead of bursting', (
   assert.strictEqual(ticks[0].due, 1050);
   assert.strictEqual(ticks[1].due, 1060);
   assert.strictEqual(stats.skipped, 5);
+  assert.strictEqual(stats.summary().skippedFramesTotal, 5);
+  assert.strictEqual(stats.summary().skippedFramesLastMinute, 5);
 });
 
 test('a phase moves every deadline by the same amount', () => {
@@ -160,6 +162,27 @@ test('stats keep a fixed window', () => {
   assert.strictEqual(s.lateMs.max, 24);
   assert.strictEqual(s.lateMs.p50, 20, 'only the last ten remain');
   assert.strictEqual(new FrameStats(10, 0.1, () => now).summary().startedAtMs, 350, 'a new ticker has a distinct epoch');
+});
+
+test('a skip counts for a minute in the recent count and for good in the total', () => {
+  let now = 1000;
+  const stats = new FrameStats(10, 60, () => now);
+  stats.skip(5, now);
+  now = 31_000;
+  stats.skip(2, now);
+  let s = stats.summary();
+  assert.strictEqual(s.skippedFramesLastMinute, 7);
+  assert.strictEqual(s.skippedFramesTotal, 7);
+  assert.ok(!('skippedFrames' in s), 'no field left that reads as either');
+  now = 61_500;
+  s = stats.summary();
+  assert.strictEqual(s.skippedFramesLastMinute, 2, 'the start-up stall has aged out');
+  assert.strictEqual(s.skippedFramesTotal, 7);
+  stats.skip(1, now);
+  assert.strictEqual(stats.summary().skippedFramesLastMinute, 3, 'a slot reused a minute on starts from nothing');
+  now = 500_000;
+  assert.strictEqual(stats.summary().skippedFramesLastMinute, 0);
+  assert.strictEqual(stats.summary().skippedFramesTotal, 8);
 });
 
 /** Wait, a few milliseconds at a time, until `done()`; a hung loop fails after `limitMs`. */

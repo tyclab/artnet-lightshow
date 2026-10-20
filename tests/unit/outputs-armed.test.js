@@ -21,6 +21,7 @@ import { showStore } from '../../src/server/show-store.ts';
 import { checkOutputsArmed } from '../../src/server/preflight.ts';
 import { domainOf } from '../../src/server/protocol.ts';
 import { HUE_COLOR_PROFILE_ID } from '../../src/server/profiles.ts';
+import { buffer } from '../../src/server/log.ts';
 
 showStore.scheduleSave = () => {};   // never the real show file
 
@@ -210,17 +211,23 @@ function withSettings(fn) {
   });
 }
 
+/** What the outputs logged since `mark`: the arming lines, with their fields. */
+const armingLines = (mark) => buffer.since(mark).filter((e) => e.component === 'outputs').map((e) => ({ msg: e.msg, ...e.data }));
+
 test('startup ignores stored arming and subsequent saves toggle output', (t) => withSettings(() => {
   settings._values.outputs.armed = true;
-  const lines = [];
-  const log = t.mock.method(console, 'log', (...args) => { lines.push(args.join(' ')); });
+  const log = t.mock.method(console, 'log', () => {});
   const applied = [];
   const applier = createApplier(subsystems(applied));
+  const mark = buffer.last;
   try {
     applier.applyAll();
     assert.equal(isArmed(), false);
     assert.equal(settings.get('outputs.armed'), false, 'the stored value is put back to off');
-    assert.ok(lines.some((l) => /^\[outputs\] disarmed at start/.test(l)), `said so: ${lines.join(' | ')}`);
+    const boot = armingLines(mark);
+    assert.equal(boot.length, 1, JSON.stringify(boot));
+    assert.match(boot[0].msg, /^disarmed at start/);
+    assert.deepEqual([boot[0].armed, boot[0].via], [false, 'boot']);
     assert.deepEqual(applied, [], 'nothing to stop: the look the supervisor restores is left as it is');
 
     applier.applyChanged(settings.update({ outputs: { armed: true } }));
@@ -264,6 +271,47 @@ test('the routes arm, disarm and toggle; the state and the health report carry i
   assert.deepEqual((await call('POST', '/api/outputs/toggle')).body, { ok: true, armed: false });
   assert.deepEqual((await call('POST', '/api/outputs/disarm')).body, { ok: true, armed: false }, 'already off: nothing to do');
   assert.equal(applied.length, 2, 'stopped once per disarming, not per request');
+}));
+
+test('each arm and disarm is logged once, with where it came from and never a token', (t) => withSettings(async () => {
+  const app = express();
+  app.use(express.json());
+  const applier = createApplier(subsystems([]));
+  attachRoutes(app, { integrations: { broadcast() {} }, applier });
+  const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
+  t.after(() => new Promise((r) => server.close(r)));
+  const call = (method, path, headers = {}, body) => fetch(`http://127.0.0.1:${server.address().port}${path}`, {
+    method, headers: { 'X-Lightshow-Token': 'header-secret', authorization: 'Bearer auth-secret', ...headers, ...(body ? { 'content-type': 'application/json' } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  }).then((res) => res.json());
+  const mark = buffer.last;
+
+  await call('POST', '/api/outputs/arm?token=query-secret', { 'user-agent': 'HomeAssistant/2026.10.1 aiohttp/3.12', 'x-forwarded-for': '10.27.2.140' });
+  await call('POST', '/api/outputs/arm', { 'user-agent': 'HomeAssistant/2026.10.1 aiohttp/3.12' });
+  await call('POST', '/api/outputs/disarm', { 'user-agent': 'node', 'x-lightshow-client': 'companion/2.1.0' });
+  await call('PUT', '/api/settings', { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0)' }, { outputs: { armed: true } });
+  await call('POST', '/api/outputs/toggle', { 'user-agent': 'curl/8.9' });
+  applier.applyChanged(settings.update({ outputs: { armed: true } }), { via: 'schedule', reason: 'a test' });
+  applier.applyChanged(settings.update({ outputs: { armed: false } }));
+
+  const lines = armingLines(mark);
+  assert.deepEqual(lines.map((l) => [l.armed, l.via, l.route ?? null]), [
+    [true, 'rest', 'POST /api/outputs/arm'],
+    [false, 'companion', 'POST /api/outputs/disarm'],
+    [true, 'rest', 'PUT /api/settings'],
+    [false, 'rest', 'POST /api/outputs/toggle'],
+    [true, 'schedule', null],
+    [false, 'unknown', null],
+  ], 'one line per transition: the second arm changed nothing');
+  assert.match(lines[0].msg, /^armed/);
+  assert.match(lines[1].msg, /^disarmed/);
+  assert.equal(lines[0].remote, '127.0.0.1');
+  assert.equal(lines[0].userAgent, 'HomeAssistant/2026.10.1 aiohttp/3.12');
+  assert.equal(lines[0].forwardedFor, '10.27.2.140');
+  assert.equal(lines[1].client, 'companion/2.1.0');
+  assert.equal(lines[2].userAgent, 'Mozilla/5.0 (Windows NT 10.0)');
+  assert.equal(lines[4].reason, 'a test');
+  assert.doesNotMatch(JSON.stringify(lines), /secret/, 'no token, query string or auth header');
 }));
 
 // ── The state, the health report and the pre-show check ─────────────────────
