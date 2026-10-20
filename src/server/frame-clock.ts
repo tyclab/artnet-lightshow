@@ -7,6 +7,7 @@ const FRAME_MS = 1000 / FRAME_RATE;
 const MAX_BEHIND_FRAMES = 2;
 
 const STATS_WINDOW_S = 60;
+const SKIP_SLOTS = 60;
 
 // Allow timer slack because Node truncates both delay and loop-clock readings to milliseconds.
 const TIMER_SLACK_MS = 2;
@@ -41,7 +42,10 @@ export interface FrameSummary {
   lateMs: Spread;
   renderMs: Spread;
   lateFrames: number;
-  skippedFrames: number;
+  /** Since this ticker started: a stall at start-up stays in it for good. */
+  skippedFramesTotal: number;
+  /** Within the stats window, by the ticker's clock. */
+  skippedFramesLastMinute: number;
 }
 
 class FrameStats {
@@ -52,6 +56,9 @@ class FrameStats {
   declare _count: number;
   declare _next: number;
   declare skipped: number;
+  declare _skipSlotMs: number;
+  declare _skipSlot: Float64Array;
+  declare _skipCount: Float64Array;
   declare totalFrames: number;
   declare startedAtMs: number;
   declare now: () => number;
@@ -64,6 +71,9 @@ class FrameStats {
     this._count = 0;
     this._next = 0;
     this.skipped = 0;
+    this._skipSlotMs = (windowS * 1000) / SKIP_SLOTS;
+    this._skipSlot = new Float64Array(SKIP_SLOTS).fill(-Infinity);
+    this._skipCount = new Float64Array(SKIP_SLOTS);
     this.totalFrames = 0;
     this.now = now;
     this.startedAtMs = now();
@@ -77,21 +87,44 @@ class FrameStats {
     this.totalFrames++;
   }
 
+  skip(frames: number, at = this.now()): void {
+    this.skipped += frames;
+    const slot = Math.floor(at / this._skipSlotMs);
+    const i = ((slot % SKIP_SLOTS) + SKIP_SLOTS) % SKIP_SLOTS;
+    if (this._skipSlot[i] !== slot) {
+      this._skipSlot[i] = slot;
+      this._skipCount[i] = 0;
+    }
+    this._skipCount[i] += frames;
+  }
+
+  recentSkipped(at = this.now()): number {
+    const slot = Math.floor(at / this._skipSlotMs);
+    let sum = 0;
+    for (let i = 0; i < SKIP_SLOTS; i++) {
+      const age = slot - this._skipSlot[i];
+      if (age >= 0 && age < SKIP_SLOTS) sum += this._skipCount[i];
+    }
+    return sum;
+  }
+
   summary(): FrameSummary {
     const n = this._count;
     const late = Array.from(this._late.subarray(0, n)).sort((a, b) => a - b);
     const work = Array.from(this._work.subarray(0, n)).sort((a, b) => a - b);
     let lateFrames = 0;
     for (const v of late) if (v > this.periodMs / 2) lateFrames++;
+    const sampledAtMs = this.now();
     return {
       frames: n,
       totalFrames: this.totalFrames,
       startedAtMs: this.startedAtMs,
-      sampledAtMs: this.now(),
+      sampledAtMs,
       lateMs: { p50: round2(quantile(late, 0.5)), p95: round2(quantile(late, 0.95)), max: round2(late[n - 1] || 0) },
       renderMs: { p50: round2(quantile(work, 0.5)), p95: round2(quantile(work, 0.95)), max: round2(work[n - 1] || 0) },
       lateFrames,
-      skippedFrames: this.skipped,
+      skippedFramesTotal: this.skipped,
+      skippedFramesLastMinute: this.recentSkipped(sampledAtMs),
     };
   }
 }
@@ -136,7 +169,7 @@ function createTicker({
     const t = now();
     if (t - due > MAX_BEHIND_FRAMES * periodMs) {
       const caughtUp = Math.floor((t - epoch - phaseMs) / periodMs);
-      stats.skipped += caughtUp - index;
+      stats.skip(caughtUp - index, t);
       index = caughtUp;
       due = epoch + phaseMs + index * periodMs;
     }

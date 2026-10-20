@@ -80,8 +80,10 @@ let histogram: ReturnType<typeof monitorEventLoopDelay> | null = null;
 let lastWindow: EventLoopDelay | null = null;
 const startedAt = Date.now();
 
-const ms = (ns: number) => Math.round((ns / 1e6) * 10) / 10;
-const snapshot = (h: NonNullable<typeof histogram>): EventLoopDelay | null => (h.count
+// Each sample is the gap between ticks of a timer this often, so the timer's own period is not delay.
+export const LOOP_RESOLUTION_MS = 10;
+const ms = (ns: number) => Math.max(0, Math.round((ns / 1e6 - LOOP_RESOLUTION_MS) * 10) / 10);
+export const loopDelayOf = (h: Pick<NonNullable<typeof histogram>, 'count' | 'percentile' | 'max'>): EventLoopDelay | null => (h.count
   ? { p50Ms: ms(h.percentile(50)), p99Ms: ms(h.percentile(99)), maxMs: ms(h.max) } : null);
 
 const metric = (value: number | undefined): number | null => Number.isFinite(value) ? value! : null;
@@ -97,7 +99,7 @@ export function performanceSample(
 ) {
   const elapsed = (engine.sampledAtMs ?? NaN) - (previous?.sampledAtMs ?? NaN);
   const frames = (engine.totalFrames ?? NaN) - (previous?.totalFrames ?? NaN);
-  const skipped = (engine.skippedFrames ?? NaN) - (previous?.skippedFrames ?? NaN);
+  const skipped = (engine.skippedFramesTotal ?? NaN) - (previous?.skippedFramesTotal ?? NaN);
   const continuous = engine.running && previous?.running && engine.thread === previous.thread
     && metric(engine.startedAtMs) !== null && engine.startedAtMs === previous.startedAtMs
     && Number.isFinite(elapsed) && elapsed > 0 && frames >= 0 && skipped >= 0;
@@ -113,7 +115,7 @@ export function performanceSample(
     engineSampleAgeMs: metric(engine.sampledAtMs) === null ? null : Math.max(0, Math.round(nowMs - engine.sampledAtMs!)),
     windowFrames: metric(engine.frames),
     lateFrames: metric(engine.lateFrames),
-    skippedFrames: metric(engine.skippedFrames),
+    skippedFramesTotal: metric(engine.skippedFramesTotal),
     renderP50Ms: metric(engine.renderMs?.p50),
     renderP95Ms: metric(engine.renderMs?.p95),
     renderMaxMs: metric(engine.renderMs?.max),
@@ -131,12 +133,12 @@ export function performanceSample(
 /** Watch the main thread's event loop from now on, a window at a time. */
 export function startHealthMonitor(): void {
   if (histogram) return;
-  histogram = monitorEventLoopDelay({ resolution: 10 });
+  histogram = monitorEventLoopDelay({ resolution: LOOP_RESOLUTION_MS });
   histogram.enable();
   const h = histogram;
   let previous: EngineStatus | null = null;
   setInterval(() => {
-    lastWindow = snapshot(h) || lastWindow;
+    lastWindow = loopDelayOf(h) || lastWindow;
     h.reset();
     try {
       const engine = engineStatus();
@@ -149,7 +151,7 @@ export function startHealthMonitor(): void {
 
 /** The event loop's delay over the last window (or this one, before the first ends). */
 function eventLoopDelay(): EventLoopDelay | null {
-  return lastWindow || (histogram ? snapshot(histogram) : null);
+  return lastWindow || (histogram ? loopDelayOf(histogram) : null);
 }
 
 let version: string | null = null;

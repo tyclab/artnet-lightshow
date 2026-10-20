@@ -270,7 +270,7 @@ test('commands decide alike on both threads: the same results, then the same byt
 const FAKE_WORKER = `
 import { parentPort } from 'node:worker_threads';
 let commands = 0;
-const stats = () => parentPort.postMessage({ type: 'stats', stats: { frames: commands, lateMs: { p50: 0, p95: 0, max: 0 }, renderMs: { p50: 0, p95: 0, max: 0 }, lateFrames: 0, skippedFrames: 0 } });
+const stats = () => parentPort.postMessage({ type: 'stats', stats: { frames: commands, lateMs: { p50: 0, p95: 0, max: 0 }, renderMs: { p50: 0, p95: 0, max: 0 }, lateFrames: 0, skippedFramesTotal: 0 } });
 parentPort.on('message', (msg) => {
   if (msg.type === 'command') {
     commands++;

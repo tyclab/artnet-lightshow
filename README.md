@@ -1400,7 +1400,13 @@ it: by the backend's id (`auto_null`) as well as by name.
 
 `/healthz` is an unauthenticated liveness probe. `/api/health` reports
 `ok`, `degraded` or `failing`, problems, uptime, engine timing, memory, outputs,
-supervisor and effect/voice/sequence counts. Disarmed is informational.
+supervisor and effect/voice/sequence counts. Disarmed is informational. In
+`engine`, `skippedFramesLastMinute` counts frames dropped in the last 60 s and
+`skippedFramesTotal` every frame dropped since the engine's ticker started; the
+pre-show engine check and the Settings → Engine note read the last minute only,
+so a stall at start-up stops warning a minute later. `eventLoop` gives the
+main thread's delay in milliseconds over the last 30 s window: the excess over
+the 10 ms sampling timer, so an idle loop reads 0.
 
 Logs appear in the terminal, the app's Log drawer and `logs/lightshow.log`.
 Files are JSON lines, rotated at 10 MB with three retained rotations.
@@ -1414,9 +1420,11 @@ memory bytes and whether outputs are armed. Rates use monotonic elapsed time;
 `actualFps`, `intervalMs` and `intervalSkipped` are null on the first sample,
 after a ticker restart or when a worker report has not advanced. Check
 `engineSampleAgeMs` for stale worker reports. `windowFrames` and `lateFrames`
-describe the last 2,640 rendered frames; `skippedFrames` is cumulative for the
-current ticker, while `intervalSkipped` covers `intervalMs`. These are engine
-timings, not confirmation that a device displayed every frame.
+describe the last 2,640 rendered frames; `skippedFramesTotal` is cumulative for
+the current ticker, while `intervalSkipped` covers `intervalMs`.
+`eventLoopP50Ms`, `eventLoopP99Ms` and `eventLoopMaxMs` exclude the 10 ms
+sampling interval. These are engine timings, not confirmation that a device
+displayed every frame.
 
 The existing Docker log collector can query these records without another
 endpoint or credential. For example, in Loki:

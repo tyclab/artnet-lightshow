@@ -263,11 +263,11 @@ function checkEngine(status: EngineStatus = engineStatus(), { standalone = false
     ? ` ${status.rate} frames a second; ${status.renderMs.p95} ms to render a frame (p95), `
       + `${status.lateMs.p95} ms late at most on 19 frames of 20.`
     : '';
-  const late = (status.lateFrames || 0) + (status.skippedFrames || 0);
+  const late = (status.lateFrames || 0) + (status.skippedFramesLastMinute || 0);
   // A dropped frame is worth a warning; a frame that went out a little late
   // now and then (a laptop waking a core, a garbage collection) is not, until
   // it is one in a hundred.
-  const worrying = (status.skippedFrames || 0) > 0
+  const worrying = (status.skippedFramesLastMinute || 0) > 0
     || (status.lateFrames || 0) > Math.max(2, 0.01 * (status.frames || 0));
 
   if (status.fellBack) {

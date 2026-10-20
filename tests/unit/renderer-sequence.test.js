@@ -375,7 +375,7 @@ test("worker sequence output matches the main thread", async () => {
 const COUNTING_WORKER = `
 import { parentPort } from 'node:worker_threads';
 let tables = 0, snapshots = 0, mismatched = 0, revision = null;
-const report = () => parentPort.postMessage({ type: 'stats', stats: { frames: tables, lateFrames: mismatched, skippedFrames: snapshots,
+const report = () => parentPort.postMessage({ type: 'stats', stats: { frames: tables, lateFrames: mismatched, skippedFramesTotal: snapshots,
   lateMs: { p50: revision ?? -1, p95: 0, max: 0 }, renderMs: { p50: 0, p95: 0, max: 0 } } });
 parentPort.on('message', (msg) => {
   if (msg.type === 'sequence') {
@@ -414,15 +414,15 @@ test('the table is posted once per revision, not per frame', async () => {
     delete process.env.COUNTING_WORKER_CRASH;
     const stats = () => engineStatus();
     // One table, then a snapshot every control tick naming it.
-    assert.ok(await until(() => stats().skippedFrames >= 10));
+    assert.ok(await until(() => stats().skippedFramesTotal >= 10));
     assert.equal(stats().frames, 1, 'one table for many frames');
     assert.equal(stats().lateFrames, 0, 'every snapshot came after the table it names');
     assert.equal(renderInput().sequenceRevision, 1);
     // An edit: one more.
     feed = { table: catalogueTable(2), transport: { startBeat: 0, loop: null, generation: 0 } };
     assert.ok(await until(() => stats().lateMs.p50 === 2));
-    const at = stats().skippedFrames;
-    assert.ok(await until(() => stats().skippedFrames >= at + 10));
+    const at = stats().skippedFramesTotal;
+    assert.ok(await until(() => stats().skippedFramesTotal >= at + 10));
     assert.equal(stats().frames, 2);
     // A source that hands over a new object of the same revision posts nothing.
     feed = { ...feed, table: { ...feed.table } };
@@ -435,7 +435,7 @@ test('the table is posted once per revision, not per frame', async () => {
     assert.equal(stats().lateFrames, 0);
     // The worker dies; the next one is sent the table it lacks, though its revision is old news here.
     feed = { table: catalogueTable(7), transport: null };
-    assert.ok(await until(() => engineStatus().thread === 'worker' && stats().frames === 1 && stats().lateMs.p50 === 7 && stats().skippedFrames >= 3));
+    assert.ok(await until(() => engineStatus().thread === 'worker' && stats().frames === 1 && stats().lateMs.p50 === 7 && stats().skippedFramesTotal >= 3));
     assert.equal(stats().lateFrames, 0);
     // Another source (a sequencer of its own) whose table carries the same revision: it is sent all the same.
     const other = { table: catalogueTable(7), transport: null };
