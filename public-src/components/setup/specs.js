@@ -216,7 +216,13 @@ export const ANALYSIS = {
         + 'the card has room for it. A pass that still runs out of memory is run again on the CPU. Changing it restarts '
         + 'the analyser.' },
     { path: 'analysis.analyzerTimeoutMs', label: 'Analysis Timeout', type: 'number', unit: 'ms', min: 60000, max: 3600000,
-      help: 'How long one track may analyse before the worker is considered wedged and recycled.' },
+      help: 'How long one track may analyse before the worker is considered wedged and recycled. A long track gets '
+        + 'longer: see the next field.' },
+    { path: 'analysis.analyzerTimeoutMsPerSec', label: 'Timeout per Second of Audio', type: 'number', unit: 'ms',
+      min: 0, max: 10000,
+      help: 'A track whose length is known may analyse for a minute plus this much per second of it, when that is more '
+        + 'than the Analysis Timeout. A CPU takes up to about 1200 ms a second on a long track. 0 gives every track the '
+        + 'Analysis Timeout.' },
     { path: 'analysis.downloadTimeoutMs', label: 'Download Timeout', type: 'number', unit: 'ms', min: 10000, max: 3600000,
       help: 'How long yt-dlp may run before it is killed.' },
     { path: 'analysis.localRoot', label: 'Library Folder', type: 'text',

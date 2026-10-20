@@ -128,6 +128,8 @@ const DEFAULTS: Settings = {
   },
   analysis: {
     analyzerTimeoutMs: 600000,
+    // Per second of audio: 1.15 s was tychome's slowest, a 900 s track under memory pressure.
+    analyzerTimeoutMsPerSec: 1500,
     downloadTimeoutMs: 300000,
     localRoot: '',
     pythonPath: '',
@@ -299,6 +301,7 @@ const schema = z.object({
   analysis: z.object({
     // Keep the timeout above a minute so ordinary analysis jobs can complete.
     analyzerTimeoutMs: z.number().int().min(60000).max(3600000),
+    analyzerTimeoutMsPerSec: z.number().int().min(0).max(10000),
     downloadTimeoutMs: z.number().int().min(10000).max(3600000),
     localRoot: z.string().max(4096),
     // Restrict interpreter names so the setting cannot select an arbitrary executable.

@@ -110,6 +110,15 @@ One request in flight at a time — the analysis already saturates the CPU acros
 BLAS and its own thread pools, so serving two would make both slower.
 `src/analyzer-worker.ts` owns the queue, the priority ordering and the timeout.
 
+The timeout grows with the track: a request may run for
+`max(analysis.analyzerTimeoutMs, 60 s + analysis.analyzerTimeoutMsPerSec × length)`,
+600 s and 1500 ms per second of audio by default, so a 900 s track gets 1410 s.
+The minute is a fresh worker's warm-up, which runs inside the first request's
+limit. The length is the WAV's own, read from its header (every download and
+CDJ file arrives as one), else the length the player reported; a file with
+neither, such as an operator's own MP3, gets `analyzerTimeoutMs`. A worker that
+hangs is still killed at the limit and the queue moves on.
+
 Requests are served by priority band — `current`, then `high`, then `normal` —
 and within a band by playback-queue position: the order the listener will hear
 the tracks in is the order they are analysed in, so prefetching five deep never
@@ -1008,8 +1017,9 @@ checkpoint pages it can drop and reread.
 
 At 3.1 GB MuQ's 3.7 GB of mapped weights are read back from disk as they are
 used, which is most of the time a long track takes there; on the 32 GB machine
-it is the CPU. Either way fifteen minutes of audio takes longer than the
-worker's 600 s timeout. The 32 GB machine's 210 s and 561 s runs are without
+it is the CPU. Either way fifteen minutes of audio takes longer than 600 s, the
+worker's fixed timeout before it grew with the track's length: about 1.15 s a
+second of audio is the slowest measured, and the default allows 1.5. The 32 GB machine's 210 s and 561 s runs are without
 the 16 MB mapping threshold below, which took 0.5 GB off tychome's 561 s peak.
 
 What is still per second of audio is what the track is: the decoded source and

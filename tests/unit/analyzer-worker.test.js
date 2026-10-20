@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import AnalyzerWorker from '../../src/analyzer-worker.ts';
-import { settings } from '../../src/server/settings.ts';
+import AnalyzerWorker, { analysisTimeoutMs } from '../../src/analyzer-worker.ts';
+import { wavDurationSec } from '../../src/audio-file.ts';
+import { settings, DEFAULTS } from '../../src/server/settings.ts';
 
 const FAKE = path.join(import.meta.dirname, '..', 'helpers', 'fake-analyzer.js');
 const worker = (mode, opts) => {
@@ -173,6 +176,69 @@ test('a stale response is discarded, not delivered to the wrong caller', async (
   try {
     // The reply carries the wrong id, so the caller must not receive it.
     await assert.rejects(w.analyze('/tmp/a.wav', null));
+  } finally { w.shutdown(); }
+});
+
+// A WAV of `seconds` at 100 bytes a second, with the INFO chunk ffmpeg writes before the samples.
+function writeWav(seconds, { list = true } = {}) {
+  const fmt = Buffer.alloc(24);
+  fmt.write('fmt ', 0, 'ascii');
+  fmt.writeUInt32LE(16, 4);
+  fmt.writeUInt16LE(1, 8);
+  fmt.writeUInt16LE(1, 10);
+  fmt.writeUInt32LE(100, 12);
+  fmt.writeUInt32LE(100, 16);
+  fmt.writeUInt16LE(1, 20);
+  fmt.writeUInt16LE(8, 22);
+  const info = Buffer.alloc(34);
+  info.write('LIST', 0, 'ascii');
+  info.writeUInt32LE(26, 4);
+  info.write('INFOISFT', 8, 'ascii');
+  info.writeUInt32LE(13, 16);
+  info.write('Lavf61.7.100', 20, 'ascii');
+  const data = Buffer.alloc(8 + seconds * 100);
+  data.write('data', 0, 'ascii');
+  data.writeUInt32LE(seconds * 100, 4);
+  const body = Buffer.concat([Buffer.from('WAVE', 'ascii'), fmt, ...(list ? [info] : []), data]);
+  const head = Buffer.alloc(8);
+  head.write('RIFF', 0, 'ascii');
+  head.writeUInt32LE(body.length, 4);
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'analyzer-wav-')), `${seconds}s.wav`);
+  fs.writeFileSync(file, Buffer.concat([head, body]));
+  return file;
+}
+
+// A 900 s track took 1034 s on tychome's CPU, and the fixed 600 s limit killed
+// it there every time, however healthy the worker was.
+test('a long track is given time in proportion to its length', () => {
+  assert.strictEqual(analysisTimeoutMs(600000, 1500, 900), 60000 + 1500 * 900);
+  assert.strictEqual(analysisTimeoutMs(600000, 1500, 210), 600000, 'a short track keeps the configured limit');
+  assert.strictEqual(analysisTimeoutMs(2000000, 1500, 900), 2000000, 'which is never cut');
+  for (const unknown of [null, undefined, 0, -5, NaN, Infinity]) {
+    assert.strictEqual(analysisTimeoutMs(600000, 1500, unknown), 600000, String(unknown));
+  }
+  assert.strictEqual(analysisTimeoutMs(600000, 0, 900), 600000, '0 turns the scaling off');
+  const { analyzerTimeoutMs, analyzerTimeoutMsPerSec } = DEFAULTS.analysis;
+  assert.ok(analysisTimeoutMs(analyzerTimeoutMs, analyzerTimeoutMsPerSec, 900) > 1.3 * 1034000,
+    'the defaults leave tychome\'s 900 s run 30 % to spare');
+});
+
+test('a WAV\'s length is read from its header', () => {
+  assert.strictEqual(wavDurationSec(writeWav(900)), 900);
+  assert.strictEqual(wavDurationSec(writeWav(3, { list: false })), 3);
+  assert.strictEqual(wavDurationSec('/no/such/file.wav'), null);
+  assert.strictEqual(wavDurationSec(path.join(import.meta.dirname, 'analyzer-worker.test.js')), null, 'not a WAV');
+  assert.strictEqual(wavDurationSec(null), null);
+});
+
+test('the limit follows the file\'s own length, else the one the player gave, and a stuck worker still times out', async () => {
+  const seen = [];
+  const w = worker('hang', { timeoutMs: (durationSec) => { seen.push(durationSec); return 300; } });
+  try {
+    await assert.rejects(w.analyze(writeWav(900), 240), /timed out/);
+    await assert.rejects(w.analyze('/tmp/not-here.mp3', 240), /timed out/);
+    await assert.rejects(w.analyze('/tmp/not-here.mp3', null), /timed out/);
+    assert.deepStrictEqual(seen, [900, 240, null]);
   } finally { w.shutdown(); }
 });
 
