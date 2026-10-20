@@ -22,7 +22,7 @@ import { MIN_UNIVERSE, MAX_UNIVERSE } from './sacn.ts';
 import { listEntertainmentConfigs } from './hue.ts';
 import { wledClient } from './wled.ts';
 import { runsOf, pixelWidth } from './ddp-routes.ts';
-import { OPENRGB_PORT, openrgbClient } from './openrgb.ts';
+import { OPENRGB_PORT, matchSameName, openrgbClient } from './openrgb.ts';
 import { openrgbOutputOf } from './openrgb-routes.ts';
 import { unitCount } from '../shared/rig.ts';
 import type { WledClient } from './wled.ts';
@@ -436,15 +436,16 @@ async function checkOpenRgb(client: Pick<OpenRgbClient, 'discover'> = openrgbCli
     }
     const outputs = server.fixtures.map((fix) => ({ fix, output: openrgbOutputOf(fix) as NonNullable<ReturnType<typeof openrgbOutputOf>> }));
     for (const { fix, output } of outputs) {
-      // A device patched under a name is the one of its name, in order, as
-      // the transmitter finds it (openrgb.ts resolve); one patched by number
-      // alone is that number.
+      // A device patched under a name is the one of its name at its
+      // location, else in order, as the transmitter finds it (openrgb.ts
+      // resolve); one patched by number alone is that number.
       let device = output.name ? undefined : devices.find((d) => d.index === output.device);
       let moved = '';
       if (output.name) {
         const named = devices.filter((d) => d.name === output.name);
-        const siblings = outputs.filter((o) => o.output.name === output.name).map((o) => o.output.device).sort((a, b) => a - b);
-        device = named[Math.max(0, siblings.indexOf(output.device))];
+        const siblings = outputs.filter((o) => o.output.name === output.name).map((o) => o.output).sort((a, b) => a.device - b.device);
+        const index = matchSameName(siblings.map((o) => o.location), named)[siblings.indexOf(output)];
+        device = named.find((d) => d.index === index);
         if (!device) {
           wrong.push(`"${fix.label}" (${output.name}, #${output.device}) is not among the ${devices.length} devices at ${where(server)}`);
           continue;

@@ -5,11 +5,11 @@ import { MAX_UNIVERSES } from '../universes.ts';
 import { INTERNAL_UNIVERSE } from '../../shared/placement.ts';
 import { ddpConflict } from '../ddp-routes.ts';
 import { openrgbOutputOf } from '../openrgb-routes.ts';
-import { OPENRGB_PORT } from '../openrgb.ts';
+import { OPENRGB_PORT, matchSameName } from '../openrgb.ts';
 import type { OpenRgbDevice } from '../openrgb.ts';
 import { openrgbProfile } from '../openrgb-devices.ts';
 import { showStore } from '../show-store.ts';
-import { openrgbAddSchema, openrgbHostSchema, validate } from '../validation.ts';
+import { OPENRGB_LOCATION_MAX, openrgbAddSchema, openrgbHostSchema, validate } from '../validation.ts';
 import { messageOf, statusOf } from '../../errors.ts';
 import type { Express } from 'express';
 import type { Fixture, OpenRgbOutput, Profile } from '../../types/rig.ts';
@@ -29,19 +29,19 @@ export function attachOpenRgbRoutes(app: Express, ctx: RouteContext): void {
   const { integrations, openrgb } = ctx;
 
   /**
-   * The fixture patched on a device the server lists, if any: the k-th
-   * fixture of the device's name for the k-th device of that name, as the
-   * transmitter finds them (openrgb.ts resolve), or the one patched by
-   * number alone.
+   * The fixture patched on a device the server lists, if any: of the
+   * fixtures of the device's name, the one at its location, else the k-th
+   * for the k-th device of that name, as the transmitter finds them
+   * (openrgb.ts resolve); or the one patched by number alone.
    */
   const patchedOn = (host: string, port: number, listed: OpenRgbDevice[]) => {
     const mine = state.fixtures
       .map((fix) => ({ fix, output: openrgbOutputOf(fix) as OpenRgbOutput }))
       .filter(({ output }) => output && output.host.toLowerCase() === host.toLowerCase() && (output.port ?? OPENRGB_PORT) === port);
     return (device: OpenRgbDevice): Fixture | undefined => {
-      const k = listed.filter((d) => d.name === device.name).findIndex((d) => d.index === device.index);
       const siblings = mine.filter(({ output }) => output.name === device.name).sort((a, b) => a.output.device - b.output.device);
-      return siblings[k]?.fix ?? mine.find(({ output }) => !output.name && output.device === device.index)?.fix;
+      const matched = matchSameName(siblings.map(({ output }) => output.location), listed.filter((d) => d.name === device.name));
+      return siblings[matched.indexOf(device.index)]?.fix ?? mine.find(({ output }) => !output.name && output.device === device.index)?.fix;
     };
   };
 
@@ -95,7 +95,8 @@ export function attachOpenRgbRoutes(app: Express, ctx: RouteContext): void {
       // No DMX address: the server places each on universes of its own.
       const draft: Fixture[] = [];
       for (const { device, profile } of built) {
-        const output: OpenRgbOutput = { protocol: 'openrgb', host, ...(port === OPENRGB_PORT ? {} : { port }), device: device.index, name: device.name, leds: device.leds };
+        const located = device.location && device.location.length <= OPENRGB_LOCATION_MAX ? { location: device.location } : {};
+        const output: OpenRgbOutput = { protocol: 'openrgb', host, ...(port === OPENRGB_PORT ? {} : { port }), device: device.index, name: device.name, ...located, leds: device.leds };
         draft.push({
           id: -1 - draft.length,
           label: (label ? (built.length === 1 ? label : `${label} · ${device.name}`) : device.name).slice(0, 64),

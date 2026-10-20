@@ -71,12 +71,15 @@ const ddpOutput = z.object({
       z.number().int().min(1).max(4096), z.number().int().min(1).max(4096),
     ])).max(MAX_CELLS_PER_FIXTURE).optional(),
   }).strict();
+const OPENRGB_LOCATION_MAX = 512;
 const openrgbOutput = z.object({
   protocol: z.literal('openrgb'),
   host: z.string().regex(HOSTNAME_RE, 'is not a hostname or an IPv4 address'),
   port: z.number().int().min(1).max(65535).optional(),
   device: z.number().int().min(0).max(4095),
   name: z.string().trim().min(1).max(128).optional(),
+  // Matched exactly against what the server says, so never trimmed.
+  location: z.string().min(1).max(OPENRGB_LOCATION_MAX).optional(),
   leds: z.number().int().min(1).max(MAX_CELLS_PER_FIXTURE),
 }).strict();
 const deviceOutput = z.discriminatedUnion('protocol', [ddpOutput, openrgbOutput]);
@@ -463,6 +466,7 @@ export {
   midiConnectSchema,
   openrgbHostSchema,
   openrgbAddSchema,
+  OPENRGB_LOCATION_MAX,
   huePairSchema,
   hueAddSchema,
   hueDisconnectSchema,

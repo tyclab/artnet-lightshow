@@ -9,6 +9,7 @@ export interface OpenRgbRoute {
   port: number;
   device: number;
   name?: string;
+  location?: string;
   leds: number;
   parts: { universe: number; from: number; bytes: number }[];
   width: number;
@@ -28,7 +29,8 @@ function openrgbRoutes(fixtures: readonly Fixture[], profileOf: ProfileOf, unive
       .map((part) => ({ universe: part.universe, from: part.first - 1, bytes: part.last - part.first + 1 }));
     const map = profile.cells && profile.cells.length ? profile.cells[0].channelMap : profile.channelMap;
     routes.push({
-      host: output.host, port: output.port ?? OPENRGB_PORT, device: output.device, ...(output.name ? { name: output.name } : {}), leds: output.leds, parts,
+      host: output.host, port: output.port ?? OPENRGB_PORT, device: output.device, ...(output.name ? { name: output.name } : {}),
+      ...(output.location ? { location: output.location } : {}), leds: output.leds, parts,
       width: pixelWidth(profile) || profile.channelCount,
       rgb: [map.red ?? -1, map.green ?? -1, map.blue ?? -1],
     });

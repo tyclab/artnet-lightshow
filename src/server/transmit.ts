@@ -353,7 +353,7 @@ function createTransmitter({ wires = DEFAULT_WIRES, now = () => performance.now(
   }
 
   function openrgbTarget(route: OpenRgbRoute): OpenRgbTarget {
-    return { host: route.host, port: route.port, device: route.device, ...(route.name ? { name: route.name } : {}), leds: route.leds };
+    return { host: route.host, port: route.port, device: route.device, ...(route.name ? { name: route.name } : {}), ...(route.location ? { location: route.location } : {}), leds: route.leds };
   }
 
   function hangUpOpenRgb(before: Map<string, OpenRgbRoute>, after: Map<string, OpenRgbRoute>): void {
