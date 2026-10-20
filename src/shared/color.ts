@@ -32,9 +32,22 @@ const ACHROMATIC = 0.02;
 
 const inGamut = (rgb: Triple): boolean => rgb.every((v) => v >= -1e-6 && v <= 1 + 1e-6);
 
-function toLch(col: Colour): { L: number; C: number; h: number } {
+function toLch(col: { r?: number; g?: number; b?: number }): { L: number; C: number; h: number } {
   const [L, a, b] = toOklab((col.r || 0) / 255, (col.g || 0) / 255, (col.b || 0) / 255);
   return { L, C: Math.hypot(a, b), h: Math.atan2(b, a) };
+}
+
+// Linear 0..1 RGB; reduce chroma instead of clipping channels so out-of-gamut colours keep their hue.
+function fromLch(L: number, C: number, h: number): Triple {
+  const rgb = fromOklab(L, C * Math.cos(h), C * Math.sin(h));
+  if (inGamut(rgb)) return rgb;
+  let lo = 0;
+  let hi = C;
+  for (let i = 0; i < 14; i++) {
+    const mid = (lo + hi) / 2;
+    if (inGamut(fromOklab(L, mid * Math.cos(h), mid * Math.sin(h)))) lo = mid; else hi = mid;
+  }
+  return fromOklab(L, lo * Math.cos(h), lo * Math.sin(h));
 }
 
 // Cache endpoint conversions because each frame samples the same colour pair many times.
@@ -57,21 +70,7 @@ function colourMixer(from: Colour, to: Colour): (t: number) => EmitterLevels {
   return (t: number): EmitterLevels => {
     if (t <= 0) return { r: from.r || 0, g: from.g || 0, b: from.b || 0, ...dies(0) };
     if (t >= 1) return { r: to.r || 0, g: to.g || 0, b: to.b || 0, ...dies(1) };
-    const L = lerp(A.L, B.L, t);
-    const h = hueA + dh * t;
-    let C = lerp(A.C, B.C, t);
-    let rgb = fromOklab(L, C * Math.cos(h), C * Math.sin(h));
-    // Reduce chroma instead of clipping channels so out-of-gamut colours keep their hue.
-    if (!inGamut(rgb)) {
-      let lo = 0;
-      let hi = C;
-      for (let i = 0; i < 14; i++) {
-        const mid = (lo + hi) / 2;
-        if (inGamut(fromOklab(L, mid * Math.cos(h), mid * Math.sin(h)))) lo = mid; else hi = mid;
-      }
-      C = lo;
-      rgb = fromOklab(L, C * Math.cos(h), C * Math.sin(h));
-    }
+    const rgb = fromLch(lerp(A.L, B.L, t), lerp(A.C, B.C, t), hueA + dh * t);
     const [r, g, b] = rgb.map((v) => Math.round(Math.max(0, Math.min(1, v)) * 255));
     return { r, g, b, ...dies(t) };
   };
@@ -82,6 +81,9 @@ function chromaOf(col: Colour): number {
 }
 
 export {
+  ACHROMATIC,
   colourMixer,
   chromaOf,
+  fromLch,
+  toLch,
 };

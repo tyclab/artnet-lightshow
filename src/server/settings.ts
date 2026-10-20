@@ -11,6 +11,7 @@ import { HUE_BRIDGE_ID_RE } from '../shared/placement.ts';
 import { HD_MASTER_DEFAULTS } from '../shared/effects/types.ts';
 import { STROBE_DEFAULTS, STROBE_PARAMS_SCHEMA } from '../shared/effects/strobe.ts';
 import { hexColour } from './validation.ts';
+import { PICTURE_GRADE_DEFAULTS, pictureGradeSchema } from '../shared/picture-grade.ts';
 
 // Store secrets with mode 0600; configuration must not be committed or sourced from legacy environment variables.
 
@@ -117,6 +118,7 @@ const DEFAULTS: Settings = {
   },
   picture: {
     source: 'effects',
+    grade: { ...PICTURE_GRADE_DEFAULTS },
   },
   setup: {
     completed: false,
@@ -286,6 +288,7 @@ const schema = z.object({
   }).strict(),
   picture: z.object({
     source: z.enum(['effects', 'visualizer']),
+    grade: pictureGradeSchema,
   }).strict(),
   setup: z.object({
     completed: z.boolean(),

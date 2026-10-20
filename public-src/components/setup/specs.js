@@ -241,7 +241,8 @@ export const SHOW = {
       help: 'What the base layer paints from. The visualizer picture arrives from the browser helper\'s --room mode: one '
         + 'colour per lamp cell, read from the picture at the cell\'s place on the plan, so a sweep across the screen '
         + 'sweeps across the room. Voices, pads, overrides and the matrix\'s own pixel feed stay on top either way, and '
-        + 'two seconds without a frame shows the effects again. Also switchable in Perform.' },
+        + 'two seconds without a frame shows the effects again. Also switchable in Perform, which grades the '
+        + 'picture while it paints: less white, more colour, a brightness ceiling and a lower one for Hue lamps.' },
     { path: 'outputs.armed', label: 'Outputs Armed', type: 'toggle',
       help: 'Nothing leaves the machine until a party arms it: disarmed, the show renders for the preview and the '
         + 'stage view, but no Art-Net, sACN or DDP frame goes out and every Hue bridge is handed back to its app, so '

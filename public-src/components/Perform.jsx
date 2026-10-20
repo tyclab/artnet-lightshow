@@ -17,6 +17,7 @@ import { AudioMeters } from './AudioMeters.jsx';
 import { StrobesOff } from './Photosensitivity.jsx';
 import { TempoScale } from './TempoScale.jsx';
 import { VisualizerColours } from './VisualizerColours.jsx';
+import { PictureGrade } from './PictureGrade.jsx';
 import { BpmCapture } from './BpmCapture.jsx';
 import { LiveAutomation } from './LiveAutomation.jsx';
 
@@ -211,6 +212,7 @@ export function Perform() {
           </div>
           <PaletteStrip />
           <VisualizerColours />
+          <PictureGrade />
           <HardwareFit />
         </div>
         <div class="perform-side">

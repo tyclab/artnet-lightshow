@@ -7,6 +7,7 @@ import { FIXTURE_GROUPS } from '../shared/stage.ts';
 import { EMITTERS, PIXEL_MAPS, MAX_CELLS_PER_FIXTURE, MAX_PROFILE_CHANNELS } from '../shared/rig.ts';
 import { HUE_BRIDGE_ID_RE, stripIssue } from '../shared/placement.ts';
 import { parseHex } from '../shared/effects/palette.ts';
+import { pictureGradeSchema } from '../shared/picture-grade.ts';
 import { HttpError } from '../errors.ts';
 
 export class ValidationError extends HttpError {
@@ -29,6 +30,7 @@ const fixturePosition = z.object({
 }).strict();
 const fixtureGroup = z.enum(FIXTURE_GROUPS);
 const pictureSourceSchema = z.object({ source: z.enum(['effects', 'visualizer']) }).strict();
+const pictureGradePatchSchema = pictureGradeSchema.partial().strict();
 
 const fixtureGeometry = z.object({
   length: z.number().finite().min(1).max(100),
@@ -451,6 +453,7 @@ export type DeezerState = z.output<typeof deezerStateSchema>;
 
 export {
   pictureSourceSchema,
+  pictureGradePatchSchema,
   fixtureId,
   dmxUniverse,
   hexColour,

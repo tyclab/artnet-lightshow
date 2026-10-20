@@ -385,7 +385,7 @@ function getLiveState() {
     universes: wireUniverses(),
     // Companion lights its arm button by this.
     armed: isArmed(),
-    picture: { source: settings.get('picture.source'), input: pictureInput.status() },
+    picture: { source: settings.get('picture.source'), input: pictureInput.status(), grade: settings.group('picture').grade },
     fixtures: state.fixtures.map((f) => ({
       ...f,
       universe: universeOf(f),

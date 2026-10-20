@@ -84,12 +84,13 @@ export function createDraft({ send, schedule = nextFrame, now = () => Date.now()
   };
 }
 
-export function useDraft(server, send) {
+export function useDraft(server, send, schedule = nextFrame) {
   const [, rerender] = useReducer((n) => n + 1, 0);
   const holder = useMemo(() => ({ send }), []);
   holder.send = send;
   const draft = useMemo(() => createDraft({
     send: (v) => holder.send(v),
+    schedule,
     onChange: rerender,
   }), []);
   useEffect(() => { draft.observe(server); }, [server]);

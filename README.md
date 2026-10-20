@@ -230,7 +230,7 @@ to effects; pad banks launch effects or patterns over the look.
 |------|----------|---------|
 | Show | 1 | The room in 3D and the looks beside it |
 | Effects | 2 | Effects catalogue and inspector, cues, look colours, fixture overrides and stage preview |
-| Perform | 3 | Pads and Matrix, transport, strobe, tap, colours and the intensity fader |
+| Perform | 3 | Pads and Matrix, transport, strobe, tap, colours, the room picture's colour grade and the intensity fader |
 | Stage | 4 | Monitor the rendered rig in 3D, import a room and bind its lights |
 | Auto Show | 5 | Analyse music, choose its source, run the generated show; Timeline tab for rehearsal and edits |
 | Sequence | 6 | Create/load sequences; shared transport and recording; lanes, clips and patterns behind Edit |
@@ -275,6 +275,7 @@ keys; `PUT /api/settings` changes selected fields.
 | `artnet` | `enabled: true`, `host: '2.255.255.255'`, `port: 6454`, `universe: 0`, `discovery: true`, `sync: false` |
 | `sacn` | `enabled: false`, `host: ''` for multicast, `priority: 100`, `sourceName: 'Tyclab Lightshow'`, `universeOffset: 1`, `interface: ''`; stable generated `cid` |
 | `hue` | `bridges: []`, `latencyMs: 0`, `strobe: 'flash'`; each paired bridge has an id, address, enabled flag, area and write-only credentials |
+| `picture` | `source: 'effects'` or `'visualizer'`; `grade`: the room picture's colour grade, `{ enabled: true, whiteLimit: 0.6, saturation: 1.25, ceiling: 0.7, hueCeiling: 0.5 }`; see [Room picture](#room-picture) |
 | `outputs` | `armed: false`; always reset to false at startup. `idleDisarmMin: 15`: minutes armed with nothing playing before the outputs disarm themselves; `0` never |
 | `sources` | `prolink: false`, `smtc: true` |
 | `spotify` | Client id, secret, server-written refresh token; optional `proxyBase`; `allowUnverifiedState: false` |
@@ -590,8 +591,27 @@ the helper fetches the units again and claims anew.
 | `picture:frame` | `{ leaseId, data, image? }` | `{ ok: true }` — `data` is `units * 3` RGB bytes; `image` is the picture itself, `{ width, height, data }` up to 128 × 128 RGB, for the Stage |
 | `picture:release` | `{ leaseId }` | `{ ok: true }` |
 
+A visualizer frame is mostly bright, pale areas, so painted as sent the room
+reads white and too bright. Each unit's colour is therefore graded before the
+masters and trims. **White limit** takes that share of the white component (the
+smallest channel) out and gives back the lost level in proportion to what is
+still coloured, so a pastel turns to its own colour at much the same level while
+white only dims; the hue and the channel spread are kept. **Saturation** then
+scales the OKLCh chroma at the colour's original hue (100 % keeps it, grey stays
+grey), and **Ceiling** scales the three channels together so none passes it.
+Hue lamps take **Hue ceiling** instead, lower by default because they mix in
+their white LEDs as they get brighter. With the defaults #FFFFFF becomes #666666,
+#FFE0C0 #B38153 (on a Hue lamp #7F5C3B), #FF0000 #B30000 (#800000) and #4060FF
+#192CB3 (#12207F). Perform shows the grade while the visualizer is selected and
+applies a slider as it moves; `POST /api/picture/grade` takes any of
+`{ enabled, whiteLimit, saturation, ceiling, hueCeiling }` and keeps the fields
+it is not sent. Off (`enabled: false`), or a white limit of 0, saturation 1 and
+both ceilings 1, paints the picture exactly as sent. A settings file with
+`picture.grade` in it is refused by builds from before the grade, which move it
+aside and start from defaults: take the key out before rolling back.
+
 One sender holds the picture at a time; `GET /api/picture` reports the selected
-source and the live lease without pixel data. The picture a frame carries goes
+source, the grade and the live lease without pixel data. The picture a frame carries goes
 to the pages subscribed to the DMX feed (`picture-image`, null once the sender
 is gone), and the Stage paints it on the room's screens: the objects a room
 export marks `role: screen` (the TV and the monitors in a house-model export).
