@@ -74,6 +74,28 @@ _TURNS = _Turns()
 # Before the first CUDA allocation: fixed segments fragment across track lengths until no checkpoint fits.
 os.environ.setdefault('PYTORCH_CUDA_ALLOC_CONF', 'expandable_segments:True')
 
+
+def _map_large_allocations(threshold=16 << 20):
+    """
+    Give every allocation of 16 MB or more its own mapping, unmapped when freed.
+
+    glibc raises that threshold to 32 MB as big arrays are freed, and keeps the
+    space of anything below it for the thread that freed it: each model pass sat
+    on the DSP's leftovers and its own, 0.5 GB of a nine-minute track's peak.
+    A smaller threshold saved little more and slowed Demucs by a quarter.
+    MALLOC_MMAP_THRESHOLD_ in the environment wins.
+    """
+    if not sys.platform.startswith('linux') or 'MALLOC_MMAP_THRESHOLD_' in os.environ:
+        return
+    try:
+        import ctypes
+        ctypes.CDLL('libc.so.6').mallopt(-3, int(threshold))  # M_MMAP_THRESHOLD
+    except (OSError, AttributeError):
+        pass
+
+
+_map_large_allocations()
+
 # Keep rotary-embedding-torch 0.6: 0.8's changed cache semantics silently break audio-separator.
 warnings.filterwarnings(
     'ignore', message=r'`torch\.cuda\.amp\.autocast\(args\.\.\.\)` is deprecated',

@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 
 import { settings } from './server/settings.ts';
 import { messageOf, cancelledError } from './errors.ts';
+import { wavDurationSec } from './audio-file.ts';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { Analysis } from './show/score.ts';
 
@@ -31,8 +32,26 @@ interface WorkerReply {
   recycle?: boolean;
 }
 
-function storedTimeoutMs(): number {
-  return settings.get('analysis.analyzerTimeoutMs');
+// A worker started for this request loads its models inside the request's limit.
+const WARM_UP_MS = 60000;
+
+// Analysis time grows with the audio: tychome's CPU took 1034 s for a 900 s track.
+export function analysisTimeoutMs(floorMs: number, msPerAudioSec: number, durationSec: number | null | undefined): number {
+  if (!(msPerAudioSec > 0) || typeof durationSec !== 'number' || !Number.isFinite(durationSec) || durationSec <= 0) {
+    return floorMs;
+  }
+  return Math.max(floorMs, Math.round(WARM_UP_MS + msPerAudioSec * durationSec));
+}
+
+function storedTimeoutMs(durationSec: number | null): number {
+  return analysisTimeoutMs(settings.get('analysis.analyzerTimeoutMs'),
+    settings.get('analysis.analyzerTimeoutMsPerSec'), durationSec);
+}
+
+// The worker analyses the whole file; the player's length stands in for a file whose header says nothing.
+function durationOf(request: Request): number | null {
+  const target = request.targetDurationSec;
+  return wavDurationSec(request.source) ?? (typeof target === 'number' && target > 0 ? target : null);
 }
 
 function workerEnv(): NodeJS.ProcessEnv {
@@ -75,7 +94,7 @@ function supersededError(): Error & { superseded: true } {
 class AnalyzerWorker {
   declare _resolvePython: () => string;
   declare _scriptPath: string;
-  declare _timeoutMs: () => number;
+  declare _timeoutMs: (durationSec: number | null) => number;
   declare _proc: ChildProcessWithoutNullStreams | null;
   declare _pending: Request | null;
   declare _queue: Request[];
@@ -87,7 +106,7 @@ class AnalyzerWorker {
   declare _paused: string | null;
 
   constructor(pythonExe: string | (() => string), scriptPath: string,
-    { timeoutMs }: { timeoutMs?: number | (() => number) } = {}) {
+    { timeoutMs }: { timeoutMs?: number | ((durationSec: number | null) => number) } = {}) {
     this._resolvePython = typeof pythonExe === 'function' ? pythonExe : () => pythonExe;
     this._scriptPath = scriptPath;
     this._timeoutMs = timeoutMs === undefined
@@ -324,13 +343,13 @@ class AnalyzerWorker {
     }
   }
 
-  _onTimeout(): void {
+  _onTimeout(limitMs: number): void {
     const p = this._pending;
     this._pending = null;
     this._timeoutTimer = null;
     if (p) {
-      console.warn(`[analyzer] request ${p.id} exceeded ${Math.round(this._timeoutMs() / 1000)}s — killing worker`);
-      p.reject(new Error(`analysis timed out after ${Math.round(this._timeoutMs() / 1000)}s`));
+      console.warn(`[analyzer] request ${p.id} exceeded ${Math.round(limitMs / 1000)}s — killing worker`);
+      p.reject(new Error(`analysis timed out after ${Math.round(limitMs / 1000)}s`));
     }
     this._recycleProcess();
     this._tick();
@@ -406,7 +425,8 @@ class AnalyzerWorker {
     try {
       (this._proc as ChildProcessWithoutNullStreams).stdin.write(msg + '\n');
       this._clearTimeout();
-      const timer = setTimeout(() => this._onTimeout(), this._timeoutMs());
+      const limitMs = this._timeoutMs(durationOf(next));
+      const timer = setTimeout(() => this._onTimeout(limitMs), limitMs);
       if (timer.unref) timer.unref();
       this._timeoutTimer = timer;
     } catch (err) {

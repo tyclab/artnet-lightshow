@@ -1,6 +1,7 @@
 """Adapter regressions without checkpoint downloads or large model allocations."""
 import json
 import tempfile
+import os
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -115,7 +116,8 @@ class ModelOutputs(unittest.TestCase):
         model = MagicMock(side_effect=encode)
         model.parameters.return_value = iter([torch.zeros(1)])
         with patch.object(adapters, '_optional', return_value=object()), \
-             patch.object(adapters, '_load_muq', return_value=model):
+             patch.object(adapters, '_load_muq', return_value=model), \
+             patch.dict(os.environ, {'ARTNET_MUQ_BATCH': '4'}):
             result = adapters.muq_embeddings(audio, 24000)
 
         starts = [s for s in range(0, len(audio), hop) if len(audio[s:s + window]) >= 24000]
@@ -127,6 +129,15 @@ class ModelOutputs(unittest.TestCase):
                 self.assertAlmostEqual(value, expected, places=5)
         # The point of batching: far fewer forward passes than windows.
         self.assertLess(model.call_count, len(starts))
+
+    def test_the_cpu_encodes_one_window_at_a_time(self):
+        # Four windows' attention was a gigabyte of working memory beside the track.
+        from analysis import models
+        with patch.dict(os.environ, {'ARTNET_MUQ_BATCH': ''}):
+            with patch.object(models, 'on_gpu', return_value=False):
+                self.assertEqual(adapters._muq_batch(), 1)
+            with patch.object(models, 'on_gpu', return_value=True):
+                self.assertEqual(adapters._muq_batch(), 4)
 
     def test_text_vocabulary_is_encoded_once_across_tracks(self):
         # The prompts are fixed constants, so the text tower must not run again

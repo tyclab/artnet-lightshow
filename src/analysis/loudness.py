@@ -175,21 +175,30 @@ def loudness_range(short_term_values):
     return float(np.percentile(gated, 95) - np.percentile(gated, 10))
 
 
-def true_peak_dbfs(channels, rate, oversample=4):
+def true_peak_dbfs(channels, rate, oversample=4, stretch=1 << 20):
     """
     Inter-sample peak in dBFS. Oversampled because a signal can peak between
     two samples; a converter reconstructing it will clip where the samples say
     it did not.
+
+    A `stretch` of samples at a time, each with 1024 of its neighbours either
+    side for the filter: the whole track oversampled in float64 was 72 bytes
+    per sample, 0.9 GB for nine minutes, for one number.
     """
-    channels = np.atleast_2d(np.asarray(channels, dtype=float))
+    channels = np.atleast_2d(np.asarray(channels))
     if channels.size == 0:
         return -np.inf
     peak = 0.0
+    guard = 1024
     try:
         from scipy.signal import resample_poly
         for ch in channels:
-            up = resample_poly(ch, oversample, 1)
-            peak = max(peak, float(np.max(np.abs(up))))
+            for start in range(0, ch.size, stretch):
+                stop = min(ch.size, start + stretch)
+                lo, hi = max(0, start - guard), min(ch.size, stop + guard)
+                up = resample_poly(np.asarray(ch[lo:hi], dtype=float), oversample, 1)
+                inner = up[(start - lo) * oversample:(stop - lo) * oversample]
+                peak = max(peak, float(np.max(np.abs(inner))))
     except Exception:
         peak = float(np.max(np.abs(channels)))
     if peak <= 0:

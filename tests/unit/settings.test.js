@@ -157,6 +157,7 @@ test('invalid values are rejected and nothing is written', () => {
   const s = store().load();
   assert.throws(() => s.update({ artnet: { port: 99999 } }));
   assert.throws(() => s.update({ analysis: { analyzerTimeoutMs: 5 } }));
+  assert.throws(() => s.update({ analysis: { analyzerTimeoutMsPerSec: -1 } }));
   assert.throws(() => s.update({ nope: { x: 1 } }), (err) => Array.isArray(err.issues));
   assert.strictEqual(s.get('artnet.port'), DEFAULTS.artnet.port);
   assert.ok(!fs.existsSync(s.file), 'a rejected update must not create the file');

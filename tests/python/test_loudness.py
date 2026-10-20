@@ -96,6 +96,16 @@ class TruePeak(unittest.TestCase):
         sample_peak = 20 * np.log10(float(np.max(np.abs(signal))))
         self.assertGreater(loudness.true_peak_dbfs(signal, sr), sample_peak)
 
+    def test_a_stretch_at_a_time_finds_the_same_peak(self):
+        # Oversampling a whole track in float64 was 0.9 GB for nine minutes.
+        import numpy as np
+        from scipy.signal import resample_poly
+        from analysis import loudness
+        signal = np.random.default_rng(3).standard_normal(50000).astype(np.float32)
+        whole = 20 * np.log10(float(np.max(np.abs(resample_poly(signal.astype(float), 4, 1)))))
+        for stretch in (1 << 20, 4097, 1000):
+            self.assertEqual(loudness.true_peak_dbfs(signal, 48000, stretch=stretch), whole)
+
 
 if __name__ == '__main__':
     unittest.main()

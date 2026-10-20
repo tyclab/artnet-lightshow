@@ -243,6 +243,37 @@ def trim_to_duration(mono, sr, target_sec, tolerance_sec=1.5):
 
 
 
+# HPSS's default STFT: the hop is a quarter of the window.
+_HPSS_HOP = 512
+# Frames each side of a stretch: 2 for the STFT window, 15 for the median filter, 4 for the inverse; 64 to spare.
+_HPSS_GUARD = 64 * _HPSS_HOP
+
+
+def hpss(mono, sr, margin, stretch_sec=30.0):
+    """
+    `librosa.effects.hpss(mono, margin=margin)`, a stretch at a time.
+
+    On a whole track it holds a dozen spectrogram-sized arrays at once, 2.6 MB
+    per second of audio. Each stretch is cut with enough of the signal on
+    either side — the STFT's window, the median filter's 31 frames, the
+    inverse's overlap — and on the frame grid, so that its middle is what the
+    whole-track call gives, sample for sample.
+    """
+    import librosa
+    step = max(1, int(stretch_sec * sr) // _HPSS_HOP) * _HPSS_HOP
+    if mono.size <= step + 2 * _HPSS_GUARD:
+        return librosa.effects.hpss(mono, margin=margin)
+    harmonic = np.empty_like(mono)
+    percussive = np.empty_like(mono)
+    for start in range(0, mono.size, step):
+        stop = min(mono.size, start + step)
+        lo, hi = max(0, start - _HPSS_GUARD), min(mono.size, stop + _HPSS_GUARD)
+        part_h, part_p = librosa.effects.hpss(mono[lo:hi], margin=margin)
+        harmonic[start:stop] = part_h[start - lo:stop - lo]
+        percussive[start:stop] = part_p[start - lo:stop - lo]
+    return harmonic, percussive
+
+
 def prepare(path, config: PreprocessConfig = None, target_duration_sec=None):
     """Run the whole preprocessing stage and return a `PreparedAudio`."""
     import librosa
@@ -266,6 +297,7 @@ def prepare(path, config: PreprocessConfig = None, target_duration_sec=None):
         correlation = float(np.corrcoef(left, right)[0, 1]) if denom > 1e-12 else 1.0
         if not np.isfinite(correlation):
             correlation = 1.0
+        del left, right
     else:
         mid = channels[0]
         side = np.zeros_like(mid)
@@ -274,6 +306,9 @@ def prepare(path, config: PreprocessConfig = None, target_duration_sec=None):
     normalised, measured_lufs, gain_db = normalise_loudness(
         channels, sr, config.target_lufs, config.max_gain_db)
     mono = np.mean(normalised, axis=0).astype(np.float32)
+    # Three copies of the track nothing reads again; held, they sat under HPSS's peak.
+    source_channels = int(channels.shape[0])
+    del normalised, channels, mid
 
     mono = highpass(mono, sr, config.highpass_hz)
 
@@ -302,7 +337,7 @@ def prepare(path, config: PreprocessConfig = None, target_duration_sec=None):
     levelled = adaptive_gain(mono, sr)
 
     try:
-        harmonic, percussive = librosa.effects.hpss(mono, margin=config.hpss_margin)
+        harmonic, percussive = hpss(mono, sr, config.hpss_margin)
     except Exception as exc:
         _log(f'HPSS unavailable ({exc}); falling back to the full signal')
         harmonic, percussive = mono, mono
@@ -343,7 +378,7 @@ def prepare(path, config: PreprocessConfig = None, target_duration_sec=None):
         denoised=denoised,
         trim_offset=float(trim_offset),
         source_path=path,
-        source_channels=int(channels.shape[0]),
+        source_channels=source_channels,
         source=source,
         source_rate=native,
     )
@@ -354,6 +389,40 @@ def load_for_separation(audio: PreparedAudio, rate):
     Reuse prepare's decode or reread the source; return None for mono/unreadable input
     so the caller can fall back to mono. Preserve stereo cues and high frequencies.
     """
+    span = separation_span(audio, rate)
+    return None if span is None else np.asarray(span)
+
+
+class SeparationSpan:
+    """
+    `load_for_separation`'s (2, n) array, read a stretch at a time.
+
+    The gain is applied to each stretch as it is read, not to a copy of the
+    whole track the separator would hold for the length of its pass.
+    `np.asarray` gives the whole array.
+    """
+
+    ndim = 2
+    dtype = np.dtype(np.float32)
+
+    def __init__(self, channels, head, length, gain_db):
+        self._channels, self._head = channels, int(head)
+        self._gain = 10.0 ** (gain_db / 20.0) if gain_db else None
+        self.shape = (int(channels.shape[0]), max(0, min(int(length), channels.shape[1] - self._head)))
+
+    def read(self, start, stop):
+        part = self._channels[:, self._head + start:self._head + min(stop, self.shape[1])]
+        if self._gain is not None:
+            part = part * self._gain
+        return np.ascontiguousarray(part, dtype=np.float32)
+
+    def __array__(self, dtype=None, copy=None):
+        whole = self.read(0, self.shape[1])
+        return whole if dtype is None else whole.astype(dtype, copy=False)
+
+
+def separation_span(audio: PreparedAudio, rate):
+    """`load_for_separation` as a `SeparationSpan`; None for mono or unreadable input."""
     if audio.source_channels < 2:
         return None
     try:
@@ -368,9 +437,5 @@ def load_for_separation(audio: PreparedAudio, rate):
         return None
     if channels.shape[0] < 2:
         return None
-    head = int(round(audio.trim_offset * sr))
-    want = int(round(audio.duration * sr))
-    channels = channels[:, head:head + want]
-    if audio.applied_gain_db:
-        channels = channels * (10.0 ** (audio.applied_gain_db / 20.0))
-    return np.ascontiguousarray(channels, dtype=np.float32)
+    return SeparationSpan(channels, round(audio.trim_offset * sr),
+                          round(audio.duration * sr), audio.applied_gain_db)

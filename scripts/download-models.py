@@ -42,6 +42,8 @@ from typing import Callable
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
+from analysis.songformer import CONFORMER
+
 ROOT = Path(os.environ.get("ARTNET_MODEL_DIR", Path.home() / ".cache" / "artnet-lightshow" / "models"))
 READY = ".ready"
 _OUT = sys.stdout
@@ -157,21 +159,26 @@ def _hf_total(repo: str, allow=None, ignore=None) -> int | None:
 
 
 def hf_model(id, name, purpose, tier, size, license, repo, weights, allow=None, ignore=None, note="",
-             variable=None):
+             variable=None, extra=()):
     # The same override the analysis reads (model_adapters, songformer): a
     # model kept somewhere else is found there, and fetched there.
     target = Path(os.environ[variable]) if variable and os.environ.get(variable) else ROOT / id
+    # (repository, file) pairs its code would fetch at load time: each in a folder named after its repository.
+    beside = [(other, filename, target / other.rsplit("/", 1)[-1]) for other, filename in extra]
 
     def present():
-        return (target / READY).is_file() or any((target / w).is_file() for w in weights)
+        return (((target / READY).is_file() or any((target / w).is_file() for w in weights))
+                and all((folder / filename).is_file() for _, filename, folder in beside))
 
     def fetch(model):
-        from huggingface_hub import snapshot_download
+        from huggingface_hub import hf_hub_download, snapshot_download
         total = _hf_total(repo, allow, ignore) or size
         emit("start", model=id, total=total)
         target.mkdir(parents=True, exist_ok=True)
         with Watch(id, [target], total), contextlib.redirect_stdout(sys.stderr):
             snapshot_download(repo_id=repo, local_dir=target, allow_patterns=allow, ignore_patterns=ignore)
+            for other, filename, folder in beside:
+                hf_hub_download(repo_id=other, filename=filename, local_dir=folder)
         (target / READY).write_text("ready\n")
 
     return Model(id, name, purpose, tier, size, license, present, fetch, lambda: [target], note)
@@ -280,7 +287,7 @@ MODELS = [
              "optional", 2_860_000_000, "CC BY 4.0 (its MuQ backbone CC BY-NC 4.0)", "ASLP-lab/SongFormer",
              ["model.safetensors"], ignore=["*.pt", "musicfm/figs/*"],
              note="Runs by default only on a GPU: on a CPU it takes most of the track's length.",
-             variable="ARTNET_SONGFORMER_MODEL"),
+             variable="ARTNET_SONGFORMER_MODEL", extra=[(CONFORMER, "config.json")]),
     Model("bs_roformer", "BS-RoFormer SW", "The slower, more careful separator (Settings → Separator).",
           "optional", 700_000_000, "MIT", _bs_roformer_present, _bs_roformer_fetch,
           note="About seven times as slow as Demucs."),

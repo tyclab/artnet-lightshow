@@ -91,8 +91,19 @@ def preload():
             print(f"[models] {kind} warm-up skipped: {exc}", file=sys.stderr)
 
 
-# Four windows avoid the 4 GB cuDNN workspace selected at six or more on an 8 GB GPU.
-_MUQ_BATCH = max(1, int(os.environ.get("ARTNET_MUQ_BATCH", "4")))
+def _muq_batch():
+    """
+    MuQ windows per forward pass: ARTNET_MUQ_BATCH, else 4 on a card and 1 on the CPU.
+
+    Four windows avoid the 4 GB cuDNN workspace selected at six or more on an
+    8 GB GPU. On the CPU four windows' attention was a gigabyte of working
+    memory on top of the track.
+    """
+    raw = os.environ.get("ARTNET_MUQ_BATCH", "").strip()
+    if raw:
+        return max(1, int(raw))
+    from . import models
+    return 4 if models.on_gpu() else 1
 
 # Full precision made the document megabytes; 4 places is finer than the spread between windows.
 EMBEDDING_DIGITS = 4
@@ -131,11 +142,13 @@ def muq_embeddings(waveform, sample_rate: int, *, step_sec: float = 2.0):
     full = [s for s in starts if len(audio[s:s + window]) == window]
     tail = [s for s in starts if len(audio[s:s + window]) != window]
 
+    per_pass = _muq_batch()
+
     def run(device):
         result = []
         with torch.no_grad():
-            for index in range(0, len(full), _MUQ_BATCH):
-                group = full[index:index + _MUQ_BATCH]
+            for index in range(0, len(full), per_pass):
+                group = full[index:index + per_pass]
                 batch = np.stack([audio[s:s + window] for s in group])
                 output = model(torch.from_numpy(batch).to(device))
                 vectors = output.last_hidden_state.mean(dim=1).float().cpu().tolist()

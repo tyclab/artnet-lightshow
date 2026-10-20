@@ -288,7 +288,7 @@ keys; `PUT /api/settings` changes selected fields.
 | `strobe` | Palette, rate, clock, background behaviour and brightness; see [Strobe](#strobe) |
 | `midi` | `input: ''`, `output: ''`, `clockOutput: ''`, `controlFeedback: true` |
 | `engine` | `thread: 'worker'`; `'main'` is available for diagnosis |
-| `analysis` | `analyzerTimeoutMs: 600000`, `downloadTimeoutMs: 300000`, `localRoot: ''`, `pythonPath: ''`, `separator: 'demucs'`, `structureModel: 'auto'`, `gpuMemory: 'auto'` |
+| `analysis` | `analyzerTimeoutMs: 600000`, `analyzerTimeoutMsPerSec: 1500`, `downloadTimeoutMs: 300000`, `localRoot: ''`, `pythonPath: ''`, `separator: 'demucs'`, `structureModel: 'auto'`, `gpuMemory: 'auto'` |
 | `setup` | `completed: false` until the first-run wizard is completed or skipped |
 
 `server.host`, `server.port`, `server.token`, engine thread and the first Deezer
@@ -963,7 +963,7 @@ measurements are under [Memory](docs/audio-analysis.md#memory).
 ```mermaid
 flowchart LR
   Decode[Decode and preprocess] --> Main[Main thread: features, rhythm, bands, dynamics, structure, events]
-  Decode --> Models[CPU model thread: Beat This, Demucs, MuQ-MuLan and MuQ, S-KEY in turn]
+  Main -- features done --> Models[CPU model thread: Beat This, S-KEY, Demucs, MuQ-MuLan and MuQ in turn]
   Files[(Checkpoint files)] -. mapped weights .-> Models
   Models -- beats, stems, genre, embeddings, key --> Main
   Main --> Document[Analysis document]

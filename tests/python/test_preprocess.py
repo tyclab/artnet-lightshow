@@ -6,6 +6,7 @@ measuring the mastering engineer rather than the music.
 """
 
 import unittest
+import unittest.mock
 
 import synth
 from support import AudioTestCase, needs_audio, needs_numpy
@@ -138,6 +139,43 @@ class AdaptiveGain(unittest.TestCase):
         peaks = levelled[::sr // 2]
         self.assertGreater(float(np.min(np.abs(peaks))), 0.05,
                            'the clicks survive')
+
+
+
+@needs_audio
+class Stretches(unittest.TestCase):
+    # Whole-track HPSS and per-frame features held a dozen spectrogram-sized
+    # temporaries at once; they now run a stretch at a time. Every stretch
+    # boundary must be invisible: the outputs are the whole-track calls'.
+    def signal(self, seconds=9.0, rate=22050):
+        import numpy as np
+        t = np.arange(int(seconds * rate)) / rate
+        rng = np.random.default_rng(7)
+        clicks = (rng.random(t.size) > 0.9995) * rng.standard_normal(t.size)
+        return (0.3 * np.sin(2 * np.pi * 220 * t) + 0.2 * clicks).astype(np.float32)
+
+    def test_hpss_is_the_whole_track_call(self):
+        import numpy as np
+        import librosa
+        from analysis import preprocess
+        y = self.signal()
+        whole = librosa.effects.hpss(y, margin=3.0)
+        for got, want in zip(preprocess.hpss(y, 22050, 3.0, stretch_sec=1.3), whole):
+            np.testing.assert_array_equal(got, want)
+
+    def test_spectrogram_features_are_the_whole_track_calls(self):
+        import numpy as np
+        import librosa
+        from analysis import features
+        y = self.signal()
+        whole = np.abs(librosa.stft(y, n_fft=2048, hop_length=512))
+        with unittest.mock.patch.object(features, '_STRETCH', 37):
+            got = features._magnitude(y, 2048, 512)
+            np.testing.assert_array_equal(got, whole)
+            self.assertTrue(got.flags.f_contiguous, "librosa's layout, so per-frame sums round alike")
+            np.testing.assert_array_equal(features._flux(got), features.spectral_flux(whole))
+            centroid = lambda S: librosa.feature.spectral_centroid(S=S, sr=22050)[0]
+            np.testing.assert_array_equal(features._by_frames(centroid, got), centroid(whole))
 
 
 if __name__ == '__main__':
