@@ -7,7 +7,10 @@ on this synthetic track when it was run for real — within a fifth of a second
 of each written section, off the bar line either way.
 """
 
+import importlib.util
+import json
 import os
+import socket
 import sys
 import tempfile
 import types
@@ -16,13 +19,24 @@ from pathlib import Path
 from unittest.mock import patch
 
 import synth
-from support import AudioTestCase, needs_audio
+from support import REPO, AudioTestCase, needs_audio
 from analysis import models, songformer
 
 
 def _provision(directory):
     for name in songformer.REQUIRED_FILES:
-        (Path(directory) / name).write_text('{}')
+        path = Path(directory) / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('{}')
+
+
+def _download_models():
+    spec = importlib.util.spec_from_file_location('download_models', REPO / 'scripts' / 'download-models.py')
+    module = importlib.util.module_from_spec(spec)
+    # Its dataclass looks its own module up by name.
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 class WhenItRuns(unittest.TestCase):
@@ -50,6 +64,68 @@ class WhenItRuns(unittest.TestCase):
                 _provision(directory)
                 with patch.object(songformer, 'REQUIRED_PACKAGES', ('json', 'no_such_package_here')):
                     self.assertEqual(songformer.missing(), ['python package no_such_package_here'])
+
+    def test_without_the_conformer_config_it_is_not_installed(self):
+        """MusicFM fetched that config from the hub as the model was built, so
+        a worker offline lost SongFormer to the labeller without a word."""
+        with tempfile.TemporaryDirectory() as directory:
+            _provision(directory)
+            (Path(directory) / songformer.CONFORMER.rsplit('/', 1)[-1] / 'config.json').unlink()
+            with patch.dict(os.environ, {'ARTNET_SONGFORMER_MODEL': directory}), \
+                 patch.object(songformer, 'REQUIRED_PACKAGES', ('json',)):
+                self.assertEqual(songformer.missing(), [str(songformer.conformer_dir() / 'config.json')])
+
+    def test_musicfm_s_hub_lookup_is_answered_from_disk(self):
+        class Config:
+            @classmethod
+            def from_pretrained(cls, name, **kwargs):
+                return name, kwargs
+
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict(os.environ, {'ARTNET_SONGFORMER_MODEL': directory}):
+            with songformer._conformer_from_disk(Config):
+                self.assertEqual(Config.from_pretrained(songformer.CONFORMER), (str(songformer.conformer_dir()), {}))
+                self.assertEqual(Config.from_pretrained('other/model', revision='x'), ('other/model', {'revision': 'x'}))
+            self.assertEqual(Config.from_pretrained(songformer.CONFORMER), (songformer.CONFORMER, {}), 'put back')
+
+    @unittest.skipUnless(importlib.util.find_spec('transformers'), 'transformers is not installed')
+    def test_the_real_config_class_loads_offline(self):
+        from transformers.models.wav2vec2_conformer.modeling_wav2vec2_conformer import Wav2Vec2ConformerConfig
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict(os.environ, {'ARTNET_SONGFORMER_MODEL': directory}):
+            songformer.conformer_dir().mkdir()
+            (songformer.conformer_dir() / 'config.json').write_text(json.dumps(
+                {'model_type': 'wav2vec2-conformer', 'position_embeddings_type': 'rotary', 'hidden_size': 1024}))
+            with patch.object(socket.socket, 'connect', side_effect=AssertionError('reached for the network')), \
+                    songformer._conformer_from_disk(Wav2Vec2ConformerConfig):
+                config = Wav2Vec2ConformerConfig.from_pretrained(songformer.CONFORMER)
+            self.assertEqual((config.position_embeddings_type, config.hidden_size), ('rotary', 1024))
+            self.assertNotIn('from_pretrained', vars(Wav2Vec2ConformerConfig), 'the inherited one is back')
+
+    def test_the_download_fetches_the_conformer_config_beside_the_weights(self):
+        calls = []
+        hub = types.ModuleType('huggingface_hub')
+        hub.snapshot_download = lambda **kwargs: calls.append(('snapshot', kwargs['repo_id']))
+
+        def hf_hub_download(**kwargs):
+            calls.append(('file', kwargs['repo_id'], kwargs['filename'], kwargs['local_dir']))
+            target = Path(kwargs['local_dir']) / kwargs['filename']
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text('{}')
+
+        hub.hf_hub_download = hf_hub_download
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict(os.environ, {'ARTNET_SONGFORMER_MODEL': directory}), \
+                patch.dict(sys.modules, {'huggingface_hub': hub}):
+            script = _download_models()
+            model = script.BY_ID['songformer']
+            (Path(directory) / 'model.safetensors').write_text('')
+            self.assertFalse(model.present(), 'weights alone are not enough to run offline')
+            with patch.object(script, '_hf_total', return_value=None):
+                model.fetch(model)
+            self.assertEqual(calls, [('snapshot', 'ASLP-lab/SongFormer'),
+                                     ('file', songformer.CONFORMER, 'config.json', songformer.conformer_dir())])
+            self.assertTrue(model.present())
 
     def test_msaf_is_stood_in_for_rather_than_installed(self):
         """msaf pins enum34, which breaks the standard library on Python 3;

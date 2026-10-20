@@ -455,7 +455,16 @@ Measure before switching it on: `python scripts/bench-analyze.py track.wav
 the stages. The EDM companion model the paper describes (EDMFormer) has no
 released weights. The code ships with the checkpoint and is loaded from the
 model directory. `msaf`, which that code imports for evaluation only, is stubbed:
-it pins `enum34`, which breaks the standard library on Python 3.
+it pins `enum34`, which breaks the standard library on Python 3. Its MusicFM half
+builds its conformer from `facebook/wav2vec2-conformer-rope-large-960h-ft`'s
+config, which it asks the Hugging Face hub for as the model is built: offline,
+that failed after half a minute of retries and the labeller named the sections.
+The download fetches that config into the model directory beside the weights
+(`wav2vec2-conformer-rope-large-960h-ft/config.json`), the load answers the
+lookup from there, and SongFormer is not counted as installed without it. A
+SongFormer downloaded before this needs Sources → Analysis models (or
+`download-models.py --only songformer`) once more, which fetches only what is
+missing.
 
 ## Pixel rate (`pulse.py`)
 

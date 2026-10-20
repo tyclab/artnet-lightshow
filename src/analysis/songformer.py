@@ -16,8 +16,10 @@ MIN_WINDOW_SEC = 60
 # Working memory per second² of window, on CPU: a 420 s window needs ~22 GB and got the worker OOM-killed on 16 GB.
 GB_PER_SECOND_SQUARED = 1.25e-4
 MEMORY_SHARE = 0.6
+# MusicFM builds its conformer from this repository's config, which it asks the hub for as the model is built.
+CONFORMER = 'facebook/wav2vec2-conformer-rope-large-960h-ft'
 REQUIRED_FILES = ('model.safetensors', 'modeling_songformer.py', 'config.json',
-                  'muq_config2.json', 'msd_stats.json')
+                  'muq_config2.json', 'msd_stats.json', f'{CONFORMER.rsplit("/", 1)[-1]}/config.json')
 REQUIRED_PACKAGES = ('muq', 'x_transformers', 'omegaconf', 'ema_pytorch', 'loguru',
                      'safetensors', 'transformers')
 # 'auto' runs SongFormer only on a GPU: on a laptop CPU it takes ~0.75x real time.
@@ -32,6 +34,11 @@ def model_dir():
     root = Path(os.environ.get('ARTNET_MODEL_DIR',
                                Path.home() / '.cache' / 'artnet-lightshow' / 'models'))
     return Path(os.environ.get('ARTNET_SONGFORMER_MODEL') or root / 'songformer')
+
+
+def conformer_dir():
+    """The conformer config scripts/download-models.py keeps beside the weights."""
+    return model_dir() / CONFORMER.rsplit('/', 1)[-1]
 
 
 def mode(value=None):
@@ -82,6 +89,26 @@ def _stub_msaf():
     sys.modules['msaf.eval'] = evaluation
 
 
+@contextlib.contextmanager
+def _conformer_from_disk(config_class):
+    """Answer MusicFM's hub lookup from conformer_dir(), so a worker offline keeps SongFormer."""
+    hub = config_class.from_pretrained
+    own = vars(config_class).get('from_pretrained')
+    local = str(conformer_dir())
+
+    def from_pretrained(name, *args, **kwargs):
+        return hub(local if name == CONFORMER else name, *args, **kwargs)
+
+    config_class.from_pretrained = staticmethod(from_pretrained)
+    try:
+        yield
+    finally:
+        if own is None:
+            del config_class.from_pretrained
+        else:
+            config_class.from_pretrained = own
+
+
 def load():
     """
     The model, built once per process: on the analysis device, or in RAM when
@@ -100,9 +127,10 @@ def load():
             sys.path.insert(0, str(directory))
         import torch
         from safetensors.torch import load_file
+        from transformers.models.wav2vec2_conformer.modeling_wav2vec2_conformer import Wav2Vec2ConformerConfig
         _log(f'loading from {directory}…')
         # Its code and transformers print on stdout, the worker's protocol stream.
-        with contextlib.redirect_stdout(sys.stderr):
+        with contextlib.redirect_stdout(sys.stderr), _conformer_from_disk(Wav2Vec2ConformerConfig):
             modeling = importlib.import_module('modeling_songformer')
             configuration = importlib.import_module('configuration_songformer')
             config = configuration.SongFormerConfig.from_pretrained(str(directory))
