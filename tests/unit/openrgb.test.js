@@ -14,6 +14,7 @@ import {
   closeOpenRgb, OpenRgbConnection, OPENRGB_PORT, PACKET,
 } from '../../src/server/openrgb.ts';
 import { openrgbProfile } from '../../src/server/openrgb-devices.ts';
+import { getProfile } from '../../src/server/profiles.ts';
 import { openrgbRoutes, openrgbPixels, openrgbConflict } from '../../src/server/openrgb-routes.ts';
 import { ddpConflict } from '../../src/server/ddp-routes.ts';
 import { createTransmitter } from '../../src/server/transmit.ts';
@@ -737,6 +738,29 @@ async function withApp(fn) {
     await new Promise((r) => listener.close(r));
   }
 }
+
+test('a device that takes another\'s old OpenRGB number gets its own profile, never the patched one', async () => {
+  const server = await fakeServer();
+  try {
+    await withApp(async (call) => {
+      const monitor = await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, devices: [7] });
+      assert.strictEqual(monitor.status, 200, JSON.stringify(monitor.body));
+      const ring = monitor.body.fixtures[0].profileId;
+      // Another day: the mouse wakes up first and takes the monitor's old number.
+      const [mouse] = server.devices.splice(10, 1);
+      server.devices.splice(7, 0, mouse);
+      const added = await call('/api/openrgb/add', { host: '127.0.0.1', port: server.port, devices: [7] });
+      assert.strictEqual(added.status, 200, JSON.stringify(added.body));
+      const [fixture] = added.body.fixtures;
+      assert.deepStrictEqual([fixture.output.name, fixture.output.device], ['Mouse', 7]);
+      assert.notStrictEqual(fixture.profileId, ring);
+      assert.strictEqual(getProfile(state.fixtures.find((f) => f.output?.name === 'Monitor L')).cells.length, 48, 'the monitor keeps all its LEDs');
+      assert.strictEqual(getProfile(fixture).cells.length, 2);
+    });
+  } finally {
+    await server.close();
+  }
+});
 
 test('discover lists the server\'s devices; add patches each with no DMX address, sent over the SDK', async () => {
   const server = await fakeServer();
