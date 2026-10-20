@@ -83,6 +83,15 @@ export function attachOpenRgbRoutes(app: Express, ctx: RouteContext): void {
         return res.status(400).json({ ok: false, error: `${fresh.length} devices would take the patch past ${MAX_FIXTURES} fixtures` });
       }
       const built = fresh.map((device) => ({ device, profile: openrgbProfile(device, host, port) }));
+      // OpenRGB renumbers: a device can take the number another one was patched under. Its
+      // profile then gets the next free id instead of replacing the one that fixture uses.
+      const used = new Set(state.fixtures.map((f) => f.profileId));
+      for (const entry of built) {
+        let id = entry.profile.id;
+        for (let n = 2; used.has(id); n++) id = `${entry.profile.id.slice(0, 120)}-${n}`;
+        used.add(id);
+        entry.profile = { ...entry.profile, id };
+      }
       // No DMX address: the server places each on universes of its own.
       const draft: Fixture[] = [];
       for (const { device, profile } of built) {
