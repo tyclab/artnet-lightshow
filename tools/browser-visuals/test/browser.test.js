@@ -89,3 +89,45 @@ test('capture reuses bounded scratch canvases across source replacement and outp
     }
   }
 });
+
+test('display reports whether the visualizer is live, and a capture under a faded layer is idle rather than failed', async (t) => {
+  const keys = ['document', 'location', 'requestAnimationFrame', 'getComputedStyle'];
+  const saved = Object.fromEntries(keys.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  t.after(() => {
+    for (const [key, descriptor] of Object.entries(saved)) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else delete globalThis[key];
+    }
+  });
+  let opacity = '1', source = null;
+  const layer = { opacity: () => opacity };
+  const canvas = { width: 800, height: 600, isConnected: true, closest: (selector) => selector === '.visualizer-layer' ? layer : null };
+  const attrs = new Map();
+  const view = { getAttribute: key => attrs.get(key), setAttribute: (key, value) => attrs.set(key, value), removeAttribute: key => attrs.delete(key), querySelector: () => source };
+  globalThis.location = { href: expected };
+  globalThis.requestAnimationFrame = (fn) => fn();
+  globalThis.getComputedStyle = (element) => ({ opacity: element.opacity() });
+  globalThis.document = {
+    visibilityState: 'visible', querySelector: () => view, getElementById: () => ({ remove() {} }),
+    createElement: () => {
+      const out = { width: 0, height: 0 };
+      out.getContext = () => ({ fillRect() {}, drawImage() {}, getImageData: () => ({ data: new Uint8Array(out.width * out.height * 4) }) });
+      return out;
+    },
+  };
+  const display = (visible = true) => pageAction({ expected, mode: 'display', visible }, matchesTarget);
+  const capture = (gpu) => pageAction({ expected, mode: 'capture', visible: true, fit: 'cover', width: 2, height: 1 }, matchesTarget, gpu);
+  assert.deepEqual(display(), { ok: true, live: false }, 'no canvas yet');
+  source = canvas;
+  assert.deepEqual(display(), { ok: true, live: true });
+  assert.equal((await capture()).ok, true);
+  opacity = '0';
+  assert.deepEqual(display(), { ok: true, live: false }, 'Music Assistant faded the visualizer out after playback stopped');
+  assert.deepEqual(display(false), { ok: true, live: true }, 'a covered display sends black and never reads the canvas');
+  assert.deepEqual(await capture(), { ok: false, idle: true });
+  assert.deepEqual(await capture(async (_options, _canvas, _view, valid) => { assert.equal(valid(), false); return { ok: false }; }), { ok: false, idle: true });
+  opacity = '1';
+  assert.deepEqual(await capture(async () => ({ ok: false })), { ok: false }, 'a failed capture of a live visualizer stays a failure');
+  await assert.rejects(captureCanvas({ action: async () => ({ ok: false, idle: true }) }, { width: 2, height: 1, fit: 'cover' }), (error) => error.idle === true);
+  await assert.rejects(captureCanvas({ action: async () => ({ ok: false }) }, { width: 2, height: 1, fit: 'cover' }), (error) => error.idle !== true);
+});

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LeasePump } from '../pump.js';
+import { LeasePump, targetWithSource } from '../pump.js';
 
 const image = () => ({ width: 2, height: 1, data: Buffer.from([1, 2, 3, 4, 5, 6]) });
 const claim = () => ({ ok: true, leaseId: 'lease', ttlMs: 2000, maxFps: 20, format: 'rgb24', order: 'row-major' });
@@ -123,4 +123,37 @@ test('disconnect during pacing drops the captured frame before transmission', as
   waiting.resolve(); await next;
   assert.equal(h.pump.frames, 1);
   assert.equal(h.calls.filter(({ event }) => event.endsWith('frame')).length, 1);
+});
+
+test('a visualizer that fades under a capture pauses the lease without a failure or backoff, and live claims within 250 ms', async () => {
+  const reports = [], h = setup({ report: reason => reports.push(reason) });
+  await h.pump.step(); assert.equal(h.pump.frames, 1);
+  h.setTime(100);
+  h.pump.capture = async () => { throw Object.assign(new Error('Visualizer idle'), { idle: true }); };
+  await h.pump.step();
+  assert.equal(h.pump.lease, null);
+  assert.equal(h.calls.at(-1).event, 'pixel-input:release');
+  assert.equal(h.pump.retryAt, 0, 'an idle source is not a failure to back off from');
+  assert.equal(reports.at(-1), 'Visualizer idle');
+  h.setState({ ok: false, reason: 'Visualizer idle', idle: true });
+  const before = h.calls.length;
+  for (const at of [350, 600, 5000, 9000]) { h.setTime(at); await h.pump.step(); }
+  assert.equal(h.calls.length, before, 'no claim/release cycles while idle');
+  h.pump.capture = async () => image(); h.setState({ ok: true, key: 'target' });
+  h.setTime(9000); await h.pump.step();
+  assert.equal(h.calls.length, before, 'the first live tick only clears the pause');
+  h.setTime(9250); await h.pump.step();
+  assert.deepEqual(h.calls.slice(before).map(x => x.event), ['pixel-input:claim', 'pixel-input:frame']);
+  assert.equal(h.pump.frames, 2);
+});
+
+test('the lightshow reason wins over an idle visualizer; an unavailable browser wins over both', () => {
+  const idle = () => ({ ok: false, reason: 'Visualizer idle', idle: true }), live = () => ({ ok: true });
+  const gone = () => ({ ok: false, reason: 'Browser display or controls unavailable' });
+  const armed = () => ({ ok: true, key: 'target' }), disarmed = () => ({ ok: false, reason: 'Outputs disarmed' });
+  assert.deepEqual(targetWithSource(live, armed), { ok: true, key: 'target' });
+  assert.deepEqual(targetWithSource(idle, armed), idle());
+  assert.deepEqual(targetWithSource(idle, disarmed), disarmed());
+  assert.deepEqual(targetWithSource(live, disarmed), disarmed());
+  assert.deepEqual(targetWithSource(gone, () => assert.fail('lightshow state is not read without a source')), gone());
 });

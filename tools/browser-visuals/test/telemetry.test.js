@@ -65,14 +65,40 @@ test('capture, ACK, stale, revoked and rejected frames have separate bounded cou
   }
 });
 
+test('an idle visualizer counts one pause and reports its reason, never a capture failure', async () => {
+  const h = harness();
+  await h.pump.step();
+  h.at(100);
+  const capture = h.pump.capture;
+  h.pump.capture = async () => { throw Object.assign(new Error('Visualizer idle'), { idle: true }); };
+  await h.pump.step();
+  let idle = true;
+  h.pump.target = () => idle ? { ok: false, reason: 'Visualizer idle', idle: true } : { ok: true, key: 'private-target' };
+  for (const at of [400, 700, 1000]) { h.at(at); await h.pump.step(); }
+  const record = h.pump.telemetry.snapshot();
+  assert.equal(record.captureFailures, 0);
+  assert.equal(record.claimFailures, 0);
+  assert.equal(record.idlePauses, 1, 'one fade is one pause, however many ticks it lasts');
+  assert.equal(record.active, false);
+  assert.equal(record.reason, 'Visualizer idle');
+  idle = false; h.pump.capture = capture;
+  for (const at of [1300, 1600]) { h.at(at); await h.pump.step(); }
+  const resumed = h.pump.telemetry.snapshot();
+  assert.equal(resumed.active, true);
+  assert.equal(resumed.reason, null);
+  assert.equal(resumed.idlePauses, 0);
+});
+
 test('room and curtain report every 30 seconds and stop without a telemetry timer in display-only mode', t => {
   t.mock.timers.enable({ apis: ['setInterval'] });
   const first = harness(), second = harness(), lines = [];
-  const stop = startTelemetry([['curtain', first.pump], ['room', second.pump]], undefined, line => lines.push(JSON.parse(line)));
+  let held = false;
+  const stop = startTelemetry([['curtain', first.pump], ['room', second.pump]], undefined, line => lines.push(JSON.parse(line)), () => ({ displayHeld: held }));
   t.mock.timers.tick(TELEMETRY_INTERVAL_MS - 1);
   assert.equal(lines.length, 0);
-  t.mock.timers.tick(1);
+  held = true; t.mock.timers.tick(1);
   assert.deepEqual(lines.map(line => line.output), ['curtain', 'room']);
+  assert.deepEqual(lines.map(line => line.displayHeld), [true, true]);
   stop(); t.mock.timers.tick(TELEMETRY_INTERVAL_MS);
   assert.equal(lines.length, 2);
   assert.equal(first.pump.telemetry, null);

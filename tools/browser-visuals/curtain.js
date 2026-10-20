@@ -1,9 +1,9 @@
 import { lightshowConfig } from './config.js';
 import { StateMirror } from './state.js';
-import { LeasePump } from './pump.js';
+import { LeasePump, targetWithSource } from './pump.js';
 import { requester } from './request.js';
 
-export async function connectCurtain(settings, capture, sourceReady, report) {
+export async function connectCurtain(settings, capture, source, report) {
   const { io } = await import('socket.io-client');
   const config = lightshowConfig(settings.nodecgConfig), mirror = new StateMirror();
   const socket = io(config.origin, { path: config.socketPath, auth: { token: config.token, protocol: 2 }, transports: ['websocket'], autoConnect: false, reconnection: true, reconnectionDelay: 1000, reconnectionDelayMax: 10_000, timeout: 3000 });
@@ -12,7 +12,7 @@ export async function connectCurtain(settings, capture, sourceReady, report) {
   const pump = new LeasePump({
     transport: { get connected() { return socket.connected; }, get id() { return socket.id; }, request },
     capture, ...settings, report,
-    target: () => sourceReady() ? mirror.target(settings) : { ok: false, reason: 'Browser display or controls unavailable' },
+    target: () => targetWithSource(source, () => mirror.target(settings)),
   });
   const fresh = async () => {
     if (syncing || !socket.connected || stopped) return;
@@ -36,6 +36,7 @@ export async function connectCurtain(settings, capture, sourceReady, report) {
   socket.connect();
   return {
     pump,
+    armed: () => socket.connected && mirror.armed(),
     async stop() { stopped = true; clearInterval(syncTimer); await pump.stop(); socket.disconnect(); },
   };
 }

@@ -449,7 +449,13 @@ per second over the whole reporting interval, capture and acknowledgement latenc
 means/maxima, and rejection, stale-frame and failure counts. This is input delivery
 rate, not lighting output or Music Assistant rendering FPS. Latency samples belong
 to the interval in which each operation finishes. An inactive interval with no
-capture attempts has `fps: null`, so disarming does not look like overload.
+capture attempts has `fps: null`, so disarming does not look like overload, and
+its `reason` says why it is inactive (`Outputs disarmed`, `Visualizer idle`, …).
+Music Assistant fades its visualizer out about a second after playback stops.
+That is an idle source, not a failure: the output releases its lease once,
+counts one `idlePauses`, and claims nothing until the visualizer is back, then
+resumes within a quarter of a second with no backoff to sit out. A capture still
+running when the fade ends counts as the same pause, not as a capture failure.
 Summaries use stdout unless `--telemetry-file` selects an absolute NDJSON path;
 that file and one backup are limited to 1 MiB each. Slow or failed log writes
 cannot block capture. Logs contain no credentials, URLs or device/lease identities.
@@ -473,6 +479,20 @@ Assistant origin, now-playing route and player. Sign in normally in this profile
 credentials are not passed through the visualizer URL or command arguments.
 Update the paired Party Visuals browser launcher as well: older installed
 launchers explicitly pass `--fps 10`, which overrides this helper's default.
+
+With `--curtain` or `--room` on Windows, the helper keeps the displays on while
+the lightshow reports armed outputs. Monitors whose lighting is a USB device,
+such as the LG 27GN950-B rings that OpenRGB drives, drop that device when the
+display sleeps, and nobody touches the show PC at a party to wake it. A hidden
+Windows PowerShell child holds one display-required request
+(`SetThreadExecutionState`, the same kind a video player makes) and the power
+plan itself is left alone. The request ends with the child, and the child ends
+when the outputs have been disarmed or the server unreachable for ten seconds,
+when the helper stops, or when its stdin pipe closes because the helper died.
+There is at most one, and a failed one is retried every 30 seconds. The helper
+logs each change once, and telemetry records carry `displayHeld`. An elevated
+`powercfg /requests` lists the child under `DISPLAY`. Display-only mode never
+connects to the lightshow, so it never holds the displays.
 
 ```powershell
 cd tools/browser-visuals
