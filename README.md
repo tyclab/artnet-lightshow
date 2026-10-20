@@ -934,6 +934,21 @@ GPU memory policy and timeouts. `analysis.pythonPath` selects an interpreter;
 `ARTNET_PYTHON` overrides discovery. See
 [Audio analysis](docs/audio-analysis.md) for the analysis schema and controls.
 
+On the CPU the worker runs one model pass at a time beside the signal
+processing, in the order the pipeline needs the results. MuQ and MuQ-MuLan
+keep their weights as mapped pages of the checkpoint files, which the kernel can
+reclaim, instead of copies it can only take back by killing the worker. The
+measurements are under [Memory](docs/audio-analysis.md#memory).
+
+```mermaid
+flowchart LR
+  Decode[Decode and preprocess] --> Main[Main thread: features, rhythm, bands, dynamics, structure, events]
+  Decode --> Models[CPU model thread: Beat This, Demucs, MuQ-MuLan and MuQ, S-KEY in turn]
+  Files[(Checkpoint files)] -. mapped weights .-> Models
+  Models -- beats, stems, genre, embeddings, key --> Main
+  Main --> Document[Analysis document]
+```
+
 The analysis package separates preprocessing, frame features, perceptual bands,
 rhythm, structure, dynamics and perception into modules. `events` combines their
 results; `pipeline.analyze()` orchestrates offline analysis and `realtime` uses the

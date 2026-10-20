@@ -353,6 +353,82 @@ class PipelineThreads(AudioTestCase):
         self.assertTrue(all(pool.closed for pool in pools))
         self.assertEqual(turns._reserved, [])
 
+    def cpu_passes(self, gate=None):
+        """Every model pass as a recorder that notes when it runs and how many run at once."""
+        import numpy as np
+        from analysis import pipeline
+        lock = threading.Lock()
+        seen = {'order': [], 'active': 0, 'most': 0}
+
+        def recorder(name, result, wait=None):
+            def run(*_args, **_kwargs):
+                with lock:
+                    seen['order'].append(name)
+                    seen['active'] += 1
+                    seen['most'] = max(seen['most'], seen['active'])
+                if wait is not None:
+                    wait.wait(5)
+                time.sleep(0.05)
+                with lock:
+                    seen['active'] -= 1
+                return result
+            return run
+
+        grid = (np.arange(0, 8, 0.5), np.arange(0, 8, 2.0))
+        return seen, [
+            patch.object(models, 'on_gpu', return_value=False),
+            patch.object(pipeline.tagger, 'ready', return_value=True),
+            patch.object(pipeline.songformer, 'wanted', return_value=False),
+            patch.object(pipeline.model_adapters, 'skey_available', return_value=True),
+            patch.object(pipeline.rhythm_stage, 'model_beats', recorder('beats', grid, gate)),
+            patch.object(pipeline, '_safe_tag', recorder('tagger', None)),
+            patch.object(pipeline, '_safe_separate', recorder('separation', None)),
+            patch.object(pipeline, '_safe_muq', recorder('muq', {})),
+            patch.object(pipeline, '_safe_skey', recorder('skey', None))]
+
+    def test_on_the_cpu_the_model_passes_run_one_at_a_time_in_the_order_they_are_needed(self):
+        import contextlib
+        from analysis import pipeline
+        from analysis.config import AnalysisConfig
+        path = self.write(synth.four_on_the_floor(bars=4), 'serial.wav')
+        seen, stack = self.cpu_passes()
+        with contextlib.ExitStack() as patches:
+            for item in stack:
+                patches.enter_context(item)
+            pipeline.analyze(path, config=AnalysisConfig(
+                separate_sources=True, enable_semantics=True, enable_tagger=True))
+        self.assertEqual(seen['order'], ['beats', 'tagger', 'separation', 'muq', 'skey'])
+        self.assertEqual(seen['most'], 1)
+
+    def test_passes_still_queued_for_a_failed_track_are_dropped(self):
+        import contextlib
+        from analysis import pipeline
+        from analysis.config import AnalysisConfig
+        path = self.write(synth.four_on_the_floor(bars=4), 'dropped.wav')
+        gate = threading.Event()
+        seen, stack = self.cpu_passes(gate=gate)
+
+        def fail(*_args, **_kwargs):
+            # Once the beat pass holds the model thread, so the rest are still queued.
+            deadline = time.monotonic() + 5
+            while not seen['order'] and time.monotonic() < deadline:
+                time.sleep(0.01)
+            raise RuntimeError('boom')
+
+        stack.append(patch.object(pipeline.features_stage, 'extract', fail))
+        with contextlib.ExitStack() as patches:
+            for item in stack:
+                patches.enter_context(item)
+            with self.assertRaisesRegex(RuntimeError, 'boom'):
+                pipeline.analyze(path, config=AnalysisConfig(
+                    separate_sources=True, enable_semantics=True, enable_tagger=True))
+            gate.set()
+            deadline = time.monotonic() + 5
+            while seen['active'] and time.monotonic() < deadline:
+                time.sleep(0.01)
+            time.sleep(0.2)
+        self.assertEqual(seen['order'], ['beats'])
+
     def test_a_tagger_without_its_weights_is_not_started(self):
         from analysis import pipeline, tagger
         from analysis.config import AnalysisConfig

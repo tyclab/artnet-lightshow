@@ -42,28 +42,24 @@ def _load_muq(kind, model_id):
 
     def build():
         target = models.home()
-        kwargs = {"local_files_only": True}
+        directory = Path(model_id)
+        with open(directory / "config.json") as handle:
+            config = json.load(handle)
         if kind == "MuQMuLan":
             # MuLan's checkpoint also builds a MuQ backbone; point it at the provisioned local one, never fetch.
-            with open(Path(model_id) / "config.json") as handle:
-                config = json.load(handle)
             config["audio_model"]["name"] = _model_path("muq", "ARTNET_MUQ_MODEL")
             text_path = _model_path("xlm-roberta-base", "ARTNET_MUQ_TEXT_MODEL")
             if not Path(text_path).is_dir():
                 raise FileNotFoundError(
                     f"MuQ-MuLan text model missing at {text_path}; run scripts/download-models.py")
             config["text_model"]["name"] = text_path
-            kwargs["config"] = config
+        # MuQ ships safetensors; MuLan is published in PyTorch format only.
+        weights = next((directory / name for name in ("model.safetensors", "pytorch_model.bin")
+                        if (directory / name).is_file()), None)
+        if weights is None:
+            raise FileNotFoundError(f"{kind} weights missing in {directory}; run scripts/download-models.py")
         with contextlib.redirect_stdout(sys.stderr):
-            cls = getattr(module, kind)
-            binary = Path(model_id) / "pytorch_model.bin"
-            # HubMixin 0.x assumes local checkpoints are safetensors; the published MuLan one is PyTorch format.
-            if kind == "MuQMuLan" and binary.is_file() and not (Path(model_id) / "model.safetensors").is_file():
-                import torch
-                model = cls(config=kwargs["config"])
-                model.load_state_dict(torch.load(binary, map_location="cpu", weights_only=True), strict=True)
-            else:
-                model = cls.from_pretrained(model_id, **kwargs)
+            model = models.map_weights(getattr(module, kind)(config=config), weights)
         model = model.float().to(target).eval()
         if models.offloading():
             models.park(model)
