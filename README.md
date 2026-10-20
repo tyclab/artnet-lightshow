@@ -584,7 +584,10 @@ retries immediately.
 4. Add the area's lamps to the patch and place them on the plan.
 
 Multiple bridges can stream simultaneously. A bridge supports one active
-entertainment stream; stop another sync client before connecting. Pairing keys
+entertainment stream; stop another sync client before connecting. An area another
+app is streaming is reported as held by that app's id. A lost DTLS handshake is
+retried within the open session, up to five tries a second each; then the session
+closes and retries back off from 2 s to 60 s until the output is stopped. Pairing keys
 are stored as secrets. Disconnect refuses while lamps remain patched unless
 `removeFixtures: true` is supplied.
 
