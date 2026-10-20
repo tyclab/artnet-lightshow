@@ -207,9 +207,8 @@ const idleDisarm = createIdleDisarm({
     || autoShow.running || pixelInputs.status().length > 0,
   minutes: () => settings.get('outputs.idleDisarmMin'),
   disarm: (minutes) => {
-    applier.applyChanged(settings.update({ outputs: { armed: false } }));
+    applier.applyChanged(settings.update({ outputs: { armed: false } }), { via: 'schedule', reason: `armed with nothing playing for ${minutes} min` });
     applier.disarmed();
-    console.log(`[outputs] disarmed: armed with nothing playing for ${minutes} min`);
   },
 });
 setInterval(() => idleDisarm.tick(), 10_000).unref();

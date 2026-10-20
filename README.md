@@ -1070,6 +1070,15 @@ counts as stopped), no auto show and no pixel input at every 10 s check for
 would. Surface a 409 safety refusal to the operator instead of retrying it as
 an acknowledgement.
 
+Each arm or disarm that changes the state logs one info line under
+`component=outputs` with `armed` and `via`: `rest` (the three
+`/api/outputs/*` routes or `PUT /api/settings`), `companion` (a request that
+sends `X-Lightshow-Client: companion`, as the Companion module does),
+`schedule` (the idle disarm, with its `reason`) or `boot` (the forced disarm
+at start). A request also gives its `route` (method and path, without the
+query string), `remote` address and, when sent, `forwardedFor`, `userAgent`
+and `client`. Tokens, the query string and other headers are never logged.
+
 ## REST API
 
 All endpoints return JSON. When a token is configured, send it as an

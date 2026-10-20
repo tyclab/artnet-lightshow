@@ -16,7 +16,7 @@ import type MidiController from '../../midi.ts';
 import type NowPlayingSource from '../../nowplaying-source.ts';
 import type ProLink from '../../prolink.ts';
 import type SpotifyClient from '../../spotify.ts';
-import type { createApplier } from '../apply.ts';
+import type { ArmOrigin, createApplier } from '../apply.ts';
 import type { setupIntegrations } from '../integrations.ts';
 import type { OflLibrary } from '../ofl-library.ts';
 import type { WledClient } from '../wled.ts';
@@ -59,6 +59,28 @@ export function routeContext(deps: RouteDeps): RouteContext {
     huePair: deps.huePair || pair,
     cues: deps.cues || defaultCues,
   };
+}
+
+const ORIGIN_HEADER_MAX = 160;
+
+function headerOf(req: Request, name: string): string | undefined {
+  const value = req.get(name)?.replace(/[^\x20-\x7e]/g, '').trim().slice(0, ORIGIN_HEADER_MAX);
+  return value || undefined;
+}
+
+// The path without its query, as a token may ride in ?token=; Referer can carry one too, so it is left out.
+export function requestOrigin(req: Request): ArmOrigin {
+  const client = headerOf(req, 'x-lightshow-client');
+  const fields = {
+    route: `${req.method} ${req.path}`,
+    remote: req.socket.remoteAddress,
+    forwardedFor: headerOf(req, 'x-forwarded-for'),
+    userAgent: headerOf(req, 'user-agent'),
+    client,
+  };
+  const origin: ArmOrigin = { via: client && /^companion\b/i.test(client) ? 'companion' : 'rest' };
+  for (const [key, value] of Object.entries(fields)) if (value) Object.assign(origin, { [key]: value });
+  return origin;
 }
 
 export function asyncHandler(fn: (req: Request, res: Response, next: NextFunction) => unknown): RequestHandler {

@@ -76,9 +76,9 @@ async function serve() {
   const app = express();
   const rest = [];
   app.use(express.json());
-  // The HTTP side, as the module calls it: path, method and token.
+  // The HTTP side, as the module calls it: path, method, token and who it says it is.
   app.post(/^\/api\/.*/, (req, res) => {
-    rest.push({ path: req.path, token: req.get('x-lightshow-token') });
+    rest.push({ path: req.path, token: req.get('x-lightshow-token'), client: req.get('x-lightshow-client') });
     if (req.path === '/api/cues/missing/recall') return res.status(404).json({ ok: false, error: 'No such cue' });
     res.json({ ok: true });
   });
@@ -141,6 +141,7 @@ test('it connects on protocol 2 and follows the state by its changes alone', asy
       ['/api/cues/cue%207/recall', 'sesame'], ['/api/cues/missing/recall', 'sesame'], ['/api/auto/start', 'sesame'],
       ['/api/outputs/disarm', 'sesame'], ['/api/outputs/arm', 'sesame'],
     ]);
+    assert.ok(s.rest.every((r) => r.client === 'companion'), 'so the server can log an arm as Companion\'s');
   } finally {
     conn.disconnect();
     Object.assign(state, before);

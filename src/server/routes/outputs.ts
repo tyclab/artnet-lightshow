@@ -13,11 +13,11 @@ import { pixelInputs } from '../pixel-input-live.ts';
 import { pictureInput, pictureUnits } from '../picture-live.ts';
 import { pictureSourceSchema } from '../validation.ts';
 import { messageOf } from '../../errors.ts';
-import type { Express, Response } from 'express';
+import type { Express, Request, Response } from 'express';
 import type { ArtNode } from '../artnet.ts';
 import type { EntertainmentArea } from '../hue.ts';
 import type { HueBridgeSettings } from '../settings.ts';
-import { asyncHandler, resolveHueBridge } from './common.ts';
+import { asyncHandler, requestOrigin, resolveHueBridge } from './common.ts';
 import type { RouteContext } from './common.ts';
 
 export function attachOutputRoutes(app: Express, ctx: RouteContext): void {
@@ -34,14 +34,14 @@ export function attachOutputRoutes(app: Express, ctx: RouteContext): void {
   });
 
   // Disarm voices even when outputs are already off so rehearsal cannot preserve a hidden latch.
-  const answerArmed = (res: Response, on: boolean) => {
-    applier.applyChanged(settings.update({ outputs: { armed: on } }));
+  const answerArmed = (req: Request, res: Response, on: boolean) => {
+    applier.applyChanged(settings.update({ outputs: { armed: on } }), requestOrigin(req));
     if (!on) applier.disarmed();
     res.json({ ok: true, armed: isArmed() });
   };
-  app.post('/api/outputs/arm', (_req, res) => answerArmed(res, true));
-  app.post('/api/outputs/disarm', (_req, res) => answerArmed(res, false));
-  app.post('/api/outputs/toggle', (_req, res) => answerArmed(res, !isArmed()));
+  app.post('/api/outputs/arm', (req, res) => answerArmed(req, res, true));
+  app.post('/api/outputs/disarm', (req, res) => answerArmed(req, res, false));
+  app.post('/api/outputs/toggle', (req, res) => answerArmed(req, res, !isArmed()));
 
   // Use bridge-issued pairing and area discovery because these values cannot be ordinary settings fields.
 
