@@ -18,10 +18,11 @@ function GradeSlider({ id, label, min, max, hint, value, disabled }) {
   return (
     <label class="picture-grade-slider">
       <span class="picture-grade-label">{label}</span>
-      <input type="range" min={min} max={max} step="1" value={pct} disabled={disabled} aria-valuetext={`${pct} percent`}
+      <input type="range" min={min} max={max} step="1" value={pct} disabled={disabled} aria-label={label}
+        aria-valuetext={`${pct} percent`} aria-describedby={`picture-grade-${id}-help`}
         onInput={(e) => onPct(parseInt(e.target.value, 10))} onChange={(e) => commitPct(parseInt(e.target.value, 10))} />
       <span class="picture-grade-value">{pct}%</span>
-      <small class="setting-help">{hint}</small>
+      <small class="setting-help" id={`picture-grade-${id}-help`}>{hint}</small>
     </label>
   );
 }
