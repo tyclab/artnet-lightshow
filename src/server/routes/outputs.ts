@@ -11,7 +11,7 @@ import { state, placeAddresslessFixtures } from '../state.ts';
 import { showStore } from '../show-store.ts';
 import { pixelInputs } from '../pixel-input-live.ts';
 import { pictureInput, pictureUnits } from '../picture-live.ts';
-import { pictureSourceSchema } from '../validation.ts';
+import { pictureGradePatchSchema, pictureSourceSchema } from '../validation.ts';
 import { messageOf } from '../../errors.ts';
 import type { Express, Request, Response } from 'express';
 import type { ArtNode } from '../artnet.ts';
@@ -24,13 +24,20 @@ export function attachOutputRoutes(app: Express, ctx: RouteContext): void {
   const { applier, integrations, hueAreas, huePair } = ctx;
   app.get('/api/pixel-input', (_req, res) => res.json({ ok: true, inputs: pixelInputs.status() }));
 
-  // The room picture: which base the show paints from, who is sending it, and the units a sender samples.
-  app.get('/api/picture', (_req, res) => res.json({ ok: true, source: settings.get('picture.source'), input: pictureInput.status() }));
+  // The room picture: which base the show paints from, its colour grade, who is sending it, and the units a sender samples.
+  const picture = () => ({ ok: true, source: settings.get('picture.source'), grade: settings.group('picture').grade, input: pictureInput.status() });
+  app.get('/api/picture', (_req, res) => res.json(picture()));
   app.get('/api/picture/units', (_req, res) => res.json({ ok: true, ...pictureUnits() }));
   app.post('/api/picture/source', (req, res) => {
     const { source } = validate(pictureSourceSchema, req.body, 'picture-source');
     applier.applyChanged(settings.update({ picture: { source } }));
-    res.json({ ok: true, source: settings.get('picture.source'), input: pictureInput.status() });
+    res.json(picture());
+  });
+  // Fields left out keep their value, so a slider sends only its own.
+  app.post('/api/picture/grade', (req, res) => {
+    const patch = validate(pictureGradePatchSchema, req.body, 'picture-grade');
+    applier.applyChanged(settings.update({ picture: { grade: { ...settings.group('picture').grade, ...patch } } }));
+    res.json(picture());
   });
 
   // Disarm voices even when outputs are already off so rehearsal cannot preserve a hidden latch.

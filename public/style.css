@@ -4021,6 +4021,14 @@ input[type=range]::-moz-range-thumb {
 .live-automation button, .visualizer-colours button, .visualizer-colours input, .perform-sync .btn { min-height: 44px; }
 @media (pointer: coarse) { .bpm-capture .setting-help a { display: inline-flex; align-items: center; min-height: 44px; } }
 .visualizer-colours .palette-tools label { display: flex; flex-direction: column; gap: 4px; }
+.picture-grade fieldset { border: 0; padding: 0; margin: 8px 0; min-width: 0; display: grid; gap: 10px; }
+.picture-grade-toggle { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.picture-grade-slider { display: grid; grid-template-columns: minmax(7em, auto) minmax(0, 1fr) 5ch; align-items: center; gap: 4px 10px; }
+.picture-grade-slider input[type=range] { min-width: 0; min-height: 44px; accent-color: var(--accent); }
+.picture-grade-slider .setting-help { grid-column: 1 / -1; margin: 0; }
+.picture-grade-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.picture-grade-value { font: 650 15px var(--mono); text-align: right; }
+.picture-grade .btn { min-height: 44px; justify-self: start; }
 .live-automation .seq-automation { display: flex; flex-wrap: wrap; gap: 8px; }
 .live-automation .seq-field { flex: 1 1 80px; min-width: 0; }
 .live-automation .seq-field input, .live-automation .seq-field select { width: 100%; }

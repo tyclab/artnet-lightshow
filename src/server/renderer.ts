@@ -45,6 +45,8 @@ import type { AudioMode, EffectCommand, EffectSlot, EffectSpec, FrameBase, HdMas
 import type { ChannelDefault, ChannelMap, Colour, Expression, Override, PixelMap, Profile, PulseReading, ShowDynamics, StageFixture } from '../types/rig.ts';
 import type { PixelInputFrame } from '../types/pixel-input.ts';
 import type { PictureFrame } from '../types/picture.ts';
+import { gradeColour } from '../shared/picture-grade.ts';
+import type { PictureGrade } from '../shared/picture-grade.ts';
 
 export type { VoiceFrame } from '../shared/effects/layer.ts';
 export { effectContentKey };
@@ -109,6 +111,8 @@ export interface RenderInput {
   pixelInputs?: PixelInputFrame[];
   /** The room picture, one colour per rig unit, when the show paints from the visualizer. */
   picture?: PictureFrame | null;
+  /** The room picture's colour grade; absent paints the picture as sent. */
+  pictureGrade?: PictureGrade | null;
   paletteOverride?: Colour[] | null;
   basePalette?: PaletteBody | null;
   overridePalette?: PaletteBody | null;
@@ -1013,6 +1017,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       const pixel = stream && profile.grid?.columns === stream.width && profile.grid.rows === stream.height
         && profile.cells?.length === stream.width * stream.height ? stream : null;
       const painted = art && !pixel && !profile.grid ? art : null;
+      const hueGraded = !!painted && !!input.pictureGrade?.enabled && hueLamp(fix);
       let first: EnergyLook | null = sync;
       let clip = !!pixel || !!painted;
       for (let u = start; u < start + count; u++) {
@@ -1027,7 +1032,8 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
           colour = { r: pixel.data[at], g: pixel.data[at + 1], b: pixel.data[at + 2], w: 0, a: 0, uv: 0 };
           pixelOwners[u] = `pixel:${pixel.leaseId}`;
         } else if (painted && !top && !overridden) {
-          colour = { r: painted.data[u * 3], g: painted.data[u * 3 + 1], b: painted.data[u * 3 + 2], w: 0, a: 0, uv: 0 };
+          const [r, g, b] = gradeColour(painted.data[u * 3], painted.data[u * 3 + 1], painted.data[u * 3 + 2], input.pictureGrade, hueGraded);
+          colour = { r, g, b, w: 0, a: 0, uv: 0 };
           pixelOwners[u] = `picture:${painted.leaseId}`;
         }
         lights.push(lightOf(u, fix, top, fadeT, target, colour));

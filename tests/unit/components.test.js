@@ -822,6 +822,24 @@ test('the strip carries the arm, picture, auto show and blackout switches and th
   assert.ok(ui.html(ui.h(ui.Strip)).includes('Avicii — Levels'));
 });
 
+test('Perform grades the visualizer picture while it paints the room, and only then', () => {
+  const grade = { enabled: true, whiteLimit: 0.6, saturation: 1.25, ceiling: 0.7, hueCeiling: 0.5 };
+  given({ picture: { source: 'effects', input: null, grade } });
+  assert.ok(!ui.html(ui.h(ui.Perform, {})).includes('Picture colour grade'), 'effects paint: no grade to set');
+  given({ picture: { source: 'visualizer', input: { units: 40, receiving: true, remainingMs: 1500 }, grade } });
+  const card = (html) => /<section class="card picture-grade"[\s\S]*?<\/section>/.exec(html)?.[0] ?? '';
+  const html = card(ui.html(ui.h(ui.Perform, {})));
+  assert.match(html, /aria-label="Picture colour grade"/);
+  assert.deepStrictEqual([...html.matchAll(/class="picture-grade-value">(\d+)%</g)].map((m) => Number(m[1])), [60, 125, 70, 50]);
+  assert.match(html, /Graded: less white, more colour/);
+  assert.strictEqual(count(html, 'disabled'), 0);
+  assert.strictEqual(count(html, 'type="range"'), 4);
+  given({ picture: { source: 'visualizer', input: null, grade: { ...grade, enabled: false } } });
+  const off = card(ui.html(ui.h(ui.Perform, {})));
+  assert.match(off, /Off: the picture as sent/);
+  assert.strictEqual([...off.matchAll(/<input type="range"[^>]*disabled/g)].length, 4, 'the sliders wait while the grade is off');
+});
+
 test('shortcut help derives every view chord from the navigation', () => {
   const items = ui.SHORTCUTS.flatMap((group) => group.items).filter((item) => item.view);
   assert.deepStrictEqual(items.map((item) => [item.view, item.keys]), ui.VIEWS.map((view) => [view.id, [...(view.shift ? ['Shift'] : []), view.key]]));
