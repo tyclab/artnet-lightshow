@@ -62,6 +62,7 @@ flowchart LR
   Show --> Engine
   Engine --> Preview[Browser preview]
   HueMap[Hue channels / segment members / ordered fixture units] --> Room[Private room export]
+  Paths[Surveyed strip paths / corners / LED spans] --> Room
   Room --> RoomAPI[Authenticated Stage room import]
   RoomAPI --> Preview
   Engine --> Guard[Output arming / transport gates]
@@ -191,7 +192,8 @@ rig in 3D with its room bindings or a rehearsal. Arming is a separate action
 from preparing or previewing a look.
 Import a private floor model and place its lights with the
 [Stage room controls](docs/stage-room.md). Room geometry affects the preview;
-Rig positions still control spatial effects.
+Rig positions still control spatial effects. Surveyed strip paths render as continuous
+runs with their original corners and per-section colours; moving a strip moves the whole path.
 
 To run reactive effects, configure and enable live input in Sources, select
 Reactive in Perform's Audio panel, and choose a Disco or Visualizer preset in

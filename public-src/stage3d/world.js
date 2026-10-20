@@ -143,7 +143,14 @@ export function roomRig(fixtures, rig, model) {
     const light = { unit: sources[0].unit, fixture: binding.fixtureId, position: binding.position,
       ...(binding.sources ? { sources } : {}) };
     const fixture = fixtures[indices.get(binding.fixtureId ?? binding.sources?.[0]?.fixtureId)];
-    if (fixture?.emission?.kind === 'beam') lamps.push(beamLight(light, fixture.emission, fixture.group === 'floor', model.bounds));
+    if (binding.path) {
+      for (let index = 1; index < binding.path.length; index++) {
+        const from = binding.path[index - 1], to = binding.path[index];
+        const length = Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z);
+        if (length > 1e-6) cells.push({ ...light, size: 0.025, length, from, to,
+          position: { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2, z: (from.z + to.z) / 2 } });
+      }
+    } else if (fixture?.emission?.kind === 'beam') lamps.push(beamLight(light, fixture.emission, fixture.group === 'floor', model.bounds));
     else if (fixture?.emission?.kind === 'strip' || !fixture?.emission && !binding.sources && rig.cellMaps[indices.get(binding.fixtureId)]) cells.push({ ...light, size: 0.08 });
     else lamps.push({ ...light, kind: 'bulb', aim: null, length: 0 });
   }

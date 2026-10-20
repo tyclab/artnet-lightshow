@@ -33,6 +33,18 @@ test('room import preserves fixture IDs and shared output bindings with explicit
   assert.equal(parsed.bindings[0].position.y, 2.2);
 });
 
+test('strip paths round-trip and reject unsafe or degenerate edges', (t) => {
+  const model = room();
+  model.bindings[0].path = [{ x: -1, y: 2.2, z: 0 }, { x: 0, y: 2.2, z: 0 }, { x: 0, y: 2.2, z: 1 }];
+  const store = storeFor(t);
+  store.replace(model);
+  assert.deepEqual(new RoomSceneStore(store.file).load().snapshot().room.bindings[0].path, model.bindings[0].path);
+  for (const path of [[model.bindings[0].path[0]], Array(2).fill(model.bindings[0].path[0]),
+    [{ x: 0, y: 1, z: 0 }, { x: 10, y: 1, z: 0 }]]) {
+    assert.equal(roomSceneSchema.safeParse({ ...model, bindings: [{ ...model.bindings[0], path }] }).success, false);
+  }
+});
+
 const averagedRoom = () => ({ ...room(), bindings: [{ id: 'average', position: { x: 0, y: 1, z: 0 }, confidence: 'estimated',
   aggregation: 'weightedMean', sources: [{ fixtureId: 17, unit: 0, weight: 1 }, { fixtureId: 18, unit: 0, weight: 3 }] }] });
 

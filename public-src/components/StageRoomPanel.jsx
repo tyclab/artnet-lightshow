@@ -98,6 +98,11 @@ export function StageRoomPanel({ snapshot, coverage, fixtures, rig, onChange }) 
     event.preventDefault();
     const binding = { ...draft, id: editingId || `binding-${Date.now()}`,
       position: Object.fromEntries(Object.entries(draft.position).map(([key, value]) => [key, Number(value)])) };
+    if (binding.path) {
+      const original = JSON.parse(originalDraft.current).position;
+      binding.path = binding.path.map((point) => Object.fromEntries(['x', 'y', 'z']
+        .map((axis) => [axis, point[axis] + binding.position[axis] - original[axis]])));
+    }
     if (binding.sources) binding.sources = binding.sources.map((source) => ({ ...source, unit: Number(source.unit), weight: Number(source.weight) }));
     else binding.unit = Number(binding.unit);
     if (!binding.label) delete binding.label;

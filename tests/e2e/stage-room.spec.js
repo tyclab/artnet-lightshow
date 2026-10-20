@@ -62,6 +62,21 @@ test('existing room positions can be edited without changing patch positions', a
   expect((await state(request)).fixtures.find((entry) => entry.id === fixture.id).position).toEqual(fixture.position);
 });
 
+test('moving a strip translates every corner without changing its patch', async ({ page, request }) => {
+  const fixture = (await state(request)).fixtures[0];
+  const path = [{ x: -1, y: 1.2, z: 0 }, { x: 1, y: 1.2, z: 0 }, { x: 1, y: 1.2, z: 1 }];
+  await replace(request, { ...room, bindings: [{ id: 'strip', fixtureId: fixture.id, path,
+    position: { x: 0, y: 1.2, z: 0 }, confidence: 'estimated' }] });
+  await showPanel(page);
+  await page.locator('.stage-room-bindings > summary').click();
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByLabel('Floor Z (m)', { exact: true }).fill('-1');
+  await page.getByRole('button', { name: 'Save position', exact: true }).click();
+  await expect.poll(async () => (await current(request)).room.bindings[0].path)
+    .toEqual(path.map((point) => ({ ...point, z: point.z - 1 })));
+  expect((await state(request)).fixtures.find((entry) => entry.id === fixture.id)).toEqual(fixture);
+});
+
 test('a physical light can average several output sources through the editor', async ({ page, request }) => {
   const first = await seeded(request);
   const second = (await state(request)).fixtures.find((fixture) => fixture.id !== first.id);

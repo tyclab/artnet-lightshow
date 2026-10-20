@@ -353,7 +353,9 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
       lampGlow.geometry.attributes.position.setXYZ(pars.length + k, bulb.position.x, bulb.position.y, bulb.position.z);
     });
     placed.cells.forEach((cell, k) => {
-      tmpM.compose(new THREE.Vector3(cell.position.x, cell.position.y, cell.position.z), new THREE.Quaternion(), tmpS.set(cell.size, cell.size, cell.size));
+      tmpQ.identity();
+      if (cell.length) tmpQ.setFromUnitVectors(down, tmpV.set(cell.from.x - cell.to.x, cell.from.y - cell.to.y, cell.from.z - cell.to.z).normalize());
+      tmpM.compose(new THREE.Vector3(cell.position.x, cell.position.y, cell.position.z), tmpQ, tmpS.set(cell.size, cell.length || cell.size, cell.size));
       cellMesh.setMatrixAt(k, tmpM);
       cellGlow.geometry.attributes.position.setXYZ(k, cell.position.x, cell.position.y, cell.position.z);
     });
@@ -412,7 +414,7 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
       if (cell.sources) meanLightRGB(cell.sources, frame, rgb, sourceRGB);
       else lightRGB(frame[cell.unit], rgb);
       put(cellMesh.instanceColor, k, 1);
-      glow(cellGlow.geometry.attributes.color, k, 0.8);
+      glow(cellGlow.geometry.attributes.color, k, cell.length ? 0 : 0.8);
     });
     for (const attr of changed) attr.needsUpdate = true;
     if (changed.size) invalidate();
