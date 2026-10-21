@@ -448,7 +448,7 @@ timeline and visual tint, and follows the local Party Visuals on/off switch.
 Music Assistant remains the renderer and audio source. OBS is not required.
 Every helper light output also follows the lightshow's **Picture** selector:
 **Effects** releases the curtain, panel and room leases and pauses capture;
-**Visualizer** resumes them within a quarter of a second. The fullscreen display
+**Visualizer** resumes them automatically. The fullscreen display
 continues to follow the local Party Visuals switch.
 
 The default mode only manages the display: it does not read the lightshow token,
