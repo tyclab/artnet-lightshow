@@ -4,6 +4,7 @@ import { overrideMessageSchema, fixtureMessageSchema, validate } from './validat
 import { listProfiles, getProfile, universeOverflow, unitCapOverflow, HUE_BY_HAND, DEVICE_BY_HAND } from './profiles.ts';
 import { INTERNAL_UNIVERSE, hasNoAddress, isHueLamp } from '../shared/placement.ts';
 import { isHueProfile } from '../shared/hue-lamp.ts';
+import { geometryUnitIssue } from '../shared/rig.ts';
 import { showStore } from './show-store.ts';
 import { MAX_UNIVERSES } from './universes.ts';
 import { connectMidi } from './midi-connect.ts';
@@ -212,6 +213,11 @@ function attachSockets(io: Server, { midi, integrations }: {
         const nextProfileId = (profileId !== undefined && profiles[profileId])
           ? profileId : fixture.profileId;
         const nextProfile = getProfile({ profileId: nextProfileId });
+        const mapIssue = geometryUnitIssue(geometry === undefined ? fixture.geometry : geometry, nextProfile);
+        if (mapIssue) {
+          socket.emit('error-msg', { source: 'fixture', message: mapIssue });
+          return;
+        }
         // A Hue lamp is the bridge's: patched from its entertainment area on
         // the profile for what the lamp can show, and it stays a Hue lamp. No
         // other fixture becomes one, and its output (the channel) is not

@@ -35,6 +35,11 @@ const pictureGradePatchSchema = pictureGradeSchema.partial().strict();
 const fixtureGeometry = z.object({
   length: z.number().finite().min(1).max(100),
   angle: z.number().finite().min(-180).max(180),
+  points: z.array(z.object({
+    x: z.number().finite().min(-100).max(100),
+    y: z.number().finite().min(-100).max(100),
+    height: z.number().finite().min(-100).max(100).optional(),
+  }).strict()).min(1).max(MAX_CELLS_PER_FIXTURE).optional(),
 }).strict();
 const fixtureEmission = z.object({
   kind: z.enum(['bulb', 'strip', 'beam']),

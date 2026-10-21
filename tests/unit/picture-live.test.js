@@ -36,6 +36,17 @@ test('cached picture geometry follows placement and profile edits and revokes st
     const secondLease = send(moved);
     assert.equal(pictureInput.current().leaseId, secondLease);
 
+    state.fixtures[0].geometry.points = [{ x: -4, y: -6, height: -10 }, { x: 4, y: 6, height: 10 }];
+    const mapped = pictureUnits();
+    assert.deepEqual(mapped.list.map(p => [p.x, p.y]), [[56, 44], [64, 56]]);
+    assert.notEqual(mapped.signature, moved.signature);
+    assert.equal(pictureInput.current(), null);
+    send(mapped);
+    state.fixtures[0].geometry.points[0].height++;
+    assert.notEqual(pictureUnits().signature, mapped.signature);
+    assert.equal(pictureInput.current(), null);
+    delete state.fixtures[0].geometry.points;
+
     registerProfile(profile(3));
     const resized = pictureUnits();
     assert.equal(resized.units, 3);

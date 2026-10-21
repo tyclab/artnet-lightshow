@@ -5,6 +5,7 @@ import { BUILTIN_PROFILE_ID, HUE_BY_HAND, isBuiltinProfile, MAX_FIXTURES, UNIVER
 import { MAX_UNIVERSES } from '../universes.ts';
 import { INTERNAL_UNIVERSE, footprintOf, hasNoAddress, isHueLamp, universeCount } from '../../shared/placement.ts';
 import { isHueProfile, hueSections, hueChannels } from '../../shared/hue-lamp.ts';
+import { geometryUnitIssue } from '../../shared/rig.ts';
 import { refreshHueFixtures } from '../hue-migration.ts';
 import { hueProfile, hueProfileId } from '../hue-profile.ts';
 import type { AreaLamp, EntertainmentArea } from '../hue.ts';
@@ -245,7 +246,8 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
   function profileChangeBlocked(profile: Profile): string | null {
     const users = state.fixtures.filter((f) => f.profileId === profile.id);
     for (const fixture of users) {
-
+      const mapIssue = geometryUnitIssue(fixture.geometry, profile);
+      if (mapIssue) return mapIssue;
       const overflow = hasNoAddress(fixture)
         ? universeOverflow(fixture.label, 1, profile, INTERNAL_UNIVERSE)
         : universeOverflow(fixture.label, fixture.address, profile, universeOf(fixture));
@@ -489,7 +491,8 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
     const refreshedProfiles = new Map(updates.map(({ profile }) => [profile.id, profile]));
     const profileOf = (fixture: Pick<Fixture, 'profileId'>) => refreshedProfiles.get(fixture.profileId) || getProfile(fixture);
     placeAddresslessFixtures(draft, profileOf);
-    const problem = unitCapOverflow(draft, profileOf) || (countUniverses(draft, profileOf) > MAX_UNIVERSES ? 'The refreshed patch exceeds the universe limit' : null);
+    const mapIssue = draft.map((fix) => geometryUnitIssue(fix.geometry, profileOf(fix))).find(Boolean);
+    const problem = mapIssue || unitCapOverflow(draft, profileOf) || (countUniverses(draft, profileOf) > MAX_UNIVERSES ? 'The refreshed patch exceeds the universe limit' : null);
     if (problem) return res.status(400).json({ ok: false, error: problem });
     for (const { profile } of updates) registerProfile(profile);
     state.fixtures = draft;
@@ -554,6 +557,8 @@ export function attachFixtureRoutes(app: Express, ctx: RouteContext): void {
 
       const profiles = listProfiles();
       const profileId = profiles[fixture.profileId] ? fixture.profileId : BUILTIN_PROFILE_ID;
+      const mapIssue = geometryUnitIssue(fixture.geometry, profiles[profileId]);
+      if (mapIssue) return res.status(400).json({ ok: false, error: mapIssue });
       const addressless = hasNoAddress(fixture);
       if (isHueLamp(fixture) !== isHueProfile(profiles[profileId])) return res.status(400).json({ ok: false, error: HUE_BY_HAND });
       // A lamp from before several bridges were possible names none: it is

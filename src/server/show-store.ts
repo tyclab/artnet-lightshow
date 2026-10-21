@@ -4,6 +4,7 @@ import { BUILTIN_PROFILE_ID, BUILTIN_PROFILE_IDS, isBuiltinProfile, MAX_FIXTURES
 import { MAX_UNIVERSES } from './universes.ts';
 import { INTERNAL_UNIVERSE, hasNoAddress, isHueLamp, universesOf } from '../shared/placement.ts';
 import { isHueProfile, hueSections, hueChannels } from '../shared/hue-lamp.ts';
+import { geometryUnitIssue } from '../shared/rig.ts';
 import { ddpConflict } from './ddp-routes.ts';
 import { showSchema, validate } from './validation.ts';
 import { HttpError, messageOf } from '../errors.ts';
@@ -85,6 +86,8 @@ function applyShow(rawShow: unknown): ShowFile {
     }
     const channels = new Map<string, string>();
     for (const fix of next) {
+      const mapIssue = geometryUnitIssue(fix.geometry, incoming[fix.profileId]);
+      if (mapIssue) throw badShow(`"${fix.label}": ${mapIssue}`);
       if (fix.output?.protocol !== 'hue') continue;
       const lampChannels = hueChannels(fix.output);
       if (lampChannels.length !== hueSections(incoming[fix.profileId])) throw badShow(`"${fix.label}" channels do not match its profile sections`);
@@ -112,6 +115,12 @@ function applyShow(rawShow: unknown): ShowFile {
     }
   }
 
+  if (!hasFixtures && Array.isArray(show.profiles)) {
+    for (const fix of state.fixtures) {
+      const issue = geometryUnitIssue(fix.geometry, incoming[fix.profileId]);
+      if (issue) throw badShow(`"${fix.label}": ${issue}`);
+    }
+  }
   if (Array.isArray(show.profiles)) {
     clearNonBuiltinProfiles();
     show.profiles.forEach((p) => { if (p && p.id) registerProfile(p); });
