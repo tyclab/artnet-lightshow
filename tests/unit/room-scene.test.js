@@ -218,12 +218,13 @@ test('room aggregate mesh budgets apply even when each object is within its own 
 
 test('emissive furniture mesh bindings round-trip and require an existing room binding', (t) => {
   const model = room();
-  model.objects.push({ ...meshObject(), lightBindingId: 'left' });
+  model.objects.push({ ...meshObject(), lightBindingId: 'left', lightTint: '#c4dbea' });
   const store = storeFor(t);
   store.replace(model);
   assert.equal(new RoomSceneStore(store.file).load().snapshot().room.objects[1].lightBindingId, 'left');
+  assert.equal(store.snapshot().room.objects[1].lightTint, '#c4dbea');
   assert.deepEqual(store.snapshot().room.bindings, roomSceneSchema.parse(room()).bindings);
-  for (const change of [{ lightBindingId: 'missing' }, { lightBindingId: '' }, { role: 'wall' }]) {
+  for (const change of [{ lightBindingId: 'missing' }, { lightBindingId: '' }, { role: 'wall' }, { lightTint: '#blue' }, { lightBindingId: undefined }]) {
     const invalid = structuredClone(model);
     Object.assign(invalid.objects[1], change);
     assert.equal(roomSceneSchema.safeParse(invalid).success, false, JSON.stringify(change));

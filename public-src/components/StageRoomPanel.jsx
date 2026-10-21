@@ -17,7 +17,7 @@ export function withRoomBinding(room, binding, previousId = null) {
     if (!previousId || object.lightBindingId !== previousId || binding?.id === previousId) return object;
     const next = { ...object };
     if (binding) next.lightBindingId = binding.id;
-    else delete next.lightBindingId;
+    else { delete next.lightBindingId; delete next.lightTint; }
     return next;
   }) : room.objects;
   return { ...room, bindings, objects };

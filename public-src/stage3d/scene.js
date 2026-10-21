@@ -231,7 +231,7 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
             keepRoom(new THREE.LineBasicMaterial({ color: 0x171a21, transparent: true, opacity: 0.45 })));
           mesh.add(outline);
         }
-        if (object.lightBindingId) roomLightMaterials.set(object.id, { material, baseColor: material.color.clone() });
+        if (object.lightBindingId) roomLightMaterials.set(object.id, { material, baseColor: material.color.clone(), tint: new THREE.Color(object.lightTint || '#ffffff') });
         if (object.role === 'wall') roomWalls.push({ mesh, model: object });
         if (object.role === 'screen') screens.push({ material: mesh.material, color: object.color || '#747985' });
         roomGroup.add(mesh);
@@ -433,8 +433,9 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
     for (const light of objectLights) {
       const surface = roomLightMaterials.get(light.objectId);
       if (!surface) continue;
-      const { material, baseColor } = surface;
+      const { material, baseColor, tint } = surface;
       meanLightRGB(light.sources, frame, rgb, sourceRGB);
+      rgb[0] *= tint.r; rgb[1] *= tint.g; rgb[2] *= tint.b;
       if (material.emissive.r === rgb[0] && material.emissive.g === rgb[1] && material.emissive.b === rgb[2]) continue;
       material.emissive.setRGB(rgb[0], rgb[1], rgb[2]);
       const neutral = 1 - Math.max(rgb[0], rgb[1], rgb[2]);
