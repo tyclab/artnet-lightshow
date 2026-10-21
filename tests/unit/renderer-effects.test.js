@@ -1028,7 +1028,7 @@ test('the flash limiter respects imported physical strobe ranges', () => {
       } else {
         assert.equal(out.strobe, 0, 'an unsupportable native rate uses software');
         assert.equal(r.at(250, patch)[0].dim, 0);
-        assert.ok(r.at(350, patch)[0].dim > 0);
+        assert.ok(r.at(16 * FRAME_MS, patch)[0].dim > 0);
       }
     } finally { unregisterProfile(id); }
   }

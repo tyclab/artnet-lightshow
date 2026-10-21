@@ -1702,7 +1702,13 @@ RGB. White-only cells continue to respond to their white channels. OFL and
 GDTF imports retain numeric physical strobe rates when the driven standard
 range has a supported increasing mapping. Unknown or nonnumeric mappings retain
 the unverified 1–20 Hz fallback. Software strobes cannot exceed half the render
-frame rate; hardware channels use their profile mapping.
+frame rate. They use whole render-frame periods with timing headroom so rate
+guards do not periodically drop flashes. Slower fixtures join an integer subset
+of the requested pulse grid: at full speed the default 20 Hz RGB cap runs at
+about 14.7 Hz, and the 5 Hz Hue cap joins every fourth flash, about 3.7 Hz.
+The global flash limit still bounds that shared grid. Hardware channels use
+their profile mapping and their own oscillator; their physical phase cannot
+be locked to software pulses.
 
 Native strobe previews estimate visible pulses from the quantized profile frequency;
 their phase is a model prediction, not an optical measurement of the fixture.

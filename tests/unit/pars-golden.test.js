@@ -28,8 +28,9 @@ import { acknowledgeFlashes } from '../helpers/acknowledged.js';
 // 5. Final emitted-light admission changes only Hue offsets 48–56 across 2,908
 //    frames (159 with different emitted RGB), respecting mixed-emitter and
 //    white-to-nonwhite transitions. Every PAR byte and its digest remain unchanged.
+// 6. Aligned software strobes change 41/2,908 frames only at Hue offsets 48–57; every PAR byte stays unchanged.
 const GOLDEN = {
-  engine: '6f56aa0be51bef93e6482ea70a1eaeedcc53ae4d263d57b576b9cfbabc0dcbff',
+  engine: '70fa65b31f1f644b4e9a1244f2f7387b403adf4059a382872dfdf550c45e5b97',
   pars: 'f09adeceba236949a3dbf0326a7f37186921a63d97fc0ec33c90bc3e0920db51',
   preview: '65bd25548046cbe773dba9b0fee279aa99c3fc922498d7cfb965724057119178',
   director: '1c05f05e93b67859d56e850ddd4f178fdab4c366e8c7c22b1a0ba82f15e6b978',

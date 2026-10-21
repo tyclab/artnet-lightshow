@@ -2,7 +2,8 @@ import { hardwareDecision, maximumFlashHz } from './hardware.ts';
 import type { HardwareCaps } from './hardware.ts';
 
 const STANDARD_STROBE_STEPS = 250 - 128;
-interface StrobePlan { raw: number | null; level: number; previewLevel: number }
+const SOFTWARE_FRAME_MS = 1000 / 44;
+interface StrobePlan { raw: number | null; level: number; previewLevel: number; cycle?: number }
 const plan = (raw: number | null, level: number, previewLevel = level): StrobePlan => ({ raw, level, previewLevel });
 
 export function hardwareStrobe(raw: number, caps: HardwareCaps, nowMs: number, limitHz = Infinity): StrobePlan {
@@ -28,5 +29,11 @@ export function hardwareStrobe(raw: number, caps: HardwareCaps, nowMs: number, l
       return plan(speed, 1, pulse(nativeHz(speed)));
     }
   }
-  return plan(null, pulse(hz));
+  // Whole-frame periods leave admission headroom; slower devices join an integer subset of the requested pulse grid.
+  const framePeriod = (rate: number) => Math.max(2, Math.ceil(1000 / rate / SOFTWARE_FRAME_MS + .5 - 1e-9));
+  const reference = framePeriod(Math.min(asked, limitHz, 22));
+  const frames = reference * Math.ceil(framePeriod(hz) / reference);
+  const index = Math.round(nowMs / SOFTWARE_FRAME_MS);
+  return { ...plan(null, ((index % frames) + frames) % frames < Math.max(1, Math.floor(frames / 2)) ? 1 : 0),
+    cycle: Math.floor(index / frames) };
 }

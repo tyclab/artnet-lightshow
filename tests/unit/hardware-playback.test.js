@@ -153,8 +153,8 @@ test('explicit blackout cuts immediately without clearing the flash permit', () 
 test('a substep native frequency uses a positive software strobe', async () => {
   const { hardwareStrobe } = await import('../../src/shared/hardware-strobe.ts');
   const profile = { ...caps(.1), strobeHz: { min: 0, max: 30 } };
-  assert.deepEqual(hardwareStrobe(255, profile, 0), { raw: null, level: 1, previewLevel: 1 });
-  assert.deepEqual(hardwareStrobe(255, profile, 5001), { raw: null, level: 0, previewLevel: 0 });
+  assert.deepEqual(hardwareStrobe(255, profile, 0), { raw: null, level: 1, previewLevel: 1, cycle: 0 });
+  assert.deepEqual(hardwareStrobe(255, profile, 5001), { raw: null, level: 0, previewLevel: 0, cycle: 0 });
 });
 
 test('RGB-only output approximates missing white, amber and UV dies', async () => {
@@ -174,7 +174,7 @@ test('legacy strobe adapts Hue and honours product hardware frequencies', async 
   const hue = hardwareOf({ hue: true, hardware: { maxFlashHz: 2 } });
   assert.equal(hardwareStrobe(255, hue, 0).level, 1);
   assert.equal(hardwareStrobe(255, hue, 300).level, 0);
-  assert.equal(hardwareStrobe(255, hue, 500).level, 1);
+  assert.equal(hardwareStrobe(255, hue, 24 * 1000 / 44).level, 1);
   assert.equal(hardwareStrobe(255, { ...hue, policy: 'hold' }, 300).level, 1);
   assert.equal(hardwareStrobe(255, { ...hue, policy: 'exclude' }, 0).level, 0);
   const par = { ...hue, strobeHz: { min: 2, max: 12 }, maxFlashHz: 4, minTransitionMs: 0 };
