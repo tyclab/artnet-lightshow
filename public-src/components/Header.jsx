@@ -5,6 +5,7 @@ import { driverOf } from '../transport-model.js';
 import { useState } from 'preact/hooks';
 import { awakeSig, fullscreenSig, setAwake, toggleFullscreen, canFullscreen } from '../device.js';
 import { StrobesOff } from './Photosensitivity.jsx';
+import { BRAND, PRODUCT, KICKER } from '../brand.js';
 
 // The themes, and what each is for. `system` follows the device's setting.
 const THEMES = [
@@ -88,7 +89,13 @@ export function Header() {
 
   return (
     <header class="app-header">
-      <h1>Tyclab <span>Lightshow</span></h1>
+      <h1>
+        <a class="site-wordmark" href="/#show">
+          <svg class="site-mark" aria-hidden="true" focusable="false"><use href="#krake" stroke="url(#poles)" /></svg>
+          <span class="site-name">{BRAND} <span class="site-product">{PRODUCT}</span><span class="cursor" aria-hidden="true" /></span>
+        </a>
+      </h1>
+      <span class="site-kicker" aria-hidden="true">{KICKER}</span>
 
       <div class="header-stats">
         {s.armed != null && (
