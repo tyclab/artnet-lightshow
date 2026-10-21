@@ -1,3 +1,4 @@
+import { ROOM_SCENE_BODY_LIMIT } from '../../src/shared/room-limits.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -136,7 +137,7 @@ test('room API protects private geometry, supports caching and prevents stale re
   const store = storeFor(t);
   const app = express();
   app.use('/api', createAuth({ token: 'room-test-token' }).httpMiddleware);
-  app.use(express.json({ limit: '1mb' }));
+  app.use(express.json({ limit: ROOM_SCENE_BODY_LIMIT }));
   attachRoomSceneRoutes(app, store);
   app.use((error, _req, res, _next) => res.status(error.status || 500).json({ ok: false }));
   const server = app.listen(0, '127.0.0.1');
@@ -159,7 +160,7 @@ test('room API protects private geometry, supports caching and prevents stale re
   assert.equal(cached.status, 304);
   assert.equal(await cached.text(), '');
   assert.equal((await request('PUT', { ...room(), url: 'http://example.invalid' }, { 'If-Match': saved.revision })).status, 400);
-  assert.equal((await request('PUT', { ...room(), name: 'x'.repeat(1024 * 1024) }, { 'If-Match': saved.revision })).status, 413);
+  assert.equal((await request('PUT', { ...room(), name: 'x'.repeat(ROOM_SCENE_BODY_LIMIT) }, { 'If-Match': saved.revision })).status, 413);
   assert.equal(store.snapshot().revision, saved.revision);
   assert.equal((await request('DELETE', undefined, { 'If-Match': 'empty' })).status, 412);
   assert.equal((await request('DELETE')).status, 428);
@@ -193,8 +194,8 @@ test('triangle meshes reject invalid geometry, mismatched kinds and unbounded da
     object => { object.mesh.triangles[0] = [0, 1, 1.5]; },
     object => { object.mesh.vertices = [[-0.5, 0, 0], [0, 0, 0], [0.5, 0, 0]]; },
     object => { object.mesh.vertices = [[0, 0, 0], [1e-6, 0, 0], [0, 1e-6, 0]]; },
-    object => { object.mesh.vertices = Array(8193).fill([0, 0, 0]); },
-    object => { object.mesh.triangles = Array(16385).fill([0, 1, 2]); },
+    object => { object.mesh.vertices = Array(32769).fill([0, 0, 0]); },
+    object => { object.mesh.triangles = Array(65537).fill([0, 1, 2]); },
     object => { object.mesh.triangles = []; },
   ];
   for (const mutate of mutations) {
@@ -206,11 +207,32 @@ test('triangle meshes reject invalid geometry, mismatched kinds and unbounded da
 test('room aggregate mesh budgets apply even when each object is within its own limits', () => {
   for (const field of ['vertices', 'triangles']) {
     const object = meshObject();
-    const limit = field === 'vertices' ? 8192 : 16384;
+    const limit = field === 'vertices' ? 32768 : 65536;
     while (object.mesh[field].length < limit) object.mesh[field].push(object.mesh[field][0]);
-    const objects = Array.from({ length: 8 }, (_, index) => ({ ...object, id: `mesh-${index}` }));
+    const objects = Array.from({ length: 2 }, (_, index) => ({ ...object, id: `mesh-${index}` }));
     assert.equal(roomSceneSchema.safeParse({ ...room(), objects }).success, true);
     objects.push({ ...object, id: 'mesh-over-budget' });
     assert.equal(roomSceneSchema.safeParse({ ...room(), objects }).success, false);
   }
+});
+
+test('emissive furniture mesh bindings round-trip and require an existing room binding', (t) => {
+  const model = room();
+  model.objects.push({ ...meshObject(), lightBindingId: 'left' });
+  const store = storeFor(t);
+  store.replace(model);
+  assert.equal(new RoomSceneStore(store.file).load().snapshot().room.objects[1].lightBindingId, 'left');
+  assert.deepEqual(store.snapshot().room.bindings, roomSceneSchema.parse(room()).bindings);
+  for (const change of [{ lightBindingId: 'missing' }, { lightBindingId: '' }, { role: 'wall' }]) {
+    const invalid = structuredClone(model);
+    Object.assign(invalid.objects[1], change);
+    assert.equal(roomSceneSchema.safeParse(invalid).success, false, JSON.stringify(change));
+  }
+});
+
+
+test('a furniture primitive can emit a binding without fabricated mesh geometry', () => {
+  const model = room();
+  model.objects[0] = { ...model.objects[0], kind: 'cylinder', role: 'furniture', lightBindingId: 'left' };
+  assert.equal(roomSceneSchema.parse(model).objects[0].lightBindingId, 'left');
 });

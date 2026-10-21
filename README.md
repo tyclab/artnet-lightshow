@@ -194,7 +194,9 @@ Import a private floor model and place its lights with the
 [Stage room controls](docs/stage-room.md). Room geometry affects the preview;
 Rig positions still control spatial effects. Private room imports also accept bounded
 inline triangle meshes for detailed objects; their shape and surface colour affect
-only the preview. Surveyed strip paths render as continuous
+only the preview. Furniture objects can reference an existing room light binding with
+`lightBindingId`, so their surface emits its live RGB instead of a separate marker.
+Surveyed strip paths render as continuous
 runs with their original corners and per-section colours; moving a strip moves the whole path.
 
 To run reactive effects, configure and enable live input in Sources, select

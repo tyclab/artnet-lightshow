@@ -157,6 +157,8 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
   let roomDisposables = [];
   let cutaway = true;
   let roomWalls = [];
+  let roomLightMaterials = new Map();
+  let objectLights = [];
   let screens = [];
   let screenTexture = null;
   let roomBounds = null;
@@ -185,6 +187,8 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
     for (const resource of roomDisposables) resource.dispose();
     roomDisposables = [];
     roomWalls = [];
+    roomLightMaterials = new Map();
+    lastLights = null;
     screens = [];
     if (screenTexture) { screenTexture.dispose(); screenTexture = null; }
     roomGroup = null;
@@ -208,7 +212,7 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
         mesh.position.y = 0.003;
         roomGroup.add(mesh);
       }
-      if (model.objects.some(object => object.kind === 'mesh')) {
+      if (model.objects.some(object => object.kind === 'mesh' || object.lightBindingId)) {
         roomGroup.add(keepRoom(new THREE.HemisphereLight(0xffffff, 0x444450, 1.2)));
         const key = keepRoom(new THREE.DirectionalLight(0xffffff, 2));
         key.position.set(-3, 6, 4);
@@ -216,17 +220,18 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
       }
       for (const object of model.objects) {
         const geometry = keepRoom(roomObjectGeometry(object));
-        const material = object.kind === 'mesh'
-          ? new THREE.MeshLambertMaterial({ color: object.color || '#747985' })
+        const material = object.kind === 'mesh' || object.lightBindingId
+          ? new THREE.MeshLambertMaterial({ color: object.color || '#747985', emissiveIntensity: object.lightBindingId ? 0.25 : 1 })
           : new THREE.MeshBasicMaterial({ color: object.color || '#747985' });
         const mesh = new THREE.Mesh(geometry, keepRoom(material));
         mesh.position.set(object.position.x, object.position.y, object.position.z);
         mesh.rotation.set(object.rotation?.x || 0, object.rotation?.y || 0, object.rotation?.z || 0);
-        if (object.kind !== 'mesh') {
+        if (object.kind !== 'mesh' && !object.lightBindingId) {
           const outline = new THREE.LineSegments(keepRoom(new THREE.EdgesGeometry(geometry)),
             keepRoom(new THREE.LineBasicMaterial({ color: 0x171a21, transparent: true, opacity: 0.45 })));
           mesh.add(outline);
         }
+        if (object.lightBindingId) roomLightMaterials.set(object.id, { material, baseColor: material.color.clone() });
         if (object.role === 'wall') roomWalls.push({ mesh, model: object });
         if (object.role === 'screen') screens.push({ material: mesh.material, color: object.color || '#747985' });
         roomGroup.add(mesh);
@@ -316,6 +321,11 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
   function setRig(placed, unitCount) {
     invalidate();
     lastLights = null;
+    objectLights = placed.objectLights || [];
+    for (const { material, baseColor } of roomLightMaterials.values()) {
+      material.emissive.setRGB(0, 0, 0);
+      material.color.copy(baseColor);
+    }
     if (rigGroup) {
       scene.remove(rigGroup);
       rigGroup.traverse((o) => { if (o.isInstancedMesh) o.dispose(); });
@@ -420,6 +430,17 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
       put(cellMesh.instanceColor, k, 1);
       glow(cellGlow.geometry.attributes.color, k, cell.length ? 0 : 0.8);
     });
+    for (const light of objectLights) {
+      const surface = roomLightMaterials.get(light.objectId);
+      if (!surface) continue;
+      const { material, baseColor } = surface;
+      meanLightRGB(light.sources, frame, rgb, sourceRGB);
+      if (material.emissive.r === rgb[0] && material.emissive.g === rgb[1] && material.emissive.b === rgb[2]) continue;
+      material.emissive.setRGB(rgb[0], rgb[1], rgb[2]);
+      const neutral = 1 - Math.max(rgb[0], rgb[1], rgb[2]);
+      material.color.setRGB(baseColor.r * neutral + rgb[0] * 0.35, baseColor.g * neutral + rgb[1] * 0.35, baseColor.b * neutral + rgb[2] * 0.35);
+      invalidate();
+    }
     for (const attr of changed) attr.needsUpdate = true;
     if (changed.size) invalidate();
   }

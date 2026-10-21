@@ -224,3 +224,15 @@ test('private triangle mesh imports render distinct geometry and preserve output
   expect(after.fixtures).toEqual(before.fixtures);
   expect(after.armed).toBe(before.armed);
 });
+
+test('room imports accept bounded files above one megabyte and reject files above four', async ({ page, request }) => {
+  await replace(request, room);
+  await showPanel(page);
+  const body = Buffer.from(JSON.stringify({ ...room, name: 'Detailed room' }) + ' '.repeat(1024 * 1024));
+  await page.getByLabel('Choose room JSON').setInputFiles({ name: 'detailed-room.json', mimeType: 'application/json', buffer: body });
+  await page.getByRole('button', { name: 'Use Detailed room', exact: true }).click();
+  await expect.poll(async () => (await current(request)).room?.name).toBe('Detailed room');
+  await page.getByLabel('Choose room JSON').setInputFiles({ name: 'too-large.json', mimeType: 'application/json', buffer: Buffer.alloc(4 * 1024 * 1024 + 1, ' ') });
+  await expect(page.getByText('Room files must be at most 4 MB.', { exact: true })).toBeVisible();
+  expect((await current(request)).room.name).toBe('Detailed room');
+});

@@ -1,0 +1,1 @@
+export const ROOM_SCENE_BODY_LIMIT = 4 * 1024 * 1024;
