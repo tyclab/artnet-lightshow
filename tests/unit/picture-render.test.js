@@ -6,7 +6,7 @@ import { channelReader } from '../../src/shared/placement.ts';
 import { SRGB_DECODE } from '../../src/shared/color.ts';
 import { blackPointGain } from '../../src/shared/picture-grade.ts';
 
-// Two RGB pars and one 2 x 1 matrix: the picture paints the pars' units, never the matrix.
+// Two RGB pars and one 2 x 1 matrix: the room picture paints every unit without a pixel stream.
 const par = { id: 'picture-par', name: 'Par', channelCount: 3, channelMap: { red: 0, green: 1, blue: 2 } };
 const bar = { id: 'picture-bar', name: 'Bar', channelCount: 6, channelMap: {},
   cells: [{ channelMap: { red: 0, green: 1, blue: 2 } }, { channelMap: { red: 3, green: 4, blue: 5 } }] };
@@ -44,17 +44,16 @@ function rig() {
   } };
 }
 
-test('the picture paints every non-matrix unit in rig order and leaves the matrix to its effect', () => {
+test('the picture paints every unit in rig order, including a grid without a pixel stream', () => {
   const r = rig();
-  const plain = r.draw(100);
   const painted = r.draw(100, { picture: picture(colours) });
   assert.deepEqual(painted.par, colours.slice(0, 3));
   assert.deepEqual(painted.bar, colours.slice(3, 9));
-  assert.deepEqual(painted.grid, plain.grid);
+  assert.deepEqual(painted.grid, colours.slice(9));
   const decoded = r.draw(100, { picture: picture(colours), pictureDecode: true });
   assert.deepEqual(decoded.par, linear(colours.slice(0, 3)), 'decode on: the linear light the bytes stand for');
   assert.deepEqual(decoded.bar, linear(colours.slice(3, 9)));
-  assert.deepEqual(decoded.grid, plain.grid);
+  assert.deepEqual(decoded.grid, linear(colours.slice(9)));
 });
 
 test('the black point darkens the units at or under it and ramps the rest, hue kept, before the masters', () => {
@@ -74,6 +73,7 @@ test('the black point darkens the units at or under it and ramps the rest, hue k
   const lit = r.draw(100, { picture: bright, pictureBlackPoint: 0.12 });
   assert.deepEqual(lit.par, [255, 128, 0], 'a full peak stays as sent');
   assert.deepEqual(lit.bar, [0, 0, 0, ...lifted([200, 100, 50], 0.12)], '31 lights, but rounds to nothing on the wire');
+
 });
 
 test('voices and overrides stay above the picture; the master dimmer and blackout still apply', () => {
@@ -92,4 +92,15 @@ test('an expired, mis-sized or unacknowledged picture falls back to the effect',
   assert.deepEqual(r.draw(100, { picture: picture(colours.slice(0, 12)) }).par, plain.par);
   assert.deepEqual(r.draw(100, { picture: picture(colours), safety: { acknowledged: false, hdFlashIntervalMs: 350 } }).par, plain.par);
   assert.deepEqual(r.draw(100, { picture: null }).par, plain.par);
+});
+
+test('a live grid stream wins, then an expired or incompatible stream falls back to the room picture', () => {
+  const room = picture(colours);
+  const stream = { fixtureId: 3, leaseId: 'grid', width: 2, height: 1, expiresAt: 200,
+    data: Uint8Array.from([220, 180, 80, 160, 90, 40]) };
+  const draw = (now, pixelInputs) => rig().draw(now, { picture: room, pixelInputs });
+  assert.deepEqual(draw(100, [stream]).grid, [...stream.data]);
+  assert.deepEqual(draw(200, [stream]).grid, colours.slice(9));
+  assert.deepEqual(draw(100, [{ ...stream, width: 1, height: 2 }]).grid, colours.slice(9));
+  assert.deepEqual(draw(100, [stream]).bar, colours.slice(3, 9));
 });
