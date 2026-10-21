@@ -75,8 +75,9 @@ export async function run(settings, dependencies = {}) {
   };
   const capture = target => () => {
     const key = `${target.width}x${target.height}:${target.fit}`;
-    if (!captures.has(key)) captures.set(key, captureCanvas(browser, target, controls.visible));
-    return captures.get(key);
+    const cached = captures.get(key);
+    if (!cached || performance.now() - cached.at > 1000 / (target.fps ?? 44)) captures.set(key, { at: performance.now(), image: captureCanvas(browser, target, controls.visible) });
+    return captures.get(key).image;
   };
   const panels = [...(settings.curtain ? [{ name: 'curtain', ...settings }] : []), ...(settings.panels ?? []).map(panel => ({ ...settings, ...panel, name: `panel:${panel.fixtureId}` }))];
   for (const panel of panels) feeds.push([panel.name, await attachCurtain(panel, capture(panel), source, feedReport(panel.name))]);

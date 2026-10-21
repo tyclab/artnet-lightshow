@@ -119,3 +119,28 @@ test('multiple panels share captures while leases, target failures and browser r
   const first = requests.filter(request => request.event === 'pixel-input:frame' && [38, 39].includes(request.fixtureId) && request.tick === 1);
   assert.equal(first.length, 2); assert.equal(first[0].data, first[1].data, 'panels share the same captured RGB buffer');
 });
+
+
+test('a slow panel lease claim gets a fresh capture instead of an older shared frame', async () => {
+  const stdin = input(), frames = [], captures = [];
+  let display = 0;
+  const browser = { connected: true, close: async () => {}, action: async action => {
+    if (action.mode === 'display') { if (++display === 2) stdin.emit('data', Buffer.from('stop\n')); return { ok: true, live: true }; }
+    captures.push(performance.now());
+    return { ok: true, width: 20, height: 6, data: Array(360).fill(captures.length) };
+  } };
+  await run({ ...settings, fps: 60, fit: 'cover', panels: [{ fixtureId: 38, width: 20, height: 6 }, { fixtureId: 39, width: 20, height: 6 }] }, {
+    stdin, log: () => {}, connectPage: async () => browser, readControls: async () => ({ ok: true, visible: true }),
+    displayHold: { update() {}, stop() {} },
+    connectCurtain: async (target, capture) => ({ armed: () => false, stop: async () => {}, pump: {
+      nextCaptureAt: 0, retryAt: 0, stop: async () => {}, invalidate: async () => {},
+      step: async () => {
+        if (display !== 1) return;
+        if (target.fixtureId === 39) await new Promise(resolve => setTimeout(resolve, 50));
+        frames.push((await capture()).data[0]);
+      },
+    } }),
+  });
+  assert.deepEqual(frames, [1, 2]);
+  assert.equal(captures.length, 2);
+});
