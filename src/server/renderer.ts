@@ -818,7 +818,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     if (request && drawnByTheShow(request.fnId)) return 1;
     const caps = capabilities[inputFixtureIndex(fix)];
     if (caps) {
-      const planned = hardwareStrobe(request?.raw ?? 0, caps, now, request?.limitHz);
+      const planned = hardwareStrobe(request?.raw ?? 0, caps, lastEffectNow ?? now, request?.limitHz);
       if (planned.raw !== null && ch.strobe !== undefined) {
         dmx[base + ch.strobe] = strobeValue({ raw: planned.raw,
           fnId: planned.raw === request?.raw ? request.fnId : 'standard' })!;

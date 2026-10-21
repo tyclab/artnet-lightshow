@@ -839,8 +839,8 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       const cut = tops[u] === 'energy.kill' || !voice && (target?.level === 0 || !!clip && sequence?.transport.stop?.mode === 'black');
       const guardedLight = w.hardwareGuard.light(`${fixtures[i]?.id ?? i}:${cell}`, cols[u], dims[u], t, e.hardware[i], owner, cut);
       cols[u] = guardedLight.colour; dims[u] = guardedLight.dim;
-      if (e.hardware[i].technology !== 'hue' && !programs[u] && w.hardwareStrobeGuard.apply(String(fixtures[i]?.id ?? i), hardwareStrobe(flashes[u], e.hardware[i], t).previewLevel, t,
-        { ...e.hardware[i], minTransitionMs: 0 }) === 0) dims[u] = 0;
+      if (e.hardware[i].technology !== 'hue' && !programs[u] && w.hardwareStrobeGuard.apply(String(fixtures[i]?.id ?? i), hardwareStrobe(flashes[u], e.hardware[i], t, s.flashLimit ? 3 : undefined).previewLevel, t,
+        { ...e.hardware[i], maxFlashHz: Math.min(e.hardware[i].maxFlashHz, s.flashLimit ? 3 : Infinity), minTransitionMs: 0 }) === 0) dims[u] = 0;
     }
     // The party flash limit on the hd.* kinds, on what each lamp puts out at its trim (the preview's master is full).
     if (guarded) {
@@ -869,8 +869,8 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       const owner = voice?.owner ?? (clip ? clipOwner[u] ?? 'sequence:black' : spec ? baseOwner[u] ?? 'base:excluded' : `legacy:${s.pattern}`);
       const cut = tops[u] === 'energy.kill' || !voice && (target?.level === 0 || !!clip && sequence?.transport.stop?.mode === 'black');
       const map = rig.cellMaps[i]?.[cell] ?? profile.channelMap;
-      if (!programs[u] && w.hardwareStrobeGuard.apply(String(fixture.id), hardwareStrobe(flashes[u], caps, t).previewLevel, t,
-        { ...caps, minTransitionMs: 0 }) === 0) dims[u] = 0;
+      if (!programs[u] && w.hardwareStrobeGuard.apply(String(fixture.id), hardwareStrobe(flashes[u], caps, t, s.flashLimit ? 3 : undefined).previewLevel, t,
+        { ...caps, maxFlashHz: Math.min(caps.maxFlashHz, s.flashLimit ? 3 : Infinity), minTransitionMs: 0 }) === 0) dims[u] = 0;
       const guardedLight = w.emittedGuard.light(`${fixture?.id ?? i}:${cell}`, cols[u], dims[u], t, caps, owner, cut,
         hueLightMeasure(profile, map), (fixture.maxBrightness ?? 255) / 255);
       cols[u] = guardedLight.colour; dims[u] = guardedLight.dim;
