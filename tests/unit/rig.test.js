@@ -133,3 +133,11 @@ test('explicit grid cell maps preserve grid addressing and other fixtures keep g
   assert.deepStrictEqual(rig.grids[1], grid.grid);
   assert.deepStrictEqual(rig.cellMaps[1], grid.cells.map(c => c.channelMap));
 });
+
+
+test('a single mapped light uses its offset height in spatial effect layouts', () => {
+  const fixture = { position: { x: 40, y: 60, height: 30 }, geometry: { length: 10, angle: 0, points: [{ x: 2, y: -3, height: 15 }] } };
+  const rig = buildRig([fixture], () => null);
+  assert.deepStrictEqual(rig.layout().units.plan, { x: [.42], y: [.57], z: [.45], group: [null] });
+  assert.deepStrictEqual(rig.layout().fixtures.plan, rig.layout().units.plan);
+});

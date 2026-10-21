@@ -251,7 +251,7 @@ function layoutOf(rig: Rig, split: number | null | undefined, pixelMap: string |
   const fixturePlan: StagePlan | null = planned ? {
     x: order.map((k) => centreOf(rig, members[k]).x / 100),
     y: order.map((k) => centreOf(rig, members[k]).y / 100),
-    z: order.map((k) => heightOf(fixtures[members[k]])),
+    z: order.map((k) => heightInRig(rig, members[k])),
     group: order.map((k) => fixtures[members[k]].group || null),
   } : null;
   const layoutFixtures: Layout['fixtures'] = {
@@ -332,7 +332,7 @@ function layoutOf(rig: Rig, split: number | null | undefined, pixelMap: string |
       plan: !mirrored && members.some((i) => isPlaced(fixtures[i].position)) ? {
         x: order.map((k) => centreOf(rig, members[k]).x / 100),
         y: order.map((k) => centreOf(rig, members[k]).y / 100),
-        z: order.map((k) => heightOf(fixtures[members[k]])),
+        z: order.map((k) => heightInRig(rig, members[k])),
         group: order.map((k) => fixtures[members[k]].group || null),
       } : null,
     };
@@ -342,6 +342,14 @@ function layoutOf(rig: Rig, split: number | null | undefined, pixelMap: string |
 
 function heightOf(fixture: StageFixture): number {
   return (fixture.position?.height ?? 50) / 100;
+}
+
+function heightInRig(rig: Rig, i: number): number {
+  const { start, count } = rig.ranges[i];
+  if (!rig.fixtures[i].geometry?.points) return heightOf(rig.fixtures[i]);
+  let sum = 0;
+  for (let u = start; u < start + count; u++) sum += rig.points[u].height ?? heightOf(rig.fixtures[i]) * 100;
+  return sum / Math.max(1, count) / 100;
 }
 
 function centreOf(rig: Rig, i: number): Point {
