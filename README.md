@@ -446,6 +446,10 @@ The optional `tools/browser-visuals` helper uses Music Assistant's existing
 MilkDrop canvas in a dedicated fullscreen Chrome profile. It removes the artwork,
 timeline and visual tint, and follows the local Party Visuals on/off switch.
 Music Assistant remains the renderer and audio source. OBS is not required.
+Every helper light output also follows the lightshow's **Picture** selector:
+**Effects** releases the curtain, panel and room leases and pauses capture;
+**Visualizer** resumes them within a quarter of a second. The fullscreen display
+continues to follow the local Party Visuals switch.
 
 The default mode only manages the display: it does not read the lightshow token,
 connect to the lighting server or claim a fixture. Add `--curtain` to stream the
@@ -584,8 +588,11 @@ take the room picture when they have no live pixel feed. A valid pixel feed has
 priority; when it expires, the grid returns to the room picture. Update the browser
 helper with the server so it samples grid cells too. Voices, pads, Identify, overrides and
 blackouts stay above it, the master and trims still apply, and two seconds
-without a frame shows the effects again; with **Effects** selected the frames
-are accepted and ignored, so switching is instant and needs no reconnect.
+without a frame shows the effects again. With **Effects** selected the server
+accepts and ignores room frames; the browser helper releases all its light
+inputs instead, including dedicated curtain and panel feeds, and resumes when
+**Visualizer** is selected. Other external pixel-input clients keep their own
+independent ownership and are unaffected by this selector.
 
 ```powershell
 node cli.js --browser-profile $profile --visualizer-url $url --room
