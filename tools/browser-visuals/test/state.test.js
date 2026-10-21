@@ -36,6 +36,16 @@ test('route changes alter target identity without logging endpoint data', () => 
   const next = snapshot(); next.state.fixtures[0].output.at = 5; mirror.snapshot(next);
   assert.notEqual(mirror.target(options).key, before);
 });
+test('effects pauses visualizer targets without changing armed status; older servers still work', () => {
+  const mirror = new StateMirror(); mirror.snapshot(snapshot());
+  assert.equal(mirror.base().ok, true, 'older servers without a picture selector');
+  mirror.patch({ d: 'rig', v: 2, set: { picture: { source: 'effects' } } });
+  assert.deepEqual(mirror.base(), { ok: false, reason: 'Visualizer not selected' });
+  assert.equal(mirror.target(options).ok, false);
+  assert.equal(mirror.armed(), true, 'armed displays stay awake while effects are selected');
+  mirror.patch({ d: 'rig', v: 3, set: { picture: { source: 'visualizer' } } });
+  assert.equal(mirror.target(options).ok, true);
+});
 test('armed needs fresh state with armed outputs only, so a missing clock or acknowledgement still keeps the displays awake', () => {
   let now = 0; const mirror = new StateMirror(() => now);
   assert.equal(mirror.armed(), false);

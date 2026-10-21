@@ -30,6 +30,7 @@ export class StateMirror {
     if (!state.clock || ![state.clock.bpm, state.clock.beatPos, state.clock.at].every(Number.isFinite) || state.clock.bpm <= 0) return { ok: false, reason: 'Waiting for clock state' };
     if (state.armed !== true) return { ok: false, reason: 'Outputs disarmed' };
     if (state.safety?.photosensitivityAcknowledged !== true) return { ok: false, reason: 'Photosensitivity acknowledgement required' };
+    if (state.picture?.source === 'effects') return { ok: false, reason: 'Visualizer not selected' };
     return { ok: true, state };
   }
   target({ fixtureId, width, height }) {
