@@ -187,6 +187,9 @@ header {
   display: inline-flex;
   align-items: center;
   gap: .6rem;
+  /* A 44px touch target without a taller header: the margin gives the height back to the line. */
+  min-height: 44px;
+  margin: -10px 0;
   color: var(--text);
   font-family: var(--mono);
   text-decoration: none;
