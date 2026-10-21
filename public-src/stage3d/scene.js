@@ -223,12 +223,15 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
         const material = object.kind === 'mesh' || object.lightBindingId
           ? new THREE.MeshLambertMaterial({ color: object.color || '#747985', emissiveIntensity: object.lightBindingId ? 0.25 : 1 })
           : new THREE.MeshBasicMaterial({ color: object.color || '#747985' });
+        material.opacity = object.opacity ?? 1;
+        material.transparent = material.opacity < 1;
+        material.depthWrite = !material.transparent;
         const mesh = new THREE.Mesh(geometry, keepRoom(material));
         mesh.position.set(object.position.x, object.position.y, object.position.z);
         mesh.rotation.set(object.rotation?.x || 0, object.rotation?.y || 0, object.rotation?.z || 0);
         if (object.kind !== 'mesh' && !object.lightBindingId) {
           const outline = new THREE.LineSegments(keepRoom(new THREE.EdgesGeometry(geometry)),
-            keepRoom(new THREE.LineBasicMaterial({ color: 0x171a21, transparent: true, opacity: 0.45 })));
+            keepRoom(new THREE.LineBasicMaterial({ color: 0x171a21, transparent: true, opacity: 0.45 * material.opacity, depthWrite: material.depthWrite })));
           mesh.add(outline);
         }
         if (object.lightBindingId) roomLightMaterials.set(object.id, { material, baseColor: material.color.clone(), tint: new THREE.Color(object.lightTint || '#ffffff') });

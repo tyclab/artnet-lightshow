@@ -237,3 +237,18 @@ test('a furniture primitive can emit a binding without fabricated mesh geometry'
   model.objects[0] = { ...model.objects[0], kind: 'cylinder', role: 'furniture', lightBindingId: 'left' };
   assert.equal(roomSceneSchema.parse(model).objects[0].lightBindingId, 'left');
 });
+
+
+test('object opacity round-trips and rejects nonfinite or out-of-range values', (t) => {
+  const model = room();
+  const store = storeFor(t);
+  for (const opacity of [0, 0.4, 1]) {
+    model.objects[0].opacity = opacity;
+    store.replace(model);
+    assert.equal(new RoomSceneStore(store.file).load().snapshot().room.objects[0].opacity, opacity);
+  }
+  for (const opacity of [-0.1, 1.1, NaN, Infinity, '0.4', null]) {
+    model.objects[0].opacity = opacity;
+    assert.equal(roomSceneSchema.safeParse(model).success, false, String(opacity));
+  }
+});

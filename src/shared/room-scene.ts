@@ -77,6 +77,7 @@ export const roomSceneSchema = z.object({
     size,
     rotation: rotation.optional(),
     color: color.optional(),
+    opacity: z.number().finite().min(0).max(1).optional(),
     polygon: polygon.optional(),
     mesh: triangleMesh.optional(),
     lightBindingId: id.optional(),
