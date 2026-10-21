@@ -267,7 +267,7 @@ def _soundcard():
     try:
         import soundcard
         return soundcard
-    except Exception:  # noqa: BLE001 — a missing or broken backend is just unavailable
+    except ImportError:
         return None
 
 
@@ -275,7 +275,7 @@ def _sounddevice():
     try:
         import sounddevice
         return sounddevice
-    except Exception:  # noqa: BLE001
+    except ImportError:
         return None
 
 
@@ -408,7 +408,8 @@ def main(argv=None):
     except BrokenPipeError:
         return 0
     except Exception as err:  # noqa: BLE001 — reported to the server, which decides
-        emitter.send({'type': 'error', 'fatal': True, 'message': f'{type(err).__name__}: {err}'})
+        detail = f'{type(err).__name__}: {err}' if str(err) else type(err).__name__
+        emitter.send({'type': 'error', 'fatal': False, 'message': detail})
         return 1
 
 

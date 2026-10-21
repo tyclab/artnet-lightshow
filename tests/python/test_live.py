@@ -195,6 +195,23 @@ class Sources(unittest.TestCase):
         self.assertIn('pip install soundcard', line['message'])
         self.assertEqual(listed['backend'], None)
 
+    def test_a_backend_connection_failure_on_import_surfaces_as_a_non_fatal_error(self):
+        import builtins
+        from analysis import live
+        real_import = builtins.__import__
+
+        def fail_pulse(name, *args, **kwargs):
+            if name == 'soundcard':
+                raise AssertionError
+            return real_import(name, *args, **kwargs)
+
+        out = io.StringIO()
+        with mock.patch('builtins.__import__', side_effect=fail_pulse), \
+                mock.patch('sys.stdout', out), mock.patch('sys.stdin', io.StringIO()):
+            self.assertEqual(live.main(['--source', 'loopback']), 1)
+        [line] = lines_of(out.getvalue())
+        self.assertEqual(line, {'type': 'error', 'fatal': False, 'message': 'AssertionError'})
+
 
 def expected_spectrum(frame, bins, without_dc=True):
     """
