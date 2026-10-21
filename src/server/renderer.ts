@@ -824,7 +824,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
           fnId: planned.raw === request?.raw ? request.fnId : 'standard' })!;
       }
       return hardwareStrobeGuard.apply(String(fix.id), planned.level, now,
-        { ...caps, maxFlashHz: Math.min(caps.maxFlashHz, request?.limitHz ?? Infinity), minTransitionMs: 0 });
+        { ...caps, maxFlashHz: Math.min(caps.maxFlashHz, request?.limitHz ?? Infinity), minTransitionMs: 0 }, planned.cycle);
     }
     if (ch.strobe !== undefined) {
       const value = strobeValue(request);

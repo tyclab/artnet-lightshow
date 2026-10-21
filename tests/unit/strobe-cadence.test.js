@@ -19,6 +19,17 @@ const fixture = (technology) => ({ id: 1, address: 1, universe: 0, profileId: `c
   maxBrightness: 255, override: null, output: { protocol: technology }, hue: technology === 'hue' });
 const gapsOf = (rises) => rises.slice(1).map((at, i) => at - rises[i]);
 
+test('a refused pulse stays off through its whole cycle, including a cloned preview history', () => {
+  const guard = new HardwareGuard(), limits = { maxFlashHz: 8, minTransitionMs: 0 };
+  assert.equal(guard.apply('lamp', 1, 0, limits, 0), 1);
+  assert.equal(guard.apply('lamp', 0, 50, limits, 0), 0);
+  assert.equal(guard.apply('lamp', 1, 100, limits, 1), 0);
+  assert.equal(guard.apply('lamp', 1, 150, limits, 1), 0, 'no late flash after its original edge was refused');
+  assert.equal(guard.clone().apply('lamp', 1, 160, limits, 1), 0);
+  assert.equal(guard.apply('lamp', 0, 180, limits, 1), 0);
+  assert.equal(guard.apply('lamp', 1, 250, limits, 2), 1);
+});
+
 test('slower devices join the shared pulse grid and the global flash cap still bounds every device', () => {
   const rgb = hardwareOf(fixture('ddp'), profile('ddp'));
   for (const [cap, every] of [[5, 4], [8, 2]]) {
@@ -37,11 +48,11 @@ test('slower devices join the shared pulse grid and the global flash cap still b
   }
 });
 
-for (const origin of [0, 123456.7]) for (const jitter of [0, 2, 6]) {
-  test(`mixed room output keeps Hue rises on RGB pulses with ${jitter} ms jitter and clock origin ${origin}`, () => {
+for (const [cap, period] of [[5, 12], [8, 6]]) for (const origin of [0, 123456.7]) for (const jitter of [0, 2, 6]) {
+  test(`mixed room output keeps ${cap} Hz Hue rises on RGB pulses with ${jitter} ms jitter and clock origin ${origin}`, () => {
     const rgb = profile('ddp'), hue = { ...profile('hue'), channelCount: 7,
       channelMap: { dimmer: 0, red: 1, green: 2, blue: 3, warmWhite: 4, coolWhite: 5, uv: 6 } };
-    const fixtures = [fixture('ddp'), { ...fixture('hue'), id: 2, address: 10 }];
+    const fixtures = [fixture('ddp'), { ...fixture('hue'), id: 2, address: 10, hardware: { maxFlashHz: cap } }];
     const profiles = { [rgb.id]: rgb, [hue.id]: hue };
     const store = createUniverseStore(allocateShared());
     const renderer = createRenderer({ profileOf: f => profiles[f.profileId], now: origin });
@@ -61,8 +72,8 @@ for (const origin of [0, 123456.7]) for (const jitter of [0, 2, 6]) {
     }
     assert.ok(rises[1].length > 30);
     assert.ok(rises[1].slice(1).every(frame => rises[0].includes(frame)), 'every Hue flash starts on an RGB flash after joining');
-    assert.ok(gapsOf(times[1]).every(gap => gap >= 200 - 1e-6), 'Hue keeps its rate limit');
-    assert.ok(gapsOf(times[1]).slice(2).every(gap => gap <= 12 * FRAME_MS + 2 * jitter + 1e-6));
+    assert.ok(gapsOf(times[1]).every(gap => gap >= 1000 / cap - 1e-6), 'Hue keeps its rate limit');
+    assert.ok(gapsOf(times[1]).slice(2).every(gap => gap <= period * FRAME_MS + 2 * jitter + 1e-6));
   });
 }
 
@@ -75,7 +86,7 @@ for (const [technology, capHz, periodFrames] of [['ddp', 20, 3], ['hue', 5, 12]]
       const now = k * FRAME_MS, plan = hardwareStrobe(255, caps, now);
       assert.equal(plan.raw, null);
       assert.equal(plan.previewLevel, plan.level);
-      const output = guard.apply('lamp', plan.level, now, { ...caps, minTransitionMs: 0 });
+      const output = guard.apply('lamp', plan.level, now, { ...caps, minTransitionMs: 0 }, plan.cycle);
       assert.equal(output, plan.level, 'the rate guard never needs to remove a scheduled flash');
       if (output && !previous) rises.push(k);
       previous = output;

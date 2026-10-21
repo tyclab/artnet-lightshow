@@ -153,8 +153,8 @@ test('explicit blackout cuts immediately without clearing the flash permit', () 
 test('a substep native frequency uses a positive software strobe', async () => {
   const { hardwareStrobe } = await import('../../src/shared/hardware-strobe.ts');
   const profile = { ...caps(.1), strobeHz: { min: 0, max: 30 } };
-  assert.deepEqual(hardwareStrobe(255, profile, 0), { raw: null, level: 1, previewLevel: 1 });
-  assert.deepEqual(hardwareStrobe(255, profile, 5001), { raw: null, level: 0, previewLevel: 0 });
+  assert.deepEqual(hardwareStrobe(255, profile, 0), { raw: null, level: 1, previewLevel: 1, cycle: 0 });
+  assert.deepEqual(hardwareStrobe(255, profile, 5001), { raw: null, level: 0, previewLevel: 0, cycle: 0 });
 });
 
 test('RGB-only output approximates missing white, amber and UV dies', async () => {

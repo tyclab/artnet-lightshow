@@ -4,23 +4,31 @@ import type { RateLimits } from './hardware.ts';
 
 export type LightMeasure = (colour: Colour, dim: number, scale: number) => number;
 
-interface History { bright: boolean; lastRise: number; level: number; time: number; colour?: Colour; owner?: string }
+interface History { bright: boolean; lastRise: number; level: number; time: number; colour?: Colour; owner?: string; cycle?: number; blocked?: boolean }
 const peakOf = (colour: Colour) => Math.max(colour.r, colour.g, colour.b, colour.w || 0, colour.a || 0, colour.uv || 0) / 255;
 
 // This history belongs to an output unit, surviving preset and voice handovers.
 export class HardwareGuard {
   private history = new Map<string, History>();
 
-  apply(id: string, level: number, now: number, limits: RateLimits): number {
+  apply(id: string, level: number, now: number, limits: RateLimits, cycle?: number): number {
     let held = this.history.get(id);
     if (!held || now < held.time) {
       held = { bright: false, lastRise: -Infinity, level: 0, time: now - 1000 / 44 };
       this.history.set(id, held);
     }
+    if (cycle !== undefined) {
+      // A refused pulse must not reappear off the shared grid later in its bright window.
+      if (held.cycle !== cycle) { held.cycle = cycle; held.blocked = false; }
+      if (held.blocked) level = 0;
+    }
     const bright = level > 0.15;
     const rising = bright && !held.bright;
     const interval = 1000 / maximumFlashHz(limits);
-    if (rising && now - held.lastRise < interval - 1e-6) level = Math.min(level, held.level);
+    if (rising && now - held.lastRise < interval - 1e-6) {
+      level = Math.min(level, held.level);
+      if (cycle !== undefined) held.blocked = true;
+    }
     else if (rising) held.lastRise = now;
     const delta = limits.minTransitionMs > 0 ? Math.max(0, now - held.time) / limits.minTransitionMs : 1;
     const next = Math.max(held.level - delta, Math.min(held.level + delta, level));
