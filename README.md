@@ -1,15 +1,15 @@
-# Tyclab Lightshow
+# TycStation Lightshow
 
 Lighting controller for Art-Net, sACN, WLED/DDP, OpenRGB and Philips Hue
 Entertainment. Control it from the browser, MIDI, Bitfocus Companion or REST.
 Manual looks, effects, pads and sequences work without Python; analysed shows
 and live audio use the optional analysis environment.
 
-[Tyclab Lightshow](https://github.com/tyclab/artnet-lightshow) builds on
+[TycStation Lightshow](https://github.com/tyclab/artnet-lightshow) builds on
 [LightD31’s ArtNet Lightshow](https://github.com/LightD31/artnet-lightshow) under
 the [MIT license](LICENSE). It combines reviewed upstream improvements with
 Tyclab’s own workflows and deployment revisions. An upstream release is not
-a Tyclab Lightshow release.
+a TycStation Lightshow release.
 
 ## Upstream integration
 
@@ -43,7 +43,7 @@ flowchart LR
   Fork[Tyclab workflows and saved shows] --> Review
   Review --> Adapt[Integrate improvements and preserve migrations]
   Adapt --> Tests[Safety / protocol / browser regressions]
-  Tests --> Release[Tyclab Lightshow build]
+  Tests --> Release[TycStation Lightshow build]
 ```
 
 ## Signal flow
@@ -91,7 +91,7 @@ start the pattern engine.
 
 ### Packaged builds
 
-Tyclab Lightshow has no published release packages yet. Use a pinned source checkout,
+TycStation Lightshow has no published release packages yet. Use a pinned source checkout,
 or build a package on the target operating system with `npm run package`.
 The [CI workflows](https://github.com/tyclab/artnet-lightshow/actions) test Windows
 and Linux packaging. Packages include Node; install the analysis environment
@@ -280,7 +280,7 @@ keys; `PUT /api/settings` changes selected fields.
 |---------|---------------------|
 | `server` | `host: '127.0.0.1'`, `port: 3000`, `token: ''`, `publicUrl: ''` |
 | `artnet` | `enabled: true`, `host: '2.255.255.255'`, `port: 6454`, `universe: 0`, `discovery: true`, `sync: false` |
-| `sacn` | `enabled: false`, `host: ''` for multicast, `priority: 100`, `sourceName: 'Tyclab Lightshow'`, `universeOffset: 1`, `interface: ''`; stable generated `cid` |
+| `sacn` | `enabled: false`, `host: ''` for multicast, `priority: 100`, `sourceName: 'TycStation Lightshow'`, `universeOffset: 1`, `interface: ''`; stable generated `cid` |
 | `hue` | `bridges: []`, `latencyMs: 0`, `strobe: 'flash'`; each paired bridge has an id, address, enabled flag, area and write-only credentials |
 | `picture` | `source: 'effects'` or `'visualizer'`; `blackPoint: 0.12`, the peak under which a picture unit stays dark; `decode: false`, sRGB to linear light; `grade`: the room picture's optional colour grade, off by default, `{ enabled: false, whiteLimit: 0, saturation: 1, ceiling: 1, hueCeiling: 1 }`; see [Room picture](#room-picture) |
 | `outputs` | `armed: false`; always reset to false at startup. `idleDisarmMin: 15`: minutes armed with nothing playing before the outputs disarm themselves; `0` never |
@@ -1196,7 +1196,7 @@ encoders configured to send relative steps. The actions remain the same.
 
 Use Companion 4.3+ and the module in `companion-module/`. Install its dependencies,
 then place or symlink the module inside the configured Developer modules folder.
-Add a Tyclab Lightshow connection with host, port and access token.
+Add a TycStation Lightshow connection with host, port and access token.
 
 The **Busk** page browses and randomises patterns and effects, toggles palettes
 over the running show, launches pads, follows or taps tempo, and stops live

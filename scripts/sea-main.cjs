@@ -22,7 +22,7 @@ function main() {
 
   if (process.argv.includes('--version')) {
     const { version } = JSON.parse(fs.readFileSync(path.join(app, 'package.json'), 'utf8'));
-    console.log(`Tyclab Lightshow ${version} (Node ${process.version})`);
+    console.log(`TycStation Lightshow ${version} (Node ${process.version})`);
     return;
   }
 
@@ -31,10 +31,10 @@ function main() {
   process.env.LIGHTSHOW_PACKAGED = '1';
   fs.mkdirSync(data, { recursive: true });
   process.chdir(data);
-  if (process.env.LIGHTSHOW_SUPERVISED !== '1') process.title = 'Tyclab Lightshow';
+  if (process.env.LIGHTSHOW_SUPERVISED !== '1') process.title = 'TycStation Lightshow';
 
   import(pathToFileURL(path.join(app, 'server.js')).href).catch((err) => {
-    console.error(`\nTyclab Lightshow could not start: ${err && err.stack ? err.stack : err}\n`);
+    console.error(`\nTycStation Lightshow could not start: ${err && err.stack ? err.stack : err}\n`);
     process.exitCode = 1;
   });
 }

@@ -1,6 +1,6 @@
 {
-  "name": "Tyclab Lightshow",
-  "short_name": "Tyclab",
+  "name": "TycStation Lightshow",
+  "short_name": "TycStation",
   "description": "Music-driven control for Art-Net, sACN, WLED, OpenRGB and Philips Hue.",
   "start_url": "/",
   "scope": "/",

@@ -1,7 +1,7 @@
 {
   "name": "tyclab-lightshow",
   "version": "3.0.0",
-  "description": "Tyclab Lightshow: lighting control for Art-Net, sACN, WLED, OpenRGB and Hue Entertainment",
+  "description": "TycStation Lightshow: lighting control for Art-Net, sACN, WLED, OpenRGB and Hue Entertainment",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tyclab/artnet-lightshow.git"

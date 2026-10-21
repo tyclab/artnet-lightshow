@@ -46,4 +46,4 @@ jobs:
         run: |
           ls -la dist
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft \
-            --title "Tyclab Lightshow ${GITHUB_REF_NAME#v}" --generate-notes
+            --title "TycStation Lightshow ${GITHUB_REF_NAME#v}" --generate-notes

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Tyclab Lightshow Deezer Bridge",
+  "name": "TycStation Lightshow Deezer Bridge",
   "version": "0.2.0",
-  "description": "Sends the Deezer web player's current track, position and upcoming queue to the local Tyclab Lightshow server (auto-show sync + prefetch).",
+  "description": "Sends the Deezer web player's current track, position and upcoming queue to the local TycStation Lightshow server (auto-show sync + prefetch).",
   "permissions": [
     "storage"
   ],
