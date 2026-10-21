@@ -179,3 +179,38 @@ test('room bindings preserve explicit beam geometry and clip beams at room bound
   assert.equal(beam.end.y, beam.position.y);
   assert.equal(beam.length, 2);
 });
+
+test('mesh emitters consume only their binding marker while retaining weighted coverage', () => {
+  const physical = average([{ fixtureId: 10, unit: 0, weight: 1 }, { fixtureId: 20, unit: 1, weight: 3 }]);
+  const objects = [{ id: 'shell', lightBindingId: physical.id }, { id: 'second-shell', lightBindingId: physical.id }];
+  const placed = roomRig(fixtures, rig, { ...model, objects, bindings: [physical, binding('other', 10)] });
+  assert.equal(placed.lamps.length, 1);
+  assert.equal(placed.cells.length, 0);
+  assert.deepEqual(placed.objectLights, objects.map(object => ({ objectId: object.id, sources: [{ unit: 0, weight: 1 }, { unit: 2, weight: 3 }] })));
+  assert.deepEqual(placed.shared, [{ fixtureId: 10, unit: 0, bindings: ['physical', 'other'] }]);
+  assert.equal(placed.missing.length, 0);
+  assert.deepEqual(placed.partial.map(fixture => fixture.id), [20]);
+});
+
+test('mesh emitter missing sources retain black weight and unresolved diagnostics', () => {
+  const physical = average([{ fixtureId: 10, unit: 0, weight: 1 }, { fixtureId: 999, unit: 0, weight: 3 }]);
+  const candidate = { ...model, objects: [{ id: 'shell', lightBindingId: physical.id }], bindings: [physical] };
+  const placed = roomRig(fixtures, rig, candidate);
+  const out = new Float32Array(3);
+  meanLightRGB(placed.objectLights[0].sources, [{ r: 255 }], out);
+  assert.deepEqual([...out], [0.25, 0, 0]);
+  assert.equal(placed.incomplete[0].missingSources, 1);
+  const missing = roomRig([], { ranges: [] }, candidate);
+  assert.deepEqual(missing.objectLights, []);
+  assert.deepEqual(missing.unresolved, [physical]);
+});
+
+
+test('editing or removing a binding preserves valid furniture references without moving geometry', () => {
+  const original = { ...model, bindings: [binding('a', 10)], objects: [{ id: 'shell', lightBindingId: 'a', position: { x: 1, y: 1, z: 1 } }] };
+  const renamed = ui.withRoomBinding(original, binding('renamed', 10), 'a');
+  assert.equal(renamed.objects[0].lightBindingId, 'renamed');
+  const removed = ui.withRoomBinding(original, null, 'a');
+  assert.deepEqual(removed.objects, [{ id: 'shell', position: original.objects[0].position }]);
+  assert.equal(original.objects[0].lightBindingId, 'a');
+});

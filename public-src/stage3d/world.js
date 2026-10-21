@@ -122,6 +122,13 @@ export function roomRig(fixtures, rig, model) {
   const cells = [];
   const unresolved = [];
   const incomplete = [];
+  const objectLights = [];
+  const lightObjects = new Map();
+  for (const object of model.objects || []) {
+    if (!object.lightBindingId) continue;
+    if (!lightObjects.has(object.lightBindingId)) lightObjects.set(object.lightBindingId, []);
+    lightObjects.get(object.lightBindingId).push(object.id);
+  }
   const outputs = new Map();
   const mapped = new Map();
   let estimated = 0;
@@ -142,6 +149,10 @@ export function roomRig(fixtures, rig, model) {
     if (binding.confidence !== 'measured') estimated++;
     const light = { unit: sources[0].unit, fixture: binding.fixtureId, position: binding.position,
       ...(binding.sources ? { sources } : {}) };
+    if (lightObjects.has(binding.id)) {
+      for (const objectId of lightObjects.get(binding.id)) objectLights.push({ objectId, sources });
+      continue;
+    }
     const fixture = fixtures[indices.get(binding.fixtureId ?? binding.sources?.[0]?.fixtureId)];
     if (binding.path) {
       for (let index = 1; index < binding.path.length; index++) {
@@ -157,7 +168,7 @@ export function roomRig(fixtures, rig, model) {
   const missing = fixtures.filter((fixture) => !mapped.has(fixture.id));
   const partial = fixtures.filter((fixture, index) => mapped.has(fixture.id) && mapped.get(fixture.id).size < rig.ranges[index].count);
   const shared = [...outputs.values()].filter((output) => output.bindings.length > 1);
-  return { lamps, cells, trusses: [], missing, partial, unresolved, incomplete, shared, estimated };
+  return { lamps, cells, objectLights, trusses: [], missing, partial, unresolved, incomplete, shared, estimated };
 }
 
 export function meanLightRGB(sources, frame, out, scratch = new Float32Array(3)) {

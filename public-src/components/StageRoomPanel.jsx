@@ -1,3 +1,4 @@
+import { ROOM_SCENE_BODY_LIMIT } from '../../src/shared/room-limits.ts';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api } from '../state.js';
 import { bindingSources } from '../stage3d/world.js';
@@ -11,7 +12,15 @@ export const replaceStageRoom = (room, revision) => api('/api/stage/room', {
 export function withRoomBinding(room, binding, previousId = null) {
   const bindings = room.bindings.filter((entry) => entry.id !== previousId);
   if (binding) bindings.push(binding);
-  return { ...room, bindings };
+  const needsRemap = previousId && binding?.id !== previousId && room.objects.some(object => object.lightBindingId === previousId);
+  const objects = needsRemap ? room.objects.map((object) => {
+    if (!previousId || object.lightBindingId !== previousId || binding?.id === previousId) return object;
+    const next = { ...object };
+    if (binding) next.lightBindingId = binding.id;
+    else delete next.lightBindingId;
+    return next;
+  }) : room.objects;
+  return { ...room, bindings, objects };
 }
 
 function SourceFields({ source, fixtures, rig, onChange, prefix = '' }) {
@@ -56,7 +65,7 @@ export function StageRoomPanel({ snapshot, coverage, fixtures, rig, onChange }) 
     if (!file) return;
     setPending(null);
     try {
-      if (file.size > 1024 * 1024) throw new Error('Room files must be at most 1 MB.');
+      if (file.size > ROOM_SCENE_BODY_LIMIT) throw new Error('Room files must be at most 4 MB.');
       const parsed = JSON.parse(await file.text());
       if (!parsed || parsed.version !== 1 || typeof parsed.name !== 'string') throw new Error('Choose a version 1 room file.');
       setPending(parsed);

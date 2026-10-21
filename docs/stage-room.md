@@ -65,8 +65,8 @@ local origin when exporting. Triangle indices are zero-based and must refer to
 three different existing vertices enclosing a nonzero area; winding determines
 the outside face. Near-zero triangles (cross-product squared length ≤ 1e-20) are
 rejected. Meshes support furniture and walls; screen meshes need texture coordinates
-and are not accepted. Meshes accept at most 8,192 vertices and 16,384 triangles each,
-and a room at most 65,536 mesh vertices and 131,072 triangles. The existing 1 MB
+and are not accepted. Meshes accept at most 32,768 vertices and 65,536 triangles each,
+and a room at most 65,536 mesh vertices and 131,072 triangles. The 4 MB
 request limit also applies, so decimate detailed source models and round exported
 coordinates. Stage computes smooth surface normals and uses fixed neutral lighting
 to show relief without drawing triangle outlines. Object colours affect the preview
@@ -107,3 +107,14 @@ returns to the generic venue. Both require `If-Match` with the revision from
 GET: missing revisions return 428; an intervening edit returns 412. Reload and
 review that edit before replacing it. Failed validation or disk writes preserve
 the previously loaded model.
+
+A furniture object may set `lightBindingId` to an existing binding ID. Its surface
+retains its base colour while off and emits that binding's current Stage RGB, including weighted
+source mixtures and missing-source black contributions. The binding's separate
+marker is replaced by the object; its coverage and source data are retained. This
+uses the same live/rehearsal frame and power-state semantics as other Stage lights.
+Lit surfaces blend their neutral diffuse colour toward 0.35 × the current linear RGB and
+add restrained emission (intensity 0.25), preserving hue and directional relief.
+An off frame removes emission while leaving the physical shell visible. Multiple
+object parts may share one binding; unbound parts remain ordinary scenery. This is
+preview rendering only and never moves or changes an output fixture.

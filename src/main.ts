@@ -1,5 +1,6 @@
 import './load-env.ts';
 import './start-logging.ts';
+import { ROOM_SCENE_BODY_LIMIT } from './shared/room-limits.ts';
 import path from 'node:path';
 import http from 'node:http';
 import express from 'express';
@@ -99,7 +100,7 @@ const remoteAnalysis = new RemoteAnalysisPool({
 // GPU workers carry their own token, which opens these job routes and nothing under the rest of /api.
 app.use(REMOTE_ANALYSIS_HTTP, remoteAnalysis.httpRouter());
 app.use('/api', auth.httpMiddleware);   // before express.json: reject first, parse after
-app.use('/api/stage/room', express.json({ limit: '1mb' }));
+app.use('/api/stage/room', express.json({ limit: ROOM_SCENE_BODY_LIMIT }));
 app.use(express.json());
 io.use(auth.socketMiddleware);
 remoteAnalysis.attach(io);
