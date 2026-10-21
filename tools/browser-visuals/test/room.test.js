@@ -7,12 +7,12 @@ import { LeasePump } from '../pump.js';
 const image = () => ({ width: 4, height: 2, data: Buffer.from([...Array(2).fill([255, 0, 0]).flat(), ...Array(2).fill([0, 0, 255]).flat(),
   ...Array(2).fill([255, 0, 0]).flat(), ...Array(2).fill([0, 0, 255]).flat()]) });
 
-test('a unit takes the box average at its plan position; matrix cells stay black', () => {
+test('a unit takes the box average at its plan position; matrix cells sample the same picture', () => {
   const units = [{ fixture: 1, cell: 0, x: 0, y: 50, grid: false }, { fixture: 2, cell: 0, x: 100, y: 50, grid: false }, { fixture: 3, cell: 0, x: 50, y: 50, grid: true }];
   const out = sampleUnits(image(), units);
   assert.deepEqual([...out.slice(0, 3)], [255, 0, 0]);
   assert.deepEqual([...out.slice(3, 6)], [0, 0, 255]);
-  assert.deepEqual([...out.slice(6, 9)], [0, 0, 0]);
+  assert.deepEqual([...out.slice(6, 9)], [85, 0, 170]);
   assert.equal(out.length, 9);
 });
 

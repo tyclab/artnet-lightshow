@@ -568,8 +568,10 @@ from. With **Visualizer** selected, a sender claims the room picture over the
 authenticated socket and sends one RGB colour per rig unit, sampled from the
 picture at the unit's plan position: the plot's left-to-right is the picture's
 left-to-right and the plot's top (the room's front) is the picture's top, so a
-sweep across the screen sweeps across the room. Matrix panels keep their own
-pixel feed and ignore the room picture. Voices, pads, Identify, overrides and
+sweep across the screen sweeps across the room. Grid fixtures, including keyboards,
+take the room picture when they have no live pixel feed. A valid pixel feed has
+priority; when it expires, the grid returns to the room picture. Update the browser
+helper with the server so it samples grid cells too. Voices, pads, Identify, overrides and
 blackouts stay above it, the master and trims still apply, and two seconds
 without a frame shows the effects again; with **Effects** selected the frames
 are accepted and ignored, so switching is instant and needs no reconnect.

@@ -1014,7 +1014,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       .filter((p) => now < p.expiresAt && p.data instanceof Uint8Array && p.data.length === p.width * p.height * 3)
       .map((p) => [p.fixtureId, p]));
     const pixelOwners: (string | null)[] = new Array(rigNow.units.length).fill(null);
-    // The room picture paints every non-matrix unit below voices and overrides, as a pixel stream does its panel.
+    // The room picture paints units without a live pixel stream, below voices and overrides.
     // Both come from a screen: their bytes are lifted off the black point, decoded first when asked.
     const art = input.safety.acknowledged && input.picture && now < input.picture.expiresAt
       && input.picture.data instanceof Uint8Array && input.picture.data.length === rigNow.units.length * 3 ? input.picture : null;
@@ -1030,7 +1030,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       const profile = profileOf(fix), stream = pixels.get(fix.id);
       const pixel = stream && profile.grid?.columns === stream.width && profile.grid.rows === stream.height
         && profile.cells?.length === stream.width * stream.height ? stream : null;
-      const painted = art && !pixel && !profile.grid ? art : null;
+      const painted = art && !pixel ? art : null;
       const hueGraded = !!painted && !!input.pictureGrade?.enabled && hueLamp(fix);
       let first: EnergyLook | null = sync;
       let clip = !!pixel || !!painted;

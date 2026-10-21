@@ -5,12 +5,11 @@ import { requester } from './request.js';
 
 /** One colour per rig unit: the small cover-fitted capture read at each unit's plan position
  * (percent of the stage plot; the plot's top is the room's front), a 3 x 3 box average so a
- * single bright pixel does not flicker a lamp. Matrix cells are sent black: the server ignores them. */
+ * single bright pixel does not flicker a lamp. The server gives a live pixel stream priority. */
 export function sampleUnits(image, units) {
   const out = new Uint8Array(units.length * 3);
   const { width, height, data } = image;
   units.forEach((unit, i) => {
-    if (unit.grid) return;
     const cx = Math.min(width - 1, Math.max(0, Math.round((unit.x / 100) * (width - 1))));
     const cy = Math.min(height - 1, Math.max(0, Math.round((unit.y / 100) * (height - 1))));
     let r = 0, g = 0, b = 0, n = 0;
