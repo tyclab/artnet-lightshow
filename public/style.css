@@ -776,8 +776,8 @@ button.cb-bpm-num:focus-visible { outline: .125rem solid var(--accent); outline-
 .perform-pad:focus-visible { outline: .125rem solid var(--accent); outline-offset: .1875rem; }
 .perform-pad.active { background: var(--accent-fill); border-color: var(--accent); color: #fff; }
 .perform-pad.active .perform-pad-hint { color: rgba(255, 255, 255, .9); }
-.pad-blackout { border-color: var(--red); }
-.pad-blackout.active { background: var(--red); border-color: var(--red); }
+.pad-blackout { border-color: var(--amber); }
+.pad-blackout.active { background: var(--wash-amber); border-color: var(--amber); color: var(--text-amber); }
 .pad-blinder.active, .pad-white-strobe.active { background: var(--text); border-color: var(--text); color: var(--bg); }
 .pad-blinder.active .perform-pad-hint, .pad-white-strobe.active .perform-pad-hint { color: var(--bg); opacity: .75; }
 .pad-uv-wash.active { background: #7c3aed; border-color: #7c3aed; }
