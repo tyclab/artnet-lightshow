@@ -26,7 +26,7 @@ const readHaze = () => {
 
 /** `compact`: the stage alone, for the Show view — the room loads here, its panel and the notes stay in Stage. */
 export function StageView({ compact = false } = {}) {
-  const s = pick(['fixtures', 'profiles', 'colorPresets', 'autoShow']);
+  const s = pick(['fixtures', 'profiles', 'colorPresets', 'autoShow', 'armed']);
   const connected = connectedSig.value;
   const fixtures = s.fixtures || [];
   const profiles = s.profiles || {};
@@ -192,13 +192,13 @@ export function StageView({ compact = false } = {}) {
   const bars = rig.cellMaps.filter(Boolean).length;
   const description = `The rig in 3D from ${view === 'audience' ? 'the audience' : view === 'above' ? 'above' : 'the side'}: `
     + `${fixtures.length} fixtures${bars ? `, ${bars} of them bars` : ''}, ${parts} lights, `
-    + `${rehearsing ? `rehearsing the track at ${fmtTime(ui.position)}` : connected ? 'showing the live output' : 'offline'}.`;
+    + `${rehearsing ? `rehearsing the track at ${fmtTime(ui.position)}` : connected ? s.armed ? 'showing the live output' : 'previewing with outputs disarmed; nothing is transmitted' : 'offline'}.`;
 
   return (
     <div class={`stage3d-view${compact ? ' compact' : ''}`}>
       {!compact && <StageRoomPanel snapshot={roomState} coverage={room ? placed : null} fixtures={fixtures} rig={rig} onChange={setRoomState} />}
       <div class="stage3d-tools" role="toolbar" aria-label="Stage view">
-        <span class="panel-tag">{rehearsing ? 'Rehearsal' : connected ? 'Live output' : 'Offline'}</span>
+        <span class="panel-tag">{rehearsing ? 'Rehearsal' : connected ? s.armed ? 'Live output' : 'Preview (disarmed)' : 'Offline'}</span>
         <div class="segmented" role="group" aria-label="Viewpoint">
           {VIEWS.map((v) => (
             <button key={v.id} type="button" class={`segmented-btn ${view === v.id ? 'active' : ''}`} aria-pressed={view === v.id}
@@ -240,7 +240,9 @@ export function StageView({ compact = false } = {}) {
         closer. {room ? `${room.name}: imported light positions; missing bindings are listed above. `
           : 'Generic venue: fixture heights follow the plan when set; otherwise groups supply approximate mounting heights. '}{rehearsing
           ? 'Rehearsing: the planned show, as the timeline has it; nothing goes out to the rig.'
-          : 'Live: what is going out to the rig now.'}
+          : !connected ? 'Offline: the live output is unavailable.' : s.armed
+            ? 'Live: what is going out to the rig now.'
+            : 'Preview: outputs are disarmed; nothing is transmitted to the rig.'}
       </p>}
     </div>
   );

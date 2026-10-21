@@ -109,7 +109,7 @@ export function StagePreview() {
   return <section class="panel stage-panel">
     <header class="panel-head">
       <h2 class="panel-title">Stage preview</h2>
-      <span class="panel-tag">{rehearsal ? 'Rehearsal' : connected ? 'Live output' : 'Offline'}</span>
+      <span class="panel-tag">{rehearsal ? 'Rehearsal' : connected ? s.armed ? 'Live output' : 'Preview (disarmed)' : 'Offline'}</span>
       <button class={`btn sm ${edit ? 'active' : ''}`} disabled={!connected} aria-pressed={edit}
         onClick={() => { setUi({ edit: !edit }); drag.current = null; setDraft(null); }}> {edit ? 'Done positioning' : 'Position fixtures'}</button>
     </header>

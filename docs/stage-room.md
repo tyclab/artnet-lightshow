@@ -124,3 +124,7 @@ coloured translucent material. Stage converts both the tint and live RGB to line
 light and multiplies them before shading; the default white tint preserves existing
 rendering. The tint filters illumination without adding light to black frames or
 changing output colours. The object's base `color` remains its appearance when off.
+
+Objects may set `opacity` from 0 (invisible) to 1 (opaque), for example `0.4`
+for glass. Omitted opacity preserves the opaque default. Transparent objects
+blend with the scenery behind them without writing depth; this affects only Stage.

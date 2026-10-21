@@ -12,17 +12,21 @@ const script = buildSync({
     let disposedLights = 0;
     const disposeLight = THREE.Light.prototype.dispose;
     THREE.Light.prototype.dispose = function() { disposedLights++; disposeLight.call(this); };
-    let materials = [];
+    let materials = [], objectMaterials = [];
     const addObject = THREE.Group.prototype.add;
     THREE.Group.prototype.add = function(...objects) {
-      for (const object of objects) if (object.material?.isMeshLambertMaterial) materials.push(object.material);
+      for (const object of objects) {
+        if (object.isMesh && object.material) objectMaterials.push(object.material);
+        if (object.material?.isMeshLambertMaterial) materials.push(object.material);
+      }
       return addObject.apply(this, objects);
     };
     const scene = createStageScene(canvas, { haze: 0, lightRGB, room: { width: 6, depth: 4, trussHeight: 3 } });
     scene.resize();
-    window.meshRoom = model => { materials = []; scene.setRoom(model); scene.render(); return { image: canvas.toDataURL(), disposedLights }; };
+    window.meshRoom = model => { materials = []; objectMaterials = []; scene.setRoom(model); scene.render(); return { image: canvas.toDataURL(), disposedLights }; };
+    window.meshOpacity = () => objectMaterials.map(({opacity, transparent, depthWrite}) => ({opacity, transparent, depthWrite}));
     window.meshRig = objectLights => { scene.setRig({ lamps: [], cells: [], trusses: [], objectLights }, 2); };
-    window.meshFrame = frame => { scene.setLights(frame); scene.setHaze(0); scene.render(); return { image: canvas.toDataURL(), materials: materials.map(material => ({ color: material.color.toArray(), emissive: material.emissive.toArray(), emissiveIntensity: material.emissiveIntensity })), info: scene.info() }; };
+    window.meshFrame = frame => { scene.setLights(frame); scene.setHaze(0); scene.render(); return { image: canvas.toDataURL(), materials: materials.map(material => ({ color: material.color.toArray(), emissive: material.emissive.toArray(), emissiveIntensity: material.emissiveIntensity, opacity: material.opacity, transparent: material.transparent, depthWrite: material.depthWrite })), info: scene.info() }; };
     window.disposeMeshRoom = () => { scene.dispose(); return disposedLights; };
   ` }, bundle: true, format: 'iife', write: false, logLevel: 'silent',
 }).outputFiles[0].text;
@@ -111,5 +115,31 @@ test('a material tint filters live RGB in linear space without changing white de
   const dark = await page.evaluate(() => window.meshFrame([{}]));
   expect(dark.materials).toEqual(off.materials);
   expect(dark.image).toBe(off.image);
+  await page.evaluate(() => window.disposeMeshRoom());
+});
+
+
+test('room object opacity blends transparent glass and preserves opaque defaults', async ({ page }) => {
+  await page.goto('about:blank');
+  await page.addScriptTag({ content: script });
+  const glass = { id: 'glass', kind: 'mesh', role: 'furniture', position: { x: 0, y: 1, z: 0 },
+    size: { x: 2, y: 2, z: 2 }, color: '#c4dbea',
+    mesh: { vertices: [[-0.5, -0.5, 0], [0.5, -0.5, 0], [0, 0.5, 0]], triangles: [[0, 1, 2]] } };
+  const model = { bounds: { width: 6, depth: 4, height: 3 }, rooms: [], bindings: [], objects: [glass] };
+  await page.evaluate(model => window.meshRoom(model), model);
+  const opaque = await page.evaluate(() => window.meshFrame([]));
+  expect(opaque.materials[0]).toMatchObject({ opacity: 1, transparent: false, depthWrite: true });
+  glass.opacity = 0.4;
+  await page.evaluate(model => window.meshRoom(model), model);
+  const translucent = await page.evaluate(() => window.meshFrame([]));
+  expect(translucent.materials[0]).toMatchObject({ opacity: 0.4, transparent: true, depthWrite: false });
+  expect(translucent.image).not.toBe(opaque.image);
+  const primitive = { ...glass, kind: 'box' };
+  delete primitive.mesh;
+  await page.evaluate(model => window.meshRoom(model), { ...model, objects: [primitive] });
+  expect((await page.evaluate(() => window.meshOpacity())).at(-1)).toEqual({ opacity: 0.4, transparent: true, depthWrite: false });
+  glass.opacity = 1;
+  await page.evaluate(model => window.meshRoom(model), model);
+  expect(await page.evaluate(() => window.meshFrame([]))).toEqual(opaque);
   await page.evaluate(() => window.disposeMeshRoom());
 });

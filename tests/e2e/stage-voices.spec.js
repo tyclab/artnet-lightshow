@@ -21,6 +21,7 @@ const distance = (a, b) => Math.max(Math.abs(a.r - b.r), Math.abs(a.g - b.g), Ma
 
 test('voices appear over the stage look and disappear when stopped', async ({ page, context, request }) => {
   const originalLook = await state(request);
+  await request.post('/api/outputs/disarm');
   await reset(request);
   // A still look and no sequence playing, so anything that moves on the stage is a voice.
   await request.post('/api/sequence/stop', { data: {} });
@@ -39,7 +40,7 @@ test('voices appear over the stage look and disappear when stopped', async ({ pa
   const preview = await context.newPage();
   try {
     await open(page, 'stage');
-    await expect(page.getByRole('img', { name: /The rig in 3D/ })).toHaveAttribute('aria-label', /showing the live output/);
+    await expect(page.getByRole('img', { name: /The rig in 3D/ })).toHaveAttribute('aria-label', /previewing with outputs disarmed/);
     await open(preview, 'effects');
     const now = preview.locator('.stage-now');
     await expect(now).toContainText(start.patterns.find((row) => row.id === start.pattern).name);
