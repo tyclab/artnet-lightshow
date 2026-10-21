@@ -1,7 +1,7 @@
 // Network-first shell cache for server outages. Never cache live /api or /socket.io traffic.
 
-// v2: the page is an ES module now, and part of it is in /chunks/.
-const CACHE = 'lightshow-shell-v2';
+// v3: the TycStation icons and stylesheet, no webfont.
+const CACHE = 'lightshow-shell-v3';
 const SHELL = [
   '/',
   '/style.css',
@@ -9,9 +9,8 @@ const SHELL = [
   '/theme.js',
   '/auth.js',
   '/toast.js',
-  '/fonts/InterVariable.woff2',
   '/manifest.webmanifest',
-  '/icon.svg',
+  '/favicon.svg',
   '/icons/icon-192.png',
 ];
 
