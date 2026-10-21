@@ -49,3 +49,15 @@ test('--room is an output mode beside --curtain with its own capture size', () =
   assert.throws(() => options([...base, '--room', '--room-width', '4']), /room capture size/);
   assert.throws(() => options([...base, '--room', '--preview']), /Preview cannot/);
 });
+
+test('additional panels require explicit output configuration and unique bounded grids', () => {
+  const args = [...base, '--nodecg-config', '/cfg/party-visuals.json'];
+  const value = options([...args, '--curtain', '--room', '--panels', '38:20x6,39:20x6']);
+  assert.deepEqual(value.panels, [{ fixtureId: 38, width: 20, height: 6 }, { fixtureId: 39, width: 20, height: 6 }]);
+  assert.equal(value.fixtureId, 53); assert.equal(value.width, 68); assert.equal(value.height, 42);
+  assert.deepEqual(options(args).panels, []);
+  for (const panels of ['38', '38:20x0', '38:257x6', '38:100x100', '38:20x6,38:20x6', '9007199254740992:20x6', '38:20x6,']) assert.throws(() => options([...args, '--panels', panels]));
+  assert.throws(() => options([...args, '--curtain', '--panels', '53:68x42']), /unique/);
+  assert.throws(() => options([...args, '--preview', '--panels', '38:20x6']), /Preview cannot/);
+  assert.throws(() => options([...base, '--panels', '38:20x6'], {}), /configuration path/);
+});

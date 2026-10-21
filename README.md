@@ -442,7 +442,11 @@ Music Assistant remains the renderer and audio source. OBS is not required.
 
 The default mode only manages the display: it does not read the lightshow token,
 connect to the lighting server or claim a fixture. Add `--curtain` to stream the
-same canvas to one patched panel. Pixels are downsampled to its logical grid,
+same canvas to one patched panel. Add `--panels 38:20x6,39:20x6` for additional
+full-grid fixtures; it works with or without `--curtain` and `--room`. All outputs
+use one browser session and helper process. Equal grid sizes share one capture
+per iteration, while each fixture has its own lease and reconnect/backoff state.
+A rejected or unavailable fixture does not stop the other outputs. Pixels are downsampled to its logical grid,
 with centre-cover cropping by default. The helper defaults to 44 frames per
 second; `--fps 1` through `--fps 60` selects a requested rate, capped by the
 server's advertised `maxFps`. Older servers continue to work at their lower cap.
@@ -498,7 +502,7 @@ credentials are not passed through the visualizer URL or command arguments.
 Update the paired Party Visuals browser launcher as well: older installed
 launchers explicitly pass `--fps 10`, which overrides this helper's default.
 
-With `--curtain` or `--room` on Windows, the helper keeps the displays on while
+With `--curtain`, `--panels` or `--room` on Windows, the helper keeps the displays on while
 the lightshow reports armed outputs. Monitors whose lighting is a USB device,
 such as the LG 27GN950-B rings that OpenRGB drives, drop that device when the
 display sleeps, and nobody touches the show PC at a party to wake it. A hidden
