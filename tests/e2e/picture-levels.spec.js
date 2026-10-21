@@ -2,10 +2,10 @@ import { test, expect } from '@playwright/test';
 import { open } from './helpers.js';
 
 test('picture levels save while grading is off and survive a reload', async ({ page, request }) => {
-  const before = (await (await request.get('/api/settings')).json()).picture;
+  const before = (await (await request.get('/api/settings')).json()).settings.picture;
   try {
     const response = await request.put('/api/settings', { data: {
-      picture: { source: 'visualizer', decode: false, blackPoint: 0.12, grade: { enabled: false } },
+      picture: { source: 'visualizer', decode: false, blackPoint: 0.12, grade: { ...before.grade, enabled: false } },
     } });
     expect(response.ok()).toBeTruthy();
     await open(page, 'perform');
