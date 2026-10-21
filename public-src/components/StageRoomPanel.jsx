@@ -96,7 +96,7 @@ export function StageRoomPanel({ snapshot, coverage, fixtures, rig, onChange }) 
     if (!warning || window.confirm(warning)) return save(next);
   };
   const download = () => {
-    const url = URL.createObjectURL(new Blob([`${JSON.stringify(room, null, 2)}\n`], { type: 'application/json' }));
+    const url = URL.createObjectURL(new Blob([`${JSON.stringify(room)}\n`], { type: 'application/json' }));
     const link = document.createElement('a');
     link.href = url;
     link.download = 'stage-room.json';

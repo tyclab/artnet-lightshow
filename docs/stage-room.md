@@ -68,7 +68,7 @@ rejected. Meshes support furniture and walls; screen meshes need texture coordin
 and are not accepted. Meshes accept at most 32,768 vertices and 65,536 triangles each,
 and a room at most 65,536 mesh vertices and 131,072 triangles. The 4 MB
 request limit also applies, so decimate detailed source models and round exported
-coordinates. Stage computes smooth surface normals and uses fixed neutral lighting
+coordinates. Downloads use compact JSON so valid detailed rooms can be imported again. Stage computes smooth surface normals and uses fixed neutral lighting
 to show relief without drawing triangle outlines. Object colours affect the preview
 only; they do not change fixture output colours. Mesh data is inline and private,
 with no external model URL or source asset needed by the public application.
