@@ -2,7 +2,7 @@
 // rehearsed, and the rig drawn in 3D — live from the DMX feed, or rehearsing.
 
 import { test, expect } from '@playwright/test';
-import { open, reset, set, loadTrack, unloadTrack } from './helpers.js';
+import { open, reset, set, state, loadTrack, unloadTrack } from './helpers.js';
 import { stageImage } from './stage-image.js';
 
 test.beforeEach(async ({ request }) => {
@@ -145,6 +145,7 @@ test('5 opens Auto Show with Timeline and 4 opens Stage', async ({ page }) => {
 
 
 test('Stage and the fixture plot distinguish disarmed preview from armed output', async ({ page, request }) => {
+  const before = await state(request);
   await request.post('/api/outputs/disarm');
   try {
     await open(page, 'stage');
@@ -164,5 +165,6 @@ test('Stage and the fixture plot distinguish disarmed preview from armed output'
     await expect(plot).toHaveText('Preview (disarmed)');
   } finally {
     await request.post('/api/outputs/disarm');
+    await set(request, { running: before.running });
   }
 });
