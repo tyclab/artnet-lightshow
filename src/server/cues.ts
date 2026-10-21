@@ -24,7 +24,8 @@ const colorIdx = z.number().int().min(0).max(COLOR_PRESETS.length - 1);
 const lookSchema = z.object({
   bpm: z.number().min(20).max(300),
   beatDivision: z.number().int().min(1).max(16),
-  running: z.boolean(),
+  // The transport is not part of a look; older cues carried it, and the restart record (look-store) still does.
+  running: z.boolean().optional(),
   pattern: z.string().min(1).max(64),
   colorA: colorIdx,
   colorB: colorIdx,
@@ -88,7 +89,6 @@ function captureLook() {
   return {
     bpm: state.bpm,
     beatDivision: state.beatDivision,
-    running: state.running,
     pattern: state.pattern,
     colorA: state.colorA,
     colorB: state.colorB,
@@ -113,14 +113,16 @@ function captureLook() {
 }
 
 function recallLook(look: Look): void {
-  const { fixtureIds, overrides, bpm, audioMode, strobe, ...rest } = look;
-  const patch: typeof rest & { bpm?: number } = {
+  const { fixtureIds, overrides, bpm, audioMode, strobe, running: _running, ...rest } = look;
+  const patch: typeof rest & { bpm?: number; running?: boolean } = {
     ...rest, pixelPattern: rest.pixelPattern ?? null, panelPattern: rest.panelPattern ?? null,
     paletteOverride: rest.paletteOverride ?? null,
     basePalette: rest.basePalette ?? null,
     overridePalette: rest.overridePalette ?? (rest.paletteOverride ? { colours: rest.paletteOverride } : null),
     energyOverride: rest.energyOverride === HOLD_STROBE ? null : rest.energyOverride,
   };
+  // A recall never freezes a running show, whatever the cue was saved under; a stopped one starts so the cue is seen.
+  if (!state.running) patch.running = true;
   if (conductor.status().source === 'tap') patch.bpm = bpm;
   const saved: SettingsPatch = {
     ...(audioMode !== undefined ? { audio: { mode: audioMode } } : {}),

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { JsonStore } from './json-store.ts';
 import { lookSchema, captureLook, recallLook } from './cues.ts';
+import { applyPatch } from './patch.ts';
 import { state } from './state.ts';
 import { messageOf, statusOf } from '../errors.ts';
 
@@ -62,7 +63,8 @@ export function currentLook(autoShow: ResumableShow | null, source = 'timer'): U
     source,
     positionMs: source === 'timer' ? Math.max(0, Math.round(autoShow.getPositionMs())) : null,
   } : null;
-  return { look: lookSchema.parse(captureLook()), auto };
+  // The restart record keeps the transport a cue leaves out: a frozen show comes back frozen.
+  return { look: lookSchema.parse({ ...captureLook(), running: state.running }), auto };
 }
 
 // Keep current settings on recovery so an older look snapshot cannot undo saved safety or audio changes.
@@ -76,6 +78,7 @@ export function putBack(saved: SavedLook): boolean {
       console.warn(`[look] the look from ${saved.savedAt} comes back without ${look.pattern}: ${messageOf(err)}`);
       recallLook({ ...look, pattern: state.pattern, energyOverride: null });
     }
+    if (look.running !== undefined) applyPatch({ running: look.running });
     return true;
   } catch (err) {
     console.warn(`[look] could not put back the look from ${saved.savedAt}: ${messageOf(err)}`);
