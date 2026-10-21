@@ -226,3 +226,18 @@ test('multi-cell fixtures can emit separate beams without changing the rendered 
   assert.equal(room.lamps.length, 4);
   assert.deepEqual(room.lamps.map((lamp) => lamp.unit), [0, 1, 2, 3]);
 });
+
+
+test('explicit cell maps use the same rotated offsets and individual heights in the generic Stage', () => {
+  const fixtures = [fixture(0, BAR.id, { position: { x: 50, y: 50, height: 50 },
+    geometry: { length: 10, angle: 90, points: [{ x: -2, y: 0, height: -10 }, { x: 0, y: -2, height: 0 },
+      { x: 2, y: 0, height: 10 }, { x: 0, y: 2, height: 20 }] } })];
+  const { rig, room } = placed(fixtures);
+  assert.equal(room.cells.length, 4);
+  room.cells.forEach((cell, i) => {
+    const point = world.planToWorld(rig.points[i]);
+    near(cell.position.x, point.x, 'mapped x');
+    near(cell.position.z, point.z, 'mapped depth');
+    near(cell.position.y, rig.points[i].height / 100 * world.TRUSS_H, 'mapped height');
+  });
+});

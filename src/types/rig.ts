@@ -119,6 +119,8 @@ export interface Emission {
 export interface Geometry {
   length: number;
   angle: number;
+  /** Unit-order plot offsets from the fixture centre, rotated by angle; height is a floor-height percentage offset. */
+  points?: Point[];
 }
 
 /** A fixture pinned by hand, over whatever the look is doing. */

@@ -50,6 +50,15 @@ export function placeRig(fixtures, profiles, rig) {
       ? Math.max(0, Math.min(100, fixture.position.height)) * TRUSS_H / 100
       : floor ? FLOOR_H : fixture.group === 'room' ? ROOM_H : TRUSS_H;
 
+    if (fixture.geometry?.points?.length === count) {
+      for (let u = start; u < start + count; u++) {
+        const point = rig.points[u], at = planToWorld(point);
+        cells.push({ unit: u, fixture: fixture.id, size: 0.04,
+          position: { x: at.x, y: Number.isFinite(point.height) ? point.height * TRUSS_H / 100 : height, z: at.z } });
+      }
+      return;
+    }
+
     if (!rig.cellMaps[i]) {
       const at = planToWorld(centres[i]);
       const from = { x: at.x, y: height, z: at.z };

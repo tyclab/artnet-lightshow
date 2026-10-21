@@ -87,6 +87,11 @@ function unitCount(profile: Pick<Profile, 'cells'> | null | undefined): number {
   return cells ? cells.length : 1;
 }
 
+function geometryUnitIssue(geometry: Geometry | null | undefined, profile: Pick<Profile, 'cells'> | null | undefined): string | null {
+  if (!geometry?.points || geometry.points.length === unitCount(profile)) return null;
+  return `The explicit cell map has ${geometry.points.length} points; the profile needs ${unitCount(profile)}. Clear or replace the map first.`;
+}
+
 function countUnits<F>(fixtures: Iterable<F>, profileOf: ProfileLookup<F>): number {
   let total = 0;
   for (const fixture of fixtures) total += unitCount(profileOf(fixture));
@@ -123,10 +128,19 @@ function buildRig<F extends StageFixture>(fixtures: readonly F[], profileOf: Pro
     const profile = profileOf(fixture);
     hue.push(isHueProfile(profile) || isHueLamp(fixture));
     const cells = cellsOf(profile);
+    const offsets = fixture.geometry?.points;
+    const mapped = offsets?.length === unitCount(profile) && offsets.every((p) => [p.x, p.y, p.height ?? 0]
+      .every((v) => Number.isFinite(v) && Math.abs(v) <= 100)) ? offsets : null;
+    const mapPoint = (c: number): Point => {
+      const p = mapped![c], angle = (fixture.geometry!.angle * Math.PI) / 180;
+      return { x: centres[i].x + p.x * Math.cos(angle) - p.y * Math.sin(angle),
+        y: centres[i].y + p.x * Math.sin(angle) + p.y * Math.cos(angle),
+        ...(p.height === undefined ? {} : { height: (centres[i].height ?? 50) + p.height }) };
+    };
     if (!cells) {
       hasPars = true;
       units.push({ fixture: i, cell: 0 });
-      points.push(centres[i]);
+      points.push(mapped ? mapPoint(0) : centres[i]);
       local.push(0.5);
       localY.push(0.5);
       ranges.push({ start, count: 1 });
@@ -164,6 +178,7 @@ function buildRig<F extends StageFixture>(fixtures: readonly F[], profileOf: Pro
         localY.push(0.5);
       }
     }
+    if (mapped) for (let c = 0; c < n; c++) points[start + c] = mapPoint(c);
     ranges.push({ start, count: n });
     cellMaps.push(cells.map((cell) => cell.channelMap));
     grids.push(grid ? { columns: grid.columns, rows: grid.rows } : null);
@@ -192,6 +207,7 @@ function rigSignature(fixtures: readonly StageFixture[], revision: number | stri
     const p = f.position;
     const g = f.geometry;
     key += `|${f.profileId};${p ? `${p.x},${p.y},${p.height ?? ''}` : ''};${f.group || ''};${g ? `${g.length},${g.angle}` : ''};${isHue(f) ? 'h' : ''}`;
+    if (g?.points) key += `;${JSON.stringify(g.points)}`;
   }
   return key;
 }
@@ -235,7 +251,7 @@ function layoutOf(rig: Rig, split: number | null | undefined, pixelMap: string |
   const fixturePlan: StagePlan | null = planned ? {
     x: order.map((k) => centreOf(rig, members[k]).x / 100),
     y: order.map((k) => centreOf(rig, members[k]).y / 100),
-    z: order.map((k) => heightOf(fixtures[members[k]])),
+    z: order.map((k) => heightInRig(rig, members[k])),
     group: order.map((k) => fixtures[members[k]].group || null),
   } : null;
   const layoutFixtures: Layout['fixtures'] = {
@@ -297,7 +313,7 @@ function layoutOf(rig: Rig, split: number | null | undefined, pixelMap: string |
   const unitPlan: StagePlan | null = planned ? {
     x: list.map((u) => points[u].x / 100),
     y: list.map((u) => points[u].y / 100),
-    z: list.map((u) => heightOf(fixtures[rig.units[u].fixture])),
+    z: list.map((u) => points[u].height === undefined ? heightOf(fixtures[rig.units[u].fixture]) : points[u].height! / 100),
     group: list.map((u) => fixtures[rig.units[u].fixture].group || null),
   } : null;
   const noFlash = hueFlags(list.map((u) => rig.hue[rig.units[u].fixture]));
@@ -316,7 +332,7 @@ function layoutOf(rig: Rig, split: number | null | undefined, pixelMap: string |
       plan: !mirrored && members.some((i) => isPlaced(fixtures[i].position)) ? {
         x: order.map((k) => centreOf(rig, members[k]).x / 100),
         y: order.map((k) => centreOf(rig, members[k]).y / 100),
-        z: order.map((k) => heightOf(fixtures[members[k]])),
+        z: order.map((k) => heightInRig(rig, members[k])),
         group: order.map((k) => fixtures[members[k]].group || null),
       } : null,
     };
@@ -326,6 +342,14 @@ function layoutOf(rig: Rig, split: number | null | undefined, pixelMap: string |
 
 function heightOf(fixture: StageFixture): number {
   return (fixture.position?.height ?? 50) / 100;
+}
+
+function heightInRig(rig: Rig, i: number): number {
+  const { start, count } = rig.ranges[i];
+  if (!rig.fixtures[i].geometry?.points) return heightOf(rig.fixtures[i]);
+  let sum = 0;
+  for (let u = start; u < start + count; u++) sum += rig.points[u].height ?? heightOf(rig.fixtures[i]) * 100;
+  return sum / Math.max(1, count) / 100;
 }
 
 function centreOf(rig: Rig, i: number): Point {
@@ -347,6 +371,7 @@ export {
   cellsOf,
   gridOf,
   unitCount,
+  geometryUnitIssue,
   countUnits,
   lineOf,
   buildRig,

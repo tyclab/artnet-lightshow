@@ -3,7 +3,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert';
-import { buildRig, lineOf } from '../../src/shared/rig.ts';
+import { buildRig, lineOf, rigSignature, geometryUnitIssue } from '../../src/shared/rig.ts';
 import { spatialLayout } from '../../src/shared/stage.ts';
 
 const bar = (n) => ({ cells: Array.from({ length: n }, (_, i) => ({ channelMap: { red: i * 3, green: i * 3 + 1, blue: i * 3 + 2 } })) });
@@ -101,4 +101,43 @@ test('a bar nobody has placed keeps out of its neighbours\' way', () => {
   assert.deepStrictEqual(lineOf({}, 60, 0), { length: 25, angle: 0 }, 'never longer than 25');
   assert.ok(lineOf({}, 16, 8).length < 100 / 9, 'shorter than the gap in the default spread');
   assert.deepStrictEqual(lineOf({ geometry: { length: 40, angle: 30 } }, 16, 8), { length: 40, angle: 30 });
+});
+
+
+test('explicit cell offsets move and rotate with their fixture while preserving unit addresses and height', () => {
+  const points = [{ x: -4, y: -3, height: -10 }, { x: 4, y: -3, height: 0 },
+    { x: 4, y: 3, height: 10 }, { x: -4, y: 3, height: 20 }];
+  const fixture = { profileId: 'bar4', position: { x: 50, y: 50, height: 40 }, geometry: { length: 20, angle: 90, points } };
+  const rig = buildRig([fixture], profileOf);
+  assert.deepStrictEqual(rig.points.map(p => [Math.round(p.x), Math.round(p.y), p.height]), [[53, 46, 30], [53, 54, 40], [47, 54, 50], [47, 46, 60]]);
+  assert.deepStrictEqual(rig.units.map(u => u.cell), [0, 1, 2, 3]);
+  const layout = rig.layout().units;
+  layout.list.forEach((u, i) => assert.strictEqual(layout.plan.z[i], rig.points[u].height / 100));
+  const moved = buildRig([{ ...fixture, position: { x: 55, y: 40, height: 50 } }], profileOf);
+  moved.points.forEach((p, i) => assert.deepStrictEqual(p, { x: rig.points[i].x + 5, y: rig.points[i].y - 10, height: rig.points[i].height + 10 }));
+  const signature = rigSignature([fixture]);
+  fixture.geometry.points[0].height++;
+  assert.notStrictEqual(rigSignature([fixture]), signature);
+  assert.strictEqual(geometryUnitIssue(fixture.geometry, profiles.bar4), null);
+  assert.match(geometryUnitIssue(fixture.geometry, profiles.bar8), /4 points.*8/);
+});
+
+test('explicit grid cell maps preserve grid addressing and other fixtures keep generated geometry', () => {
+  const grid = { ...bar(4), grid: { columns: 2, rows: 2 } };
+  const ordinary = { profileId: 'bar4', position: { x: 25, y: 25 }, geometry: { length: 20, angle: 0 } };
+  const mapped = { profileId: 'grid', position: { x: 75, y: 75 }, geometry: { length: 10, angle: 0,
+    points: [{ x: -3, y: 0 }, { x: 3, y: 0 }, { x: 0, y: -3 }, { x: 0, y: 3 }] } };
+  const rig = buildRig([ordinary, mapped], f => f.profileId === 'grid' ? grid : profileOf(f));
+  assert.deepStrictEqual(rig.points.slice(0, 4), buildRig([ordinary], profileOf).points);
+  assert.deepStrictEqual(rig.points.slice(4), [{ x: 72, y: 75 }, { x: 78, y: 75 }, { x: 75, y: 72 }, { x: 75, y: 78 }]);
+  assert.deepStrictEqual(rig.grids[1], grid.grid);
+  assert.deepStrictEqual(rig.cellMaps[1], grid.cells.map(c => c.channelMap));
+});
+
+
+test('a single mapped light uses its offset height in spatial effect layouts', () => {
+  const fixture = { position: { x: 40, y: 60, height: 30 }, geometry: { length: 10, angle: 0, points: [{ x: 2, y: -3, height: 15 }] } };
+  const rig = buildRig([fixture], () => null);
+  assert.deepStrictEqual(rig.layout().units.plan, { x: [.42], y: [.57], z: [.45], group: [null] });
+  assert.deepStrictEqual(rig.layout().fixtures.plan, rig.layout().units.plan);
 });

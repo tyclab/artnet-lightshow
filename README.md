@@ -1716,3 +1716,17 @@ verify visible flashing at 10–20 Hz. Physical optical calibration remains sepa
 ## Licence
 
 MIT — see [LICENSE](LICENSE).
+
+### Explicit cell positions
+
+A fixture may explicitly set `geometry.points`, one `{x, y, height?}` entry per
+profile unit in its existing channel order. `x` and `y` are plot percentage
+offsets from `fixture.position`, rotated by `geometry.angle`; `height` is a
+floor-to-ceiling percentage offset from the fixture height (50 when unset).
+Offsets must be finite and within −100 to 100. Moving or rotating the fixture
+moves its map. The map replaces the generated line/grid positions for spatial
+effects, picture sampling and previews; it preserves profile channels and grid
+addressing. `length` retains the fallback line size. Clear or replace the map
+before changing the profile's unit count. A map edit revokes stale picture
+leases. Fixtures without a map keep their existing layout. Stage room imports
+remain preview-only; applying a measured map to the fixture patch is explicit.

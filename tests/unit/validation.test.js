@@ -204,3 +204,14 @@ test('physical emission survives show and restore schemas independently of cell 
     rejects(fixtureMessageSchema, { id: 1, emission: invalid });
   }
 });
+
+
+test('explicit plot offsets are bounded finite unit-order data and survive show/restore validation', () => {
+  const geometry = { length: 20, angle: 90, points: [{ x: -2, y: 3, height: -10 }, { x: 2, y: -3, height: 10 }] };
+  const fixture = { label: 'Mapped strip', address: 1, profileId: 'mapped', geometry };
+  assert.deepStrictEqual(validate(showSchema, { fixtures: [fixture] }, 't').fixtures[0].geometry, geometry);
+  assert.ok(ok(fixtureRestoreSchema, { index: 0, fixture }));
+  for (const points of [[], [{ x: NaN, y: 0 }], [{ x: 0, y: Infinity }], [{ x: 101, y: 0 }], [{ x: 0, y: 0, height: -101 }]]) {
+    rejects(fixtureMessageSchema, { id: 1, geometry: { ...geometry, points } });
+  }
+});
