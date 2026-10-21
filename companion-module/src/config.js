@@ -13,7 +13,7 @@ export function GetConfigFields() {
 			type: 'textinput',
 			id: 'host',
 			label: 'Lightshow server host',
-			tooltip: 'Hostname or IP of the machine running the lightshow server',
+			tooltip: 'Hostname or IP of the machine running the Lightshow server',
 			default: '127.0.0.1',
 			width: 8,
 			regex: Regex.HOSTNAME,
@@ -32,7 +32,7 @@ export function GetConfigFields() {
 			id: 'token',
 			label: 'Access token',
 			tooltip:
-				'Only needed when the lightshow server runs with LIGHTSHOW_TOKEN set '
+				'Only needed when the Lightshow server runs with LIGHTSHOW_TOKEN set '
 				+ '(required whenever it is bound to anything but localhost). Leave blank otherwise.',
 			default: '',
 			width: 12,

@@ -39,7 +39,7 @@ Alternatively, build a distributable package with `npm run package` and use the 
 
 1. Go to **Connections** → **Add connection**
 2. Search for **"TycStation Lightshow"**
-3. Set **Host** = IP of the machine running the lightshow server (e.g. `127.0.0.1`)
+3. Set **Host** = IP of the machine running the Lightshow server (e.g. `127.0.0.1`)
 4. Set **Port** = `3000` (or whatever `PORT` env var is set to)
 5. Click **Save**
 

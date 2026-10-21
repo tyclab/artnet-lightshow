@@ -446,12 +446,12 @@ The optional `tools/browser-visuals` helper uses Music Assistant's existing
 MilkDrop canvas in a dedicated fullscreen Chrome profile. It removes the artwork,
 timeline and visual tint, and follows the local Party Visuals on/off switch.
 Music Assistant remains the renderer and audio source. OBS is not required.
-Every helper light output also follows the lightshow's **Picture** selector:
+Every helper light output also follows the Lightshow's **Picture** selector:
 **Effects** releases the curtain, panel and room leases and pauses capture;
 **Visualizer** resumes them automatically. The fullscreen display
 continues to follow the local Party Visuals switch.
 
-The default mode only manages the display: it does not read the lightshow token,
+The default mode only manages the display: it does not read the Lightshow token,
 connect to the lighting server or claim a fixture. Add `--curtain` to stream the
 same canvas to one patched panel. Add `--panels 38:20x6,39:20x6` for additional
 full-grid fixtures; it works with or without `--curtain` and `--room`. All outputs
@@ -514,7 +514,7 @@ Update the paired Party Visuals browser launcher as well: older installed
 launchers explicitly pass `--fps 10`, which overrides this helper's default.
 
 With `--curtain`, `--panels` or `--room` on Windows, the helper keeps the displays on while
-the lightshow reports armed outputs. Monitors whose lighting is a USB device,
+the Lightshow reports armed outputs. Monitors whose lighting is a USB device,
 such as the LG 27GN950-B rings that OpenRGB drives, drop that device when the
 display sleeps, and nobody touches the show PC at a party to wake it. A hidden
 Windows PowerShell child holds one display-required request
@@ -525,7 +525,7 @@ when the helper stops, or when its stdin pipe closes because the helper died.
 There is at most one, and a failed one is retried every 30 seconds. The helper
 logs each change once, and telemetry records carry `displayHeld`. An elevated
 `powercfg /requests` lists the child under `DISPLAY`. Display-only mode never
-connects to the lightshow, so it never holds the displays.
+connects to the Lightshow, so it never holds the displays.
 
 ```powershell
 cd tools/browser-visuals
@@ -539,13 +539,13 @@ node cli.js --browser-profile $profile --visualizer-url $url --curtain --fixture
 
 These defaults describe GamerTyc's curtain and SHD player. Supply the intended
 player URL, fixture and grid for another installation. Preview writes a local PPM
-image and never connects to the lightshow. `--fit contain` adds black margins;
+image and never connects to the Lightshow. `--fit contain` adds black margins;
 `--help` lists all options. The local browser helper uses the existing NodeCG
 `wash.on` control for visibility; intensity still applies to the legacy graphics.
 An unavailable control endpoint covers the display and releases pixel input.
 
 Curtain mode reads the existing Party Visuals lightshow URL and token-file
-reference only in its local process. The lightshow credential never reaches the
+reference only in its local process. The Lightshow credential never reaches the
 browser. Outputs must already be armed, with photosensitivity acknowledged.
 Ownership belongs to the authenticated socket; only one sender can claim a panel.
 Accepted frames renew its two-second timeout. Disconnect, disarm, missing frames
