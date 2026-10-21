@@ -27,6 +27,12 @@ function fromOklab(L: number, a: number, b: number): Triple {
   ];
 }
 
+// Screen pictures arrive sRGB-encoded (IEC 61966-2-1): byte to linear light, unrounded, on the same 0..255 scale.
+const SRGB_DECODE: Readonly<Float64Array> = Float64Array.from({ length: 256 }, (_, i) => {
+  const v = i / 255;
+  return 255 * (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+});
+
 // Borrow hue from the chromatic endpoint so fades to white do not swing through rounding noise.
 const ACHROMATIC = 0.02;
 
@@ -82,6 +88,7 @@ function chromaOf(col: Colour): number {
 
 export {
   ACHROMATIC,
+  SRGB_DECODE,
   colourMixer,
   chromaOf,
   fromLch,

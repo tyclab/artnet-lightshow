@@ -11,7 +11,7 @@ import { HUE_BRIDGE_ID_RE } from '../shared/placement.ts';
 import { HD_MASTER_DEFAULTS } from '../shared/effects/types.ts';
 import { STROBE_DEFAULTS, STROBE_PARAMS_SCHEMA } from '../shared/effects/strobe.ts';
 import { hexColour } from './validation.ts';
-import { PICTURE_GRADE_DEFAULTS, pictureGradeSchema } from '../shared/picture-grade.ts';
+import { PICTURE_GRADE_DEFAULTS, PICTURE_GRADE_GUESSED, pictureGradeSchema } from '../shared/picture-grade.ts';
 
 // Store secrets with mode 0600; configuration must not be committed or sourced from legacy environment variables.
 
@@ -360,6 +360,17 @@ function clearNewlyInvalidFields(parsed: unknown): string[] {
   return cleared;
 }
 
+// A grade still at the first defaults was saved, not chosen: those made up for the picture's missing sRGB decode.
+function retireGuessedGrade(parsed: unknown): boolean {
+  const picture = parsed && typeof parsed === 'object' ? (parsed as { picture?: { grade?: Record<string, unknown> } }).picture : null;
+  const grade = picture?.grade, guessed = Object.entries(PICTURE_GRADE_GUESSED);
+  if (!grade || typeof grade !== 'object' || Object.keys(grade).length !== guessed.length
+    || !guessed.every(([key, value]) => grade[key] === value)) return false;
+  delete picture.grade;
+  console.warn('[settings] picture.grade held the first defaults, which made up for the missing sRGB decode — the grade is off now');
+  return true;
+}
+
 function isLegacyHue(hue: unknown): hue is Record<string, unknown> {
   return !!hue && typeof hue === 'object' && !Array.isArray(hue)
     && !('bridges' in hue) && LEGACY_HUE_KEYS.some((key) => key in hue);
@@ -411,6 +422,7 @@ class SettingsStore extends JsonStore {
       }
       // Clear newly invalid fields individually so one new rule cannot discard saved credentials.
       clearNewlyInvalidFields(parsed);
+      retireGuessedGrade(parsed);
       migrateLegacyHue(parsed);
       // Merge defaults before validation so older files with missing settings still load.
       return merge(DEFAULTS, parsed);
@@ -551,5 +563,6 @@ export {
   patchSchema,
   defaultHueBridgeId,
   migrateLegacyHue,
+  retireGuessedGrade,
   warnAboutLegacyEnv,
 };

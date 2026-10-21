@@ -46,6 +46,7 @@ import type { ChannelDefault, ChannelMap, Colour, Expression, Override, PixelMap
 import type { PixelInputFrame } from '../types/pixel-input.ts';
 import type { PictureFrame } from '../types/picture.ts';
 import { gradeColour } from '../shared/picture-grade.ts';
+import { SRGB_DECODE } from '../shared/color.ts';
 import type { PictureGrade } from '../shared/picture-grade.ts';
 
 export type { VoiceFrame } from '../shared/effects/layer.ts';
@@ -1003,6 +1004,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       .map((p) => [p.fixtureId, p]));
     const pixelOwners: (string | null)[] = new Array(rigNow.units.length).fill(null);
     // The room picture paints every non-matrix unit below voices and overrides, as a pixel stream does its panel.
+    // Both arrive sRGB-encoded from a screen and are decoded to the linear light the outputs' PWM makes.
     const art = input.safety.acknowledged && input.picture && now < input.picture.expiresAt
       && input.picture.data instanceof Uint8Array && input.picture.data.length === rigNow.units.length * 3 ? input.picture : null;
     const watch = !!voiceTop || baseKinds || seqUnits;
@@ -1029,10 +1031,10 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
         if (pixel && !top && !overridden) {
           const cell = u - start, point = profile.cells![cell].at ?? { x: cell % pixel.width, y: Math.floor(cell / pixel.width) };
           const at = (point.y * pixel.width + point.x) * 3;
-          colour = { r: pixel.data[at], g: pixel.data[at + 1], b: pixel.data[at + 2], w: 0, a: 0, uv: 0 };
+          colour = { r: SRGB_DECODE[pixel.data[at]], g: SRGB_DECODE[pixel.data[at + 1]], b: SRGB_DECODE[pixel.data[at + 2]], w: 0, a: 0, uv: 0 };
           pixelOwners[u] = `pixel:${pixel.leaseId}`;
         } else if (painted && !top && !overridden) {
-          const [r, g, b] = gradeColour(painted.data[u * 3], painted.data[u * 3 + 1], painted.data[u * 3 + 2], input.pictureGrade, hueGraded);
+          const d = painted.data, [r, g, b] = gradeColour(SRGB_DECODE[d[u * 3]], SRGB_DECODE[d[u * 3 + 1]], SRGB_DECODE[d[u * 3 + 2]], input.pictureGrade, hueGraded);
           colour = { r, g, b, w: 0, a: 0, uv: 0 };
           pixelOwners[u] = `picture:${painted.leaseId}`;
         }

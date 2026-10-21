@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ACHROMATIC, fromLch, toLch } from './color.ts';
 
-// The room picture's grade, before the masters: raw visualizer frames paint the room pale and too bright.
+// An optional taste grade on the room picture, after its sRGB decode and before the masters; off by default.
 export interface PictureGrade {
   enabled: boolean;
   /** Fraction of the white component (the smallest channel) taken out. */
@@ -14,6 +14,11 @@ export interface PictureGrade {
 }
 
 export const PICTURE_GRADE_DEFAULTS: Readonly<PictureGrade> = Object.freeze({
+  enabled: false, whiteLimit: 0, saturation: 1, ceiling: 1, hueCeiling: 1,
+});
+
+/** The first defaults, guesses that made up for the missing decode; a stored copy of them was never tuned. */
+export const PICTURE_GRADE_GUESSED: Readonly<PictureGrade> = Object.freeze({
   enabled: true, whiteLimit: 0.6, saturation: 1.25, ceiling: 0.7, hueCeiling: 0.5,
 });
 
