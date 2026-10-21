@@ -1,11 +1,12 @@
-// A screen picture's bytes are sRGB, the outputs' PWM is linear in light: each picture
-// unit and each streamed panel pixel is decoded once, before the grade and the masters.
+// A screen picture's bytes are sRGB. With the decode on, each picture unit and each streamed
+// panel pixel is decoded once to linear light, before the black point, the grade and the
+// masters; off, the default, the bytes drive the lamps as sent (a WLED board has its own gamma).
 // The Stage's screens keep the picture as sent, and nothing on the Hue path decodes again.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SRGB_DECODE } from '../../src/shared/color.ts';
-import { PICTURE_GRADE_DEFAULTS } from '../../src/shared/picture-grade.ts';
+import { blackPointGain, PICTURE_GRADE_DEFAULTS } from '../../src/shared/picture-grade.ts';
 import { hueSectionColour } from '../../src/shared/hue-colour.ts';
 import { createRenderer } from '../../src/server/renderer.ts';
 import { allocateShared, createUniverseStore } from '../../src/server/universes.ts';
@@ -48,23 +49,34 @@ function paint(bytes, patch = {}) {
   return { par: [p(0), p(1), p(2)], hue: hueSectionColour(lamp.channelMap, h, null), data: input.picture.data };
 }
 
-test('a picture unit of sRGB (200, 120, 60) paints its linear light, (147, 48, 12), before the masters', () => {
-  assert.deepEqual(paint([200, 120, 60]).par, [147, 48, 12]);
-  assert.deepEqual(paint([75, 75, 75]).par, [18, 18, 18], 'a 29 % byte is 7 % light');
+test('with the decode on, a picture unit of sRGB (200, 120, 60) paints its linear light, (147, 48, 12), before the masters', () => {
+  assert.deepEqual(paint([200, 120, 60], { pictureDecode: true }).par, [147, 48, 12]);
+  assert.deepEqual(paint([75, 75, 75], { pictureDecode: true }).par, [18, 18, 18], 'a 29 % byte is 7 % light');
+  assert.deepEqual(paint([200, 120, 60]).par, [200, 120, 60], 'off, or absent, the bytes as sent');
+  assert.deepEqual(paint([200, 120, 60], { pictureDecode: false }).par, [200, 120, 60]);
 });
 
-test('with the grade off by default, a unit is the decoded colour times the masters', () => {
+test('decode off by default: a unit is its bytes, lifted off the black point, times the masters', () => {
   assert.equal(DEFAULTS.picture.grade.enabled, false);
-  for (const [bytes, masterDimmer] of [[[200, 120, 60], 255], [[200, 120, 60], 128], [[255, 128, 30], 200]]) {
-    const expected = bytes.map((v) => Math.round(SRGB_DECODE[v] * (masterDimmer / 255)));
-    assert.deepEqual(paint(bytes, { pictureGrade: PICTURE_GRADE_DEFAULTS, masterDimmer }).par, expected, `${bytes} at ${masterDimmer}`);
-    assert.deepEqual(paint(bytes, { pictureGrade: null, masterDimmer }).par, expected);
+  assert.equal(DEFAULTS.picture.decode, false);
+  const stored = { pictureDecode: DEFAULTS.picture.decode, pictureBlackPoint: DEFAULTS.picture.blackPoint };
+  const lifted = (bytes, gain) => bytes.map((v) => Math.round(v * blackPointGain(Math.max(...bytes), DEFAULTS.picture.blackPoint) * gain));
+  for (const [bytes, masterDimmer] of [[[200, 120, 60], 255], [[200, 120, 60], 128], [[255, 128, 30], 200], [[64, 32, 0], 255]]) {
+    const expected = lifted(bytes, masterDimmer / 255);
+    assert.deepEqual(paint(bytes, { ...stored, pictureGrade: PICTURE_GRADE_DEFAULTS, masterDimmer }).par, expected, `${bytes} at ${masterDimmer}`);
+    assert.deepEqual(paint(bytes, { ...stored, pictureGrade: null, masterDimmer }).par, expected);
+    assert.notDeepEqual(expected, bytes.map((v) => Math.round(SRGB_DECODE[v] * (masterDimmer / 255))), `${bytes}: never decoded`);
   }
+  assert.deepEqual(paint([255, 128, 30], stored).par, [255, 128, 30], 'a full peak is copied unchanged');
+  assert.deepEqual(paint([64, 32, 0], stored).par, [38, 19, 0], 'a quarter peak ramps, hue kept');
+  assert.deepEqual(paint([30, 30, 30], stored).par, [0, 0, 0], 'the threshold byte is off');
+  assert.deepEqual(paint([64, 32, 0], { ...stored, pictureDecode: true }).par, [64, 32, 0].map((v) => Math.round(SRGB_DECODE[v] * blackPointGain(SRGB_DECODE[64], 0.12))),
+    'decode on: decoded, then lifted');
 });
 
 test('a Hue lamp gets the decoded colour once: its stream carries the same light as the par', () => {
   for (const bytes of [[200, 120, 60], [128, 128, 128], [255, 0, 0]]) {
-    const out = paint(bytes);
+    const out = paint(bytes, { pictureDecode: true });
     assert.deepEqual([out.hue.r, out.hue.g, out.hue.b], out.par, `${bytes}`);
     const packet = hue.buildStreamMessage('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', [{ id: 0, ...out.hue }]);
     const at = hue.HEADER_BYTES + hue.CONFIG_ID_BYTES;
@@ -80,7 +92,7 @@ test('the picture the Stage shows, and the frame the renderer reads, keep the se
   input.frame('sender', { leaseId, data: Uint8Array.from([200, 120, 60, 75, 75, 75]), image });
   const store = createUniverseStore(allocateShared());
   const renderer = createRenderer({ profileOf: (f) => profiles[f.profileId], profilesRevision: () => 0, now: 0 });
-  renderer.frame(frameInput([], { picture: { ...input.current(), expiresAt: 2000 } }), { beatPos: 0.2, bpm: 120, epoch: 0 }, 100, store, 0);
+  renderer.frame(frameInput([], { picture: { ...input.current(), expiresAt: 2000 }, pictureDecode: true }), { beatPos: 0.2, bpm: 120, epoch: 0 }, 100, store, 0);
   assert.deepEqual([...input.image().data], [200, 120, 60, 75, 75, 75]);
   assert.deepEqual([...input.current().data], [200, 120, 60, 75, 75, 75]);
   const read = channelReader(1, 1, par, (u) => store.getBuffer(u));

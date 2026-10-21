@@ -822,7 +822,7 @@ test('the strip carries the arm, picture, auto show and blackout switches and th
   assert.ok(ui.html(ui.h(ui.Strip)).includes('Avicii — Levels'));
 });
 
-test('Perform grades the visualizer picture while it paints the room, and only then', () => {
+test('Perform lifts and grades the visualizer picture while it paints the room, and only then', () => {
   const grade = { enabled: true, whiteLimit: 0.6, saturation: 1.25, ceiling: 0.7, hueCeiling: 0.5 };
   given({ picture: { source: 'effects', input: null, grade } });
   assert.ok(!ui.html(ui.h(ui.Perform, {})).includes('Picture colour grade'), 'effects paint: no grade to set');
@@ -830,14 +830,25 @@ test('Perform grades the visualizer picture while it paints the room, and only t
   const card = (html) => /<section class="card picture-grade"[\s\S]*?<\/section>/.exec(html)?.[0] ?? '';
   const html = card(ui.html(ui.h(ui.Perform, {})));
   assert.match(html, /aria-label="Picture colour grade"/);
-  assert.deepStrictEqual([...html.matchAll(/class="picture-grade-value">(\d+)%</g)].map((m) => Number(m[1])), [60, 125, 70, 50]);
+  assert.deepStrictEqual([...html.matchAll(/class="picture-grade-value">(\d+)%</g)].map((m) => Number(m[1])), [12, 60, 125, 70, 50],
+    'the black point at its default, then the grade');
   assert.match(html, /Graded: the sliders below apply/);
+  assert.match(html, /sRGB decode \(off\)/);
   assert.strictEqual(count(html, 'disabled'), 0);
-  assert.strictEqual(count(html, 'type="range"'), 4);
-  given({ picture: { source: 'visualizer', input: null, grade: { ...grade, enabled: false } } });
+  assert.strictEqual(count(html, 'type="range"'), 5);
+  const blackPoint = /<input type="range"[^>]*aria-label="Black point"[^>]*>/.exec(html)?.[0] ?? '';
+  assert.match(blackPoint, /min="0"/);
+  assert.match(blackPoint, /max="50"/);
+  assert.match(blackPoint, /list="picture-grade-blackPoint-marks"/);
+  assert.match(html, /<datalist id="picture-grade-blackPoint-marks"><option value="12" label="default">/, 'the default is marked');
+  assert.strictEqual(count(html, 'type="checkbox"'), 2, 'the decode switch and the grade switch');
+  given({ picture: { source: 'visualizer', input: null, decode: true, blackPoint: 0.3, grade: { ...grade, enabled: false } } });
   const off = card(ui.html(ui.h(ui.Perform, {})));
   assert.match(off, /Off: the picture(&#39;|')s own colours/);
-  assert.strictEqual([...off.matchAll(/<input type="range"[^>]*disabled/g)].length, 4, 'the sliders wait while the grade is off');
+  assert.match(off, /sRGB decode \(on\)/);
+  assert.match(off, /class="picture-grade-value">30%</);
+  assert.strictEqual([...off.matchAll(/<input type="range"[^>]*disabled/g)].length, 4, 'the grade sliders wait while the grade is off');
+  assert.doesNotMatch(/<input type="range"[^>]*aria-label="Black point"[^>]*>/.exec(off)?.[0] ?? 'disabled', /disabled/, 'the black point does not wait on the grade');
 });
 
 test('shortcut help derives every view chord from the navigation', () => {

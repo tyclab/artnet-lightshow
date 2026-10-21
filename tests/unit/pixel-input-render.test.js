@@ -10,9 +10,13 @@ import { seedFrom } from '../../src/shared/effects/hash.ts';
 import { channelReader } from '../../src/shared/placement.ts';
 import { hrtimeMs } from '../../src/server/frame-clock.ts';
 import { SRGB_DECODE } from '../../src/shared/color.ts';
+import { blackPointGain } from '../../src/shared/picture-grade.ts';
 
-// Screen bytes are sRGB; the panel is driven with the linear light they stand for.
+// Screen bytes are sRGB; the panel is driven with them as sent, or, with the decode on, with the linear light they stand for.
 const linear = (bytes) => [...bytes].map((v) => Math.round(SRGB_DECODE[v]));
+// One pixel's three bytes through the black point: the peak sets the gain, all three take it.
+const lifted = (bytes, blackPoint, gain = 1) => bytes.map((v) => Math.round(v * blackPointGain(Math.max(...bytes), blackPoint) * gain));
+const decodedLift = (bytes, blackPoint) => { const gain = blackPointGain(SRGB_DECODE[Math.max(...bytes)], blackPoint); return bytes.map((v) => Math.round(SRGB_DECODE[v] * gain)); };
 
 const grid = (width, height, reverse = false) => ({
   id: 'pixel-input-grid', name: 'Screen', channelCount: width * height * 3, channelMap: {}, grid: { columns: width, rows: height },
@@ -49,17 +53,39 @@ test('external RGB follows the profile grid and channel mapping across universes
   const profile = grid(17, 11, true), r = rig(profile);
   const data = Uint8Array.from({ length: 17 * 11 * 3 }, (_, i) => (i * 13 + 7) % 256);
   const before = r.draw(100), after = r.draw(100, { pixelInputs: [frame(profile, data)] });
-  const expected = profile.cells.flatMap(({ at }) => linear(data.slice((at.y * 17 + at.x) * 3, (at.y * 17 + at.x) * 3 + 3)));
-  assert.deepEqual(after.pixels, expected);
+  const cell = ({ at }) => [...data.slice((at.y * 17 + at.x) * 3, (at.y * 17 + at.x) * 3 + 3)];
+  assert.deepEqual(after.pixels, profile.cells.flatMap(cell), 'the bytes as sent');
   assert.deepEqual(after.other, before.other);
   assert.ok(r.store.getBuffer(2).some(v => v !== 0));
+  const decoded = r.draw(100, { pixelInputs: [frame(profile, data)], pictureDecode: true });
+  assert.deepEqual(decoded.pixels, profile.cells.flatMap((c) => linear(cell(c))), 'decode on: the linear light the bytes stand for');
+  assert.deepEqual(decoded.other, before.other);
+});
+
+test('the black point darkens the pixels at or under it and ramps the rest, hue kept; zero is the identity', () => {
+  const p = grid(3, 1), r = rig(p);
+  const data = [255, 128, 64, 80, 160, 240, 30, 20, 10];
+  const at = (blackPoint, patch = {}) => r.draw(100, { pixelInputs: [frame(p, data)], pictureBlackPoint: blackPoint, ...patch }).pixels;
+  assert.deepEqual(at(0.12), [255, 128, 64, 79, 159, 238, 0, 0, 0]);
+  assert.deepEqual(at(0.12), [...lifted([255, 128, 64], 0.12), ...lifted([80, 160, 240], 0.12), ...lifted([30, 20, 10], 0.12)]);
+  assert.deepEqual(at(0), data, 'zero: every byte as sent');
+  assert.deepEqual(r.draw(100, { pixelInputs: [frame(p, data)] }).pixels, data, 'absent: every byte as sent');
+  const half = at(0.5);
+  assert.deepEqual(half.slice(0, 3), [255, 128, 64], 'a full peak is never lifted');
+  assert.deepEqual(half.slice(6), [0, 0, 0], 'half: a peak of 30 is far under it');
+  assert.deepEqual(half.slice(3, 6), lifted([80, 160, 240], 0.5), 'half: a peak of 240 is 0.94 of full and ramps');
+  assert.ok(half[5] > 0 && half[5] < 238 && Math.abs(half[3] / half[5] - 80 / 240) < 0.01, `${half.slice(3, 6)} ramps with its ratios`);
+  assert.deepEqual(at(0.2, { pictureDecode: true }), [...decodedLift([255, 128, 64], 0.2), ...decodedLift([80, 160, 240], 0.2), ...decodedLift([30, 20, 10], 0.2)],
+    'decode on: decoded, then lifted');
+  assert.deepEqual(at(0.12, { masterDimmer: 128 }).slice(3, 6), lifted([80, 160, 240], 0.12, 128 / 255), 'the master applies after the lift');
 });
 
 test('pixels obey master, fixture trim, manual override, fixture blackout and master blackout', () => {
   const p = grid(2, 1), pixels = [frame(p, [255, 128, 64, 80, 160, 240])], fixtures = base(p).fixtures;
   fixtures[0].maxBrightness = 128;
-  // Decoded first (255, 55.0, 13.1, 20.5, 89.6, 222.2), then a quarter for the master and the trim.
-  assert.deepEqual(rig(p).draw(100, { pixelInputs: pixels, fixtures, masterDimmer: 128 }).pixels, [64, 14, 3, 5, 23, 56]);
+  // A quarter for the master and the trim; with the decode on, (255, 55.0, 13.1, 20.5, 89.6, 222.2) comes first.
+  assert.deepEqual(rig(p).draw(100, { pixelInputs: pixels, fixtures, masterDimmer: 128 }).pixels, [64, 32, 16, 20, 40, 60]);
+  assert.deepEqual(rig(p).draw(100, { pixelInputs: pixels, fixtures, masterDimmer: 128, pictureDecode: true }).pixels, [64, 14, 3, 5, 23, 56]);
   fixtures[0].maxBrightness = 255;
   fixtures[0].override = { enabled: true, blackout: false, r: 0, g: 255, b: 0, w: 0, a: 0, uv: 0, dim: 255, strobe: 0 };
   assert.deepEqual(rig(p).draw(100, { pixelInputs: pixels, fixtures }).pixels, [0, 255, 0, 0, 255, 0]);
@@ -72,14 +98,14 @@ test('stream does not inherit legacy strobe and safety revocation restores the a
   const p = grid(2, 1), r = rig(p), data = [10, 20, 30, 40, 50, 60];
   for (let now = 0; now < 1000; now += 25) assert.deepEqual(r.draw(now, {
     pattern: 'strobe', strobeSpeed: 255, pixelInputs: [frame(p, data)],
-  }).pixels, linear(data));
+  }).pixels, data);
   const baseline = rig(p).draw(100).pixels;
   assert.deepEqual(rig(p).draw(100, { pixelInputs: [frame(p, data)], safety: { acknowledged: false, hdFlashIntervalMs: 350 } }).pixels, baseline);
 });
 
 test('expired or incompatible frames fall back to the running authored look', () => {
   const p = grid(2, 1), r = rig(p), pixels = [frame(p, [10, 20, 30, 40, 50, 60], 100)];
-  assert.deepEqual(r.draw(99, { pixelInputs: pixels }).pixels, [1, 2, 3, 5, 8, 12]);
+  assert.deepEqual(r.draw(99, { pixelInputs: pixels }).pixels, [10, 20, 30, 40, 50, 60]);
   assert.deepEqual(r.draw(100, { pixelInputs: pixels }).pixels, rig(p).draw(100).pixels);
   assert.deepEqual(r.draw(50, { pixelInputs: [{ ...pixels[0], width: 1, height: 2 }] }).pixels, rig(p).draw(50).pixels);
 });
@@ -131,9 +157,11 @@ test('real worker matches main rendering and expires its retained pixel snapshot
   t.after(() => worker.terminate());
   await once(worker, 'message');
   worker.postMessage({ type: 'profiles', profiles: [p, par] });
-  const input = base(p, { pixelInputs: [frame(p, data, 100)] });
+  // The lift's settings ride the render message with the frame, as the grade does.
+  const lift = { pictureDecode: true, pictureBlackPoint: 0.12 };
+  const input = base(p, { pixelInputs: [frame(p, data, 100)], ...lift });
   for (const now of [50, 101]) {
-    const local = r.draw(now, { pixelInputs: input.pixelInputs });
+    const local = r.draw(now, { pixelInputs: input.pixelInputs, ...lift });
     const response = once(worker, 'message');
     worker.postMessage({ type: 'render', id: now, input, reading: { beatPos: now / 500, bpm: 120, epoch: 0 }, now, gridOriginMs: 0 });
     const [message] = await response;
