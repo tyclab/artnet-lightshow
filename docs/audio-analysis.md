@@ -114,10 +114,13 @@ The timeout grows with the track: a request may run for
 `max(analysis.analyzerTimeoutMs, 60 s + analysis.analyzerTimeoutMsPerSec × length)`,
 600 s and 1500 ms per second of audio by default, so a 900 s track gets 1410 s.
 The minute is a fresh worker's warm-up, which runs inside the first request's
-limit. The length is the WAV's own, read from its header (every download and
-CDJ file arrives as one), else the length the player reported; a file with
-neither, such as an operator's own MP3, gets `analyzerTimeoutMs`. A worker that
-hangs is still killed at the limit and the queue moves on.
+limit. The length is the file's own, read from its header: a WAV's data chunk
+(every download and CDJ file arrives as one), a FLAC's STREAMINFO, an MP3's
+Xing/Info or VBRI frame count, else its bytes over the first frame's bitrate.
+Otherwise it is the length the player reported; a file with neither, such as an
+operator's own M4A or Ogg, gets `analyzerTimeoutMs`. Remote workers get the
+same limit. A worker that hangs is still killed at the limit and the queue
+moves on.
 
 Requests are served by priority band — `current`, then `high`, then `normal` —
 and within a band by playback-queue position: the order the listener will hear

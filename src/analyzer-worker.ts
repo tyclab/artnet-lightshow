@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 
 import { settings } from './server/settings.ts';
 import { messageOf, cancelledError } from './errors.ts';
-import { wavDurationSec } from './audio-file.ts';
+import { audioDurationSec } from './audio-file.ts';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { Analysis } from './show/score.ts';
 
@@ -51,7 +51,7 @@ export function storedTimeoutMs(durationSec: number | null): number {
 // The worker analyses the whole file; the player's length stands in for a file whose header says nothing.
 export function durationOf(request: Pick<Request, 'source' | 'targetDurationSec'>): number | null {
   const target = request.targetDurationSec;
-  return wavDurationSec(request.source) ?? (typeof target === 'number' && target > 0 ? target : null);
+  return audioDurationSec(request.source) ?? (typeof target === 'number' && target > 0 ? target : null);
 }
 
 function workerEnv(): NodeJS.ProcessEnv {

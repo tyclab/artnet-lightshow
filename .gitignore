@@ -12,6 +12,8 @@ tests/fixtures/*
 !tests/fixtures/tracks/
 !tests/fixtures/ofl/
 !tests/fixtures/golden/
+# Encoder output of a synthetic tone or silence, a few KB, for the duration probes.
+!tests/fixtures/audio/
 __pycache__/
 
 # Generated client build.
