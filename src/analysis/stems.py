@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 import os
+import random
 import sys
 import threading
 
@@ -40,7 +41,7 @@ class Stems:
         return {name: value / total for name, value in levels.items()}
 
 
-def separate(mono, sample_rate, overlap=0.10, segment_seconds=None, stereo_loader=None):
+def separate(mono, sample_rate, overlap=0.10, segment_seconds=None, stereo_loader=None, seed=0):
     """
     Split `mono` into stems, returned at the same rate and length.
 
@@ -56,6 +57,8 @@ def separate(mono, sample_rate, overlap=0.10, segment_seconds=None, stereo_loade
     `overlap` trades quality for time. Demucs defaults to 0.25; 0.10 is roughly
     a fifth faster and the difference does not survive the downstream use, which
     is envelopes and onset times rather than anything anybody listens to.
+
+    `seed` draws Demucs's random shift, so one track always separates alike.
     """
     import torch
     import librosa
@@ -82,7 +85,8 @@ def separate(mono, sample_rate, overlap=0.10, segment_seconds=None, stereo_loade
 
     def run(device):
         with torch.no_grad():
-            return _demucs(model, pair, device, overlap, segment_seconds, sample_rate, mono.size)
+            return _demucs(model, pair, device, overlap, segment_seconds, sample_rate, mono.size,
+                           random.Random(seed))
 
     separated = models.run_pass('demucs', run, modules=[model])
     return Stems(sample_rate=sample_rate,
@@ -90,9 +94,10 @@ def separate(mono, sample_rate, overlap=0.10, segment_seconds=None, stereo_loade
                     for name in ('drums', 'bass', 'vocals', 'other')})
 
 
-def _demucs(model, pair, device, overlap, segment, rate, size):
+def _demucs(model, pair, device, overlap, segment, rate, size, rng):
     """
-    Demucs's `apply_model(shifts=1, split=True)`, a segment at a time.
+    Demucs's `apply_model(shifts=1, split=True)`, a segment at a time, its
+    random shift drawn from `rng` rather than the global `random`.
 
     Called on the whole track, `apply_model` holds the track in four stereo
     stems at 44.1 kHz twice over, plus two copies of the input: 4 MB per second
@@ -111,7 +116,7 @@ def _demucs(model, pair, device, overlap, segment, rate, size):
     totals = [sum(weights[k] for _, weights in members) for k in range(len(model.sources))]
     out = None
     for member, weights in members:
-        stems = _stream(member, pair, device, overlap, segment, rate, size)
+        stems = _stream(member, pair, device, overlap, segment, rate, size, rng)
         scale = np.asarray([w / t for w, t in zip(weights, totals)], dtype=np.float32)
         if not np.all(scale == 1.0):
             stems *= scale[:, None]
@@ -119,9 +124,8 @@ def _demucs(model, pair, device, overlap, segment, rate, size):
     return dict(zip(model.sources, out))
 
 
-def _stream(model, pair, device, overlap, segment, rate, size):
+def _stream(model, pair, device, overlap, segment, rate, size, rng):
     """One model's stems at `rate` as (sources, size); see `_demucs`."""
-    import random
     import soxr
     import torch as th
     from demucs.apply import TensorChunk, apply_model
@@ -145,20 +149,21 @@ def _stream(model, pair, device, overlap, segment, rate, size):
             out[k, written[k]:written[k] + n] = mono[:n]
             written[k] += n
 
-    if segment is None and getattr(model, 'segment', None) is None:
-        # A model without a training segment is applied whole, as before.
-        mix = th.from_numpy(np.ascontiguousarray(read(0, length), dtype=np.float32))[None]
-        emit(apply_model(model, mix, device=device, split=True, overlap=overlap,
-                         progress=False)[0].cpu(), last=True)
-        return out
-
     # apply_model's shift: the input padded by `max_shift` of silence on each
     # side, read from `shift` on; the output from `max_shift - shift` on is the track.
     max_shift = int(0.5 * model.samplerate)
-    shift = random.randint(0, max_shift)
+    shift = rng.randint(0, max_shift)
     span = length + max_shift - shift
     lead = max_shift - shift
     padded_length = length + 2 * max_shift
+
+    if segment is None and getattr(model, 'segment', None) is None:
+        # A model without a training segment is applied whole, as before.
+        mix = th.zeros(1, channels, span)
+        mix[0, :, lead:] = th.from_numpy(np.ascontiguousarray(read(0, length), dtype=np.float32))
+        emit(apply_model(model, mix, shifts=0, device=device, split=True, overlap=overlap,
+                         progress=False)[0, ..., lead:].cpu(), last=True)
+        return out
 
     # apply_model's split: segments `stride` apart, each weighted by a triangle.
     segment_length = int(model.samplerate * (segment or model.segment))

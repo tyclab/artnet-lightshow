@@ -127,6 +127,7 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
         return pool.submit(timings.timed(name, fn), *args)
 
     try:
+        track_hash = _file_hash(path)
         with timings.stage('preprocess'):
             audio = preprocess_stage.prepare(path, config.preprocess, target_duration_sec)
             models.trim()
@@ -153,7 +154,7 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
             key_future = start('skey', _safe_skey, audio)
 
         if config.separate_sources:
-            stem_future = start('separation', _safe_separate, audio)
+            stem_future = start('separation', _safe_separate, audio, int(track_hash[:16], 16))
 
         if config.enable_semantics:
             mulan_future = start('muq', _safe_muq, audio)
@@ -232,7 +233,7 @@ def analyze(path, target_duration_sec=None, config: AnalysisConfig = None):
             document = json_safe(build_document(
                 audio, frames, rhythm, band_map, roles, sections, dynamics,
                 perception, stream, stems, pulse))
-        document['track']['hash'] = _file_hash(path)
+        document['track']['hash'] = track_hash
         named_by_model = any(s.function for s in sections)
         document['sectionSource'] = 'songformer' if named_by_model else 'analysis'
         # Optional foundation-model passes are activated by local model
@@ -346,10 +347,10 @@ def _safe_skey(audio):
         return None
 
 
-def _safe_separate(audio):
+def _safe_separate(audio, seed):
     try:
         return stems_stage.separate(
-            audio.mono, audio.sample_rate,
+            audio.mono, audio.sample_rate, seed=seed,
             stereo_loader=lambda rate: preprocess_stage.separation_span(audio, rate))
     except Exception as exc:
         _log(f'separation failed ({exc}); instrument roles fall back to bands')

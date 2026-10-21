@@ -1039,7 +1039,8 @@ back). The rest is run a stretch at a time, and every stretch is cut so that the
 result is the whole-track call's, sample for sample:
 
 - **Demucs** (`stems._demucs`) runs `apply_model`'s own segments, weights and
-  random shift one segment at a time, folding each finished stretch to mono and
+  random shift (seeded with the file's hash, so a track always separates alike)
+  one segment at a time, folding each finished stretch to mono and
   resampling it as soon as no later segment overlaps it. Whole, it held the
   track as four stereo stems at 44.1 kHz twice over: 4 MB per second of audio.
   The stereo it reads is a `preprocess.SeparationSpan`, gained a stretch at a
