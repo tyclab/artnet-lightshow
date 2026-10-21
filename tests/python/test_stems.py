@@ -1,5 +1,7 @@
 """Separator plumbing, with a stand-in model rather than a checkpoint."""
 import os
+import random
+import shutil
 import tempfile
 import threading
 import time
@@ -7,7 +9,8 @@ import types
 import unittest
 from unittest.mock import patch
 
-from support import needs_audio
+import synth
+from support import AudioTestCase, needs_audio
 from analysis import models, stems
 
 
@@ -145,8 +148,8 @@ class StereoInput(unittest.TestCase):
              patch('demucs.apply.apply_model', side_effect=apply_model):
             stems.separate(np.zeros(22050, dtype=np.float32), 22050,
                            stereo_loader=lambda rate: np.stack([left, right]))
-        self.assertEqual(float(seen['tensor'][0, 0, 0]), 1.0)
-        self.assertEqual(float(seen['tensor'][0, 1, 0]), -1.0)
+        self.assertEqual(float(seen['tensor'][0, 0, -1]), 1.0)
+        self.assertEqual(float(seen['tensor'][0, 1, -1]), -1.0)
 
 
 
@@ -157,7 +160,6 @@ class StreamedDemucs(unittest.TestCase):
     # segments are now run one at a time; for the same random shift the stems
     # must be the ones apply_model gives, bit for bit.
     def test_the_stems_are_apply_models(self):
-        import random
         import numpy as np
         import torch
         import librosa
@@ -172,9 +174,8 @@ class StreamedDemucs(unittest.TestCase):
             random.seed(11)
             with torch.no_grad():
                 whole = apply_model(model, torch.tensor(pair)[None], split=True, overlap=0.10)[0]
-            random.seed(11)
             with torch.no_grad():
-                streamed = stems._demucs(model, pair, 'cpu', 0.10, None, 22050, size)
+                streamed = stems._demucs(model, pair, 'cpu', 0.10, None, 22050, size, random.Random(11))
             for name, source in zip(model.sources, whole):
                 want = librosa.resample(source.mean(dim=0).numpy(), orig_sr=44100, target_sr=22050)
                 want = np.pad(want, (0, max(0, size - want.size)))[:size]
@@ -193,6 +194,58 @@ class StreamedDemucs(unittest.TestCase):
         self.assertEqual(span.shape, whole.shape)
         np.testing.assert_array_equal(np.concatenate([span.read(a, a + 777) for a in range(0, span.shape[1], 777)],
                                                      axis=1), whole)
+
+
+@needs_audio
+class Repeatable(AudioTestCase):
+    # The shift came from the global `random`, which the warm-up and every
+    # earlier track had moved on: a worker's tracks separated differently each time.
+    def test_the_same_audio_twice_gets_the_same_shift_and_stems(self):
+        import numpy as np
+        import torch
+        from demucs.htdemucs import HTDemucs
+        from analysis import pipeline
+        from analysis.config import AnalysisConfig
+        torch.manual_seed(0)
+        net = HTDemucs(sources=['drums', 'bass', 'other', 'vocals'], channels=4, depth=2,
+                       t_layers=1, t_heads=2, dconv_comp=2, segment=1, samplerate=44100).eval()
+        first = self.write(synth.four_on_the_floor(bars=4), 'first.wav')
+        again = shutil.copy(first, os.path.join(self.tmpdir, 'again.wav'))
+        shifts, separated = [], []
+        real_stream, real_separate = stems._stream, stems.separate
+
+        def stream(model, *args):
+            probe = random.Random()
+            probe.setstate(args[-1].getstate())
+            shifts.append(probe.randint(0, int(0.5 * model.samplerate)))
+            return real_stream(model, *args)
+
+        def separate(*args, **kwargs):
+            separated.append(real_separate(*args, **kwargs))
+            return separated[-1]
+
+        grid = (np.arange(0, 8, 0.5), np.arange(0, 8, 2.0))
+        documents = []
+        with patch.object(models, 'separator', return_value=net), \
+             patch.object(models, 'bs_roformer_enabled', return_value=False), \
+             patch.object(models, 'on_gpu', return_value=False), \
+             patch.object(stems, '_stream', side_effect=stream), \
+             patch.object(pipeline.stems_stage, 'separate', side_effect=separate), \
+             patch.object(pipeline.songformer, 'wanted', return_value=False), \
+             patch.object(pipeline.model_adapters, 'skey_available', return_value=False), \
+             patch.object(pipeline.rhythm_stage, 'model_beats', return_value=grid):
+            for path, state in ((first, 1), (again, 2)):
+                random.seed(state)
+                documents.append(pipeline.analyze(path, config=AnalysisConfig(
+                    separate_sources=True, enable_semantics=False, enable_tagger=False)))
+        self.assertEqual(len(shifts), 2)
+        self.assertEqual(shifts[0], shifts[1])
+        for name in separated[0].names:
+            np.testing.assert_array_equal(separated[0].named(name), separated[1].named(name), err_msg=name)
+        self.assertEqual(documents[0]['meta']['modelUsage']['separation'], 'demucs')
+        for doc in documents:
+            del doc['meta']
+        self.assertEqual(documents[0], documents[1])
 
 
 if __name__ == '__main__':

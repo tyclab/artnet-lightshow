@@ -193,11 +193,11 @@ on the server.
 
 Run on the same track, the worker's document matches the CPU's: the same beats,
 downbeats, sections, drops, events, genre and mood; embeddings at cosine 1.0;
-a handful of values in the last digits. That holds for the first track a
-worker process analyses. Demucs's random shift comes from Python's `random`,
-which the model warm-up leaves at a fixed state, so each later track in the
-same process (on the server's CPU worker too) draws another shift: its stems,
-pulse lanes and a few events differ from the first-track result.
+a handful of values in the last digits. Demucs's random shift is drawn from a
+generator seeded with the file's SHA-256 (`track.hash`), so a file gets the
+same shift on every run, in every process, however many tracks came before it.
+Python's global `random`, which the model warm-up and earlier tracks move on,
+is not read.
 
 ## Troubleshooting
 

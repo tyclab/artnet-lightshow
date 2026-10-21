@@ -3,11 +3,13 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import AnalyzerWorker, { analysisTimeoutMs } from '../../src/analyzer-worker.ts';
-import { wavDurationSec } from '../../src/audio-file.ts';
+import AnalyzerWorker, { analysisTimeoutMs, durationOf, storedTimeoutMs } from '../../src/analyzer-worker.ts';
+import { audioDurationSec } from '../../src/audio-file.ts';
 import { settings, DEFAULTS } from '../../src/server/settings.ts';
+import { flacFile, id3Tag, mp3File, mp3Frame } from '../helpers/audio-headers.js';
 
 const FAKE = path.join(import.meta.dirname, '..', 'helpers', 'fake-analyzer.js');
+const FIXTURES = path.join(import.meta.dirname, '..', 'fixtures', 'audio');
 const worker = (mode, opts) => {
   process.env.FAKE_MODE = mode;
   return new AnalyzerWorker(process.execPath, FAKE, opts);
@@ -224,11 +226,52 @@ test('a long track is given time in proportion to its length', () => {
 });
 
 test('a WAV\'s length is read from its header', () => {
-  assert.strictEqual(wavDurationSec(writeWav(900)), 900);
-  assert.strictEqual(wavDurationSec(writeWav(3, { list: false })), 3);
-  assert.strictEqual(wavDurationSec('/no/such/file.wav'), null);
-  assert.strictEqual(wavDurationSec(path.join(import.meta.dirname, 'analyzer-worker.test.js')), null, 'not a WAV');
-  assert.strictEqual(wavDurationSec(null), null);
+  assert.strictEqual(audioDurationSec(writeWav(900)), 900);
+  assert.strictEqual(audioDurationSec(writeWav(3, { list: false })), 3);
+  assert.strictEqual(audioDurationSec('/no/such/file.wav'), null);
+  assert.strictEqual(audioDurationSec(path.join(import.meta.dirname, 'analyzer-worker.test.js')), null, 'not audio');
+  assert.strictEqual(audioDurationSec(null), null);
+});
+
+// ffmpeg's output, 2 s each: FLAC (padding block dropped), LAME VBR with an ID3v2 tag and a Xing frame, CBR without one.
+test('FLAC and MP3 lengths are read from what an encoder writes', () => {
+  for (const name of ['2s.flac', '2s-vbr.mp3', '2s-cbr.mp3']) {
+    const seconds = audioDurationSec(path.join(FIXTURES, name));
+    assert.ok(Math.abs(seconds - 2) < 0.1, `${name}: ${seconds}`);
+  }
+});
+
+// A 561 s FLAC with no length from the player fell back to the 600 s floor and timed out on a slower CPU.
+test('a long FLAC or MP3 is measured, whichever way its length is written', () => {
+  assert.strictEqual(audioDurationSec(flacFile(561)), 561);
+  assert.strictEqual(audioDurationSec(flacFile(561, { rate: 96000 })), 561);
+  assert.ok(Math.abs(audioDurationSec(mp3File(561, { xing: true })) - 561) < 0.05, 'frame count in a Xing header');
+  assert.strictEqual(audioDurationSec(mp3File(561)), 561, 'CBR: bytes over bitrate');
+  assert.strictEqual(audioDurationSec(mp3File(561, { tagBytes: 3_000_000 })), 561, 'behind cover art');
+  assert.strictEqual(audioDurationSec(mp3File(561, { tagBytes: 1000, name: 'track.flac' })), 561, 'by content, not name');
+});
+
+test('a file whose header says nothing usable has no length', () => {
+  const noise = Buffer.alloc(200_000);
+  for (let i = 0, x = 7; i < noise.length; i++) noise[i] = (x = (x * 1103515245 + 12345) >>> 0) >>> 24;
+  const write = (name, bytes) => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'analyzer-audio-')), name);
+    fs.writeFileSync(file, bytes);
+    return file;
+  };
+  assert.strictEqual(audioDurationSec(write('noise.mp3', noise)), null);
+  assert.strictEqual(audioDurationSec(flacFile(0, { samples: 0 })), null, 'FLAC with an unknown sample count');
+  assert.strictEqual(audioDurationSec(write('cut.flac', Buffer.from('fLaC\x00\x00\x00\x22', 'latin1'))), null);
+  assert.strictEqual(audioDurationSec(write('tag.mp3', id3Tag(4000))), null, 'only a tag');
+  assert.strictEqual(audioDurationSec(write('one.mp3', mp3Frame())), null, 'one frame is no stream');
+  assert.strictEqual(audioDurationSec(write('empty.mp3', Buffer.alloc(0))), null);
+  assert.strictEqual(audioDurationSec(os.tmpdir()), null, 'a directory');
+});
+
+test('a long FLAC is given time for its length, not the floor', () => {
+  const request = { source: flacFile(561), targetDurationSec: null };
+  assert.strictEqual(durationOf(request), 561);
+  assert.ok(storedTimeoutMs(durationOf(request)) > storedTimeoutMs(null));
 });
 
 test('the limit follows the file\'s own length, else the one the player gave, and a stuck worker still times out', async () => {
@@ -236,9 +279,10 @@ test('the limit follows the file\'s own length, else the one the player gave, an
   const w = worker('hang', { timeoutMs: (durationSec) => { seen.push(durationSec); return 300; } });
   try {
     await assert.rejects(w.analyze(writeWav(900), 240), /timed out/);
+    await assert.rejects(w.analyze(flacFile(561), null), /timed out/);
     await assert.rejects(w.analyze('/tmp/not-here.mp3', 240), /timed out/);
     await assert.rejects(w.analyze('/tmp/not-here.mp3', null), /timed out/);
-    assert.deepStrictEqual(seen, [900, 240, null]);
+    assert.deepStrictEqual(seen, [900, 561, 240, null]);
   } finally { w.shutdown(); }
 });
 

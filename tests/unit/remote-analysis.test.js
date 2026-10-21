@@ -16,6 +16,7 @@ import { createAuth } from '../../src/server/auth.ts';
 import { HTTP_BASE, NAMESPACE, RemoteAnalysisPool } from '../../src/remote-analysis.ts';
 import { durationOf, storedTimeoutMs } from '../../src/analyzer-worker.ts';
 import AnalysisRouter from '../../src/analysis-router.ts';
+import { flacFile, mp3File } from '../helpers/audio-headers.js';
 
 const MAIN_TOKEN = 'main-token-for-the-ui';
 const WORKER_TOKEN = 'worker-token-for-analysis';
@@ -317,6 +318,8 @@ test('a worker gets the local analyser\'s limit for the request, which grows wit
   fs.writeFileSync(wav, wavHeader(8000 * 600));
   fs.truncateSync(wav, 44 + 8000 * 600);
   assert.equal(pool._timeoutMs({ ...short, source: wav }), storedTimeoutMs(600), 'a WAV header gives the length');
+  assert.equal(pool._timeoutMs({ ...short, source: flacFile(561), targetDurationSec: null }), storedTimeoutMs(561), 'so does a FLAC');
+  assert.equal(pool._timeoutMs({ ...short, source: mp3File(561), targetDurationSec: null }), storedTimeoutMs(561), 'and an MP3');
 });
 
 function wavHeader(dataBytes) {
