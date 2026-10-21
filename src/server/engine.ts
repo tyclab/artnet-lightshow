@@ -208,6 +208,8 @@ function renderInput(): RenderInput {
     pixelInputs: pixelInputs.frames(thread === 'worker' ? WORKER_CLOCK_SHIFT : 0),
     picture: settings.get('picture.source') === 'visualizer' ? pictureInput.current(thread === 'worker' ? WORKER_CLOCK_SHIFT : 0) : null,
     pictureGrade: settings.get('picture.grade'),
+    pictureDecode: settings.get('picture.decode'),
+    pictureBlackPoint: settings.get('picture.blackPoint'),
     paletteOverride: state.paletteOverride,
     basePalette: state.basePalette,
     overridePalette: state.overridePalette,

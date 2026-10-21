@@ -24,8 +24,8 @@ export function attachOutputRoutes(app: Express, ctx: RouteContext): void {
   const { applier, integrations, hueAreas, huePair } = ctx;
   app.get('/api/pixel-input', (_req, res) => res.json({ ok: true, inputs: pixelInputs.status() }));
 
-  // The room picture: which base the show paints from, its colour grade, who is sending it, and the units a sender samples.
-  const picture = () => ({ ok: true, source: settings.get('picture.source'), grade: settings.group('picture').grade, input: pictureInput.status() });
+  // The room picture: which base the show paints from, its lift and colour grade, who is sending it, and the units a sender samples.
+  const picture = () => ({ ok: true, ...settings.group('picture'), input: pictureInput.status() });
   app.get('/api/picture', (_req, res) => res.json(picture()));
   app.get('/api/picture/units', (_req, res) => res.json({ ok: true, ...pictureUnits() }));
   app.post('/api/picture/source', (req, res) => {

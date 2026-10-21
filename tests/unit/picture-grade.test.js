@@ -1,5 +1,6 @@
-// The room picture's optional colour grade, off by default: it takes white out, keeps each
-// colour's hue, caps the level, and can cap Hue lamps lower because they mix in white LEDs.
+// The room picture's black point, which keeps a screen's near-black pixels from lighting a lamp,
+// and its optional colour grade, off by default: it takes white out, keeps each colour's hue,
+// caps the level, and can cap Hue lamps lower because they mix in white LEDs.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,12 +8,13 @@ import express from 'express';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { gradeColour, PICTURE_GRADE_DEFAULTS, PICTURE_GRADE_GUESSED, pictureGradeSchema } from '../../src/shared/picture-grade.ts';
-import { toLch } from '../../src/shared/color.ts';
+import { blackPointGain, gradeColour, pictureLift, PICTURE_BLACK_POINT_DEFAULT, PICTURE_GRADE_DEFAULTS, PICTURE_GRADE_GUESSED,
+  pictureBlackPointSchema, pictureGradeSchema } from '../../src/shared/picture-grade.ts';
+import { SRGB_DECODE, toLch } from '../../src/shared/color.ts';
 import { createRenderer } from '../../src/server/renderer.ts';
 import { allocateShared, createUniverseStore } from '../../src/server/universes.ts';
 import { channelReader } from '../../src/shared/placement.ts';
-import { SettingsStore, DEFAULTS, settings, retireGuessedGrade } from '../../src/server/settings.ts';
+import { SettingsStore, DEFAULTS, schema, settings, retireGuessedGrade } from '../../src/server/settings.ts';
 import { attachRoutes } from '../../src/server/routes.ts';
 
 const IDENTITY = { enabled: true, whiteLimit: 0, saturation: 1, ceiling: 1, hueCeiling: 1 };
@@ -88,6 +90,61 @@ test('the stored grade refuses values outside its ranges and unknown fields', ()
   }
 });
 
+test('the black point turns a unit off at and below it, ramps it above, and leaves a full peak at 255', () => {
+  for (const blackPoint of [0.01, 0.1, 0.12, 0.2, 0.25, 0.3, 0.4, 0.5]) {
+    const threshold = Math.floor(blackPoint * 255);
+    for (let v = 0; v <= threshold; v++) assert.equal(blackPointGain(v, blackPoint), 0, `${v} at ${blackPoint}`);
+    assert.ok(blackPointGain(threshold + 1, blackPoint) > 0, `${threshold + 1} lights at ${blackPoint}`);
+    assert.equal(blackPointGain(255, blackPoint), 1, `255 stays 255 at ${blackPoint}`);
+    let last = 0;
+    for (let v = threshold + 1; v <= 255; v++) {
+      const m = v / 255, gain = blackPointGain(v, blackPoint), spec = ((m - blackPoint) / (1 - blackPoint)) / m;
+      assert.ok(Math.abs(gain - spec) < 1e-12 && gain > last && gain <= 1, `${v} at ${blackPoint}: ${gain}`);
+      last = gain;
+    }
+  }
+  for (let v = 0; v < 256; v++) assert.equal(v * blackPointGain(v, 0), v, `zero is the identity at ${v}`);
+  // (204, 102, 0) at 0.2: the peak is 0.8 of full, so every channel takes 0.9375 and the hue holds.
+  const gain = blackPointGain(204, 0.2);
+  assert.deepEqual([204, 102, 0].map((v) => Math.round(v * gain)), [191, 96, 0]);
+  for (const c of [[200, 120, 60], [30, 200, 90], [255, 40, 160], [64, 32, 0]]) {
+    const out = c.map((v) => v * blackPointGain(Math.max(...c), PICTURE_BLACK_POINT_DEFAULT));
+    assert.ok(hueGap(lch(c).h, lch(out).h) < 1e-6, `${c} -> ${out} turned`);
+    assert.ok(Math.abs(out[1] * c[0] - out[0] * c[1]) < 1e-9 && Math.abs(out[2] * c[0] - out[0] * c[2]) < 1e-9, `${c} -> ${out} lost its ratios`);
+    if (Math.max(...c) === 255) assert.deepEqual(out, c, 'a full peak keeps every channel');
+    else assert.ok(Math.max(...out) < Math.max(...c), `${c} -> ${out} did not ramp down`);
+  }
+  assert.deepEqual([64, 32, 0].map((v) => Math.round(v * blackPointGain(64, 0.12))), [38, 19, 0]);
+});
+
+test('the lift tables hold the gain at every peak byte, decoded first when asked', () => {
+  const plain = pictureLift(false, 0.2), decoded = pictureLift(true, 0.2);
+  assert.deepEqual([plain.decode, plain.blackPoint, decoded.decode, decoded.blackPoint], [false, 0.2, true, 0.2]);
+  for (let v = 0; v < 256; v++) {
+    assert.equal(plain.levels[v], v);
+    assert.equal(plain.gains[v], blackPointGain(v, 0.2));
+    assert.equal(decoded.levels[v], SRGB_DECODE[v]);
+    assert.equal(decoded.gains[v], blackPointGain(SRGB_DECODE[v], 0.2));
+  }
+  assert.deepEqual([plain.gains[51], plain.gains[255], decoded.gains[255]], [0, 1, 1]);
+  assert.ok(decoded.gains[123] === 0 && decoded.gains[124] > 0, 'sRGB 124 is the first byte above 20 % light');
+  const off = pictureLift(false, 0);
+  for (let v = 0; v < 256; v++) assert.equal(off.levels[v] * off.gains[v], v, `no lift at ${v}`);
+});
+
+test('the stored black point and decode refuse values outside their ranges', () => {
+  assert.equal(DEFAULTS.picture.decode, false);
+  assert.equal(DEFAULTS.picture.blackPoint, PICTURE_BLACK_POINT_DEFAULT);
+  assert.equal(PICTURE_BLACK_POINT_DEFAULT, 0.12);
+  for (const good of [0, 0.12, 0.5]) assert.equal(pictureBlackPointSchema.safeParse(good).success, true, String(good));
+  for (const bad of [-0.01, 0.51, 1, '0.1', null]) assert.equal(pictureBlackPointSchema.safeParse(bad).success, false, String(bad));
+  const picture = schema.shape.picture;
+  assert.equal(picture.safeParse({ ...DEFAULTS.picture, decode: true, blackPoint: 0.3 }).success, true);
+  for (const bad of [{ decode: 'yes' }, { decode: 1 }, { blackPoint: 0.6 }, { blackPoint: -1 }, { blackPoint: '0.2' }, { lift: 1 }]) {
+    assert.equal(picture.safeParse({ ...DEFAULTS.picture, ...bad }).success, false, JSON.stringify(bad));
+  }
+});
+
 // One RGB par and one Hue lamp (one RGB cell each), painted by the picture.
 const rgbPar = { id: 'grade-par', name: 'Par', channelCount: 3, channelMap: { red: 0, green: 1, blue: 2 } };
 const fixture = (id, universe, hue) => ({ id, profileId: rgbPar.id, address: 1, universe, maxBrightness: 255, override: null, hue,
@@ -108,13 +165,35 @@ function draw(patch) {
 }
 
 test('the renderer grades picture units, and the Hue ceiling lands only on Hue lamps', () => {
-  // sRGB (255, 128, 0) decodes to (255, 55.0, 0) before the grade sees it.
-  assert.deepEqual(draw({}), { par: [255, 55, 0], hue: [255, 55, 0] }, 'no grade: the decoded picture');
-  assert.deepEqual(draw({ pictureGrade: { ...IDENTITY, hueCeiling: 0.5 } }), { par: [255, 55, 0], hue: [128, 28, 0] });
-  assert.deepEqual(draw({ pictureGrade: { ...IDENTITY, ceiling: 0.5 } }), { par: [128, 28, 0], hue: [255, 55, 0] });
-  assert.deepEqual(draw({ pictureGrade: { ...IDENTITY, hueCeiling: 0.5, enabled: false } }), { par: [255, 55, 0], hue: [255, 55, 0] });
-  const masters = draw({ pictureGrade: { ...IDENTITY, ceiling: 0.5 }, masterDimmer: 128 });
+  assert.deepEqual(draw({}), { par: [255, 128, 0], hue: [255, 128, 0] }, 'no grade, no lift: the picture as sent');
+  // With the decode on, sRGB (255, 128, 0) is (255, 55.0, 0) before the grade sees it.
+  const decoded = { pictureDecode: true };
+  assert.deepEqual(draw(decoded), { par: [255, 55, 0], hue: [255, 55, 0] }, 'no grade: the decoded picture');
+  assert.deepEqual(draw({ ...decoded, pictureGrade: { ...IDENTITY, hueCeiling: 0.5 } }), { par: [255, 55, 0], hue: [128, 28, 0] });
+  assert.deepEqual(draw({ ...decoded, pictureGrade: { ...IDENTITY, ceiling: 0.5 } }), { par: [128, 28, 0], hue: [255, 55, 0] });
+  assert.deepEqual(draw({ ...decoded, pictureGrade: { ...IDENTITY, hueCeiling: 0.5, enabled: false } }), { par: [255, 55, 0], hue: [255, 55, 0] });
+  const masters = draw({ ...decoded, pictureGrade: { ...IDENTITY, ceiling: 0.5 }, masterDimmer: 128 });
   assert.deepEqual(masters.par, [64, 14, 0], 'the master still applies after the grade');
+});
+
+test('the black point lifts the picture before the grade, grade on or off, on pars and Hue lamps alike', () => {
+  const picture = (bytes) => ({ leaseId: 'lease', signature: 'rig', units: 2, expiresAt: 2000, data: Uint8Array.from([...bytes, ...bytes]) });
+  // (204, 102, 0) at 0.2: the peak is 0.8 of full, so every channel takes 0.9375.
+  assert.deepEqual(draw({ picture: picture([204, 102, 0]), pictureBlackPoint: 0.2 }), { par: [191, 96, 0], hue: [191, 96, 0] });
+  assert.deepEqual(draw({ picture: picture([204, 102, 0]), pictureBlackPoint: 0.2, pictureGrade: { ...TASTE, enabled: false } }).par, [191, 96, 0]);
+  assert.deepEqual(draw({ picture: picture([204, 102, 0]), pictureBlackPoint: 0.2, pictureGrade: { ...IDENTITY, ceiling: 0.25 } }).par, [64, 32, 0],
+    'the ceiling scales the lifted colour');
+  for (const bytes of [[51, 25, 0], [0, 0, 0], [40, 51, 51]]) {
+    assert.deepEqual(draw({ picture: picture(bytes), pictureBlackPoint: 0.2 }), { par: [0, 0, 0], hue: [0, 0, 0] }, `${bytes} is at or under the black point`);
+    assert.deepEqual(draw({ picture: picture(bytes), pictureBlackPoint: 0.2, pictureGrade: TASTE }).par, [0, 0, 0], `${bytes} stays off through the grade`);
+  }
+  assert.deepEqual(draw({ picture: picture([51, 25, 0]), pictureBlackPoint: 0 }).par, [51, 25, 0], 'a black point of zero lights every byte as sent');
+  assert.deepEqual(draw({ pictureBlackPoint: 0.5 }).par, [255, 128, 0], 'a full peak is never lifted');
+  // Decoded first: sRGB (204, 102, 0) is (153.0, 13.3, 0) in light, and 0.6 of full gets 0.8333 at 0.2.
+  const decoded = draw({ picture: picture([204, 102, 0]), pictureBlackPoint: 0.2, pictureDecode: true });
+  const gain = blackPointGain(SRGB_DECODE[204], 0.2);
+  assert.deepEqual(decoded.par, [204, 102, 0].map((v) => Math.round(SRGB_DECODE[v] * gain)));
+  assert.ok(decoded.par[0] < 153 && decoded.par[0] > 120, `${decoded.par}`);
 });
 
 test('the grade only touches the picture: an override and the effects without a picture stay as they were', () => {
@@ -134,8 +213,15 @@ test('settings default to the grade off, and a file from before it gains the def
   const loaded = new SettingsStore(file).load();
   assert.equal(loaded.get('picture.source'), 'visualizer');
   assert.deepEqual(loaded.get('picture.grade'), PICTURE_GRADE_DEFAULTS);
+  assert.deepEqual([loaded.get('picture.decode'), loaded.get('picture.blackPoint')], [false, 0.12], 'the lift defaults');
   assert.deepEqual(loaded.update({ picture: { grade: { ...PICTURE_GRADE_DEFAULTS, whiteLimit: 0.3 } } }), ['picture.grade']);
   assert.equal(new SettingsStore(file).load().get('picture.grade').whiteLimit, 0.3);
+  assert.deepEqual(loaded.update({ picture: { decode: true, blackPoint: 0.3 } }), ['picture.decode', 'picture.blackPoint']);
+  const again = new SettingsStore(file).load();
+  assert.deepEqual([again.get('picture.decode'), again.get('picture.blackPoint'), again.get('picture.source')], [true, 0.3, 'visualizer']);
+  assert.throws(() => loaded.update({ picture: { blackPoint: 0.6 } }));
+  assert.throws(() => loaded.update({ picture: { decode: 'on' } }));
+  assert.equal(loaded.get('picture.blackPoint'), 0.3, 'a refused patch changes nothing');
 });
 
 test('a stored copy of the first, guessed defaults loads with the grade off; a tuned grade is kept', () => {
@@ -167,9 +253,10 @@ test('POST /api/picture/grade merges the fields it is sent and refuses a bad one
     method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body),
   }).then(async (res) => ({ status: res.status, body: await res.json() }));
   try {
-    settings._values = { ...settings.all(), picture: { source: 'visualizer', grade: { ...PICTURE_GRADE_DEFAULTS } } };
+    settings._values = { ...settings.all(), picture: { ...DEFAULTS.picture, source: 'visualizer', grade: { ...PICTURE_GRADE_DEFAULTS } } };
     const got = await call('GET', '/api/picture');
     assert.deepEqual(got.body.grade, PICTURE_GRADE_DEFAULTS);
+    assert.deepEqual([got.body.decode, got.body.blackPoint], [false, 0.12], 'the lift is reported with the grade');
     const moved = await call('POST', '/api/picture/grade', { whiteLimit: 0.25 });
     assert.equal(moved.status, 200);
     assert.deepEqual(moved.body.grade, { ...PICTURE_GRADE_DEFAULTS, whiteLimit: 0.25 });

@@ -1,7 +1,40 @@
 import { z } from 'zod';
-import { ACHROMATIC, fromLch, toLch } from './color.ts';
+import { ACHROMATIC, SRGB_DECODE, fromLch, toLch } from './color.ts';
 
-// An optional taste grade on the room picture, after its sRGB decode and before the masters; off by default.
+// Below what peak, of full, a picture unit stays dark: a screen's near-black pixels still light a lamp in colour.
+export const PICTURE_BLACK_POINT_DEFAULT = 0.12;
+export const pictureBlackPointSchema = z.number().min(0).max(0.5);
+
+/**
+ * The gain one unit takes from its peak channel (0..255, decoded or not): 0 at and below the black point, 1 at
+ * full, the ramp between. All three channels take it, so the hue holds. Exact at both ends: 255 stays 255.
+ */
+export function blackPointGain(peak: number, blackPoint: number): number {
+  const m = peak / 255;
+  if (m <= blackPoint) return 0;
+  return (m - blackPoint) / (1 - blackPoint) / m;
+}
+
+const BYTES: Readonly<Float64Array> = Float64Array.from({ length: 256 }, (_, i) => i);
+
+/** What a picture byte drives for one pair of settings: built when they change, read per unit, nothing per frame. */
+export interface PictureLift {
+  decode: boolean;
+  blackPoint: number;
+  /** Byte to level: the byte itself, or its linear light with the decode on. */
+  levels: Readonly<Float64Array>;
+  /** Peak byte to the unit's gain: `blackPointGain` of its level (the decode is monotonic, so the peak byte is the peak). */
+  gains: Readonly<Float64Array>;
+}
+
+export function pictureLift(decode: boolean, blackPoint: number): PictureLift {
+  const levels = decode ? SRGB_DECODE : BYTES;
+  const gains = new Float64Array(256);
+  for (let v = 0; v < 256; v++) gains[v] = blackPointGain(levels[v], blackPoint);
+  return { decode, blackPoint, levels, gains };
+}
+
+// An optional taste grade on the room picture, after the lift and before the masters; off by default.
 export interface PictureGrade {
   enabled: boolean;
   /** Fraction of the white component (the smallest channel) taken out. */

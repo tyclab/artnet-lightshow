@@ -45,9 +45,8 @@ import type { AudioMode, EffectCommand, EffectSlot, EffectSpec, FrameBase, HdMas
 import type { ChannelDefault, ChannelMap, Colour, Expression, Override, PixelMap, Profile, PulseReading, ShowDynamics, StageFixture } from '../types/rig.ts';
 import type { PixelInputFrame } from '../types/pixel-input.ts';
 import type { PictureFrame } from '../types/picture.ts';
-import { gradeColour } from '../shared/picture-grade.ts';
-import { SRGB_DECODE } from '../shared/color.ts';
-import type { PictureGrade } from '../shared/picture-grade.ts';
+import { gradeColour, pictureLift } from '../shared/picture-grade.ts';
+import type { PictureGrade, PictureLift } from '../shared/picture-grade.ts';
 
 export type { VoiceFrame } from '../shared/effects/layer.ts';
 export { effectContentKey };
@@ -114,6 +113,10 @@ export interface RenderInput {
   picture?: PictureFrame | null;
   /** The room picture's colour grade; absent paints the picture as sent. */
   pictureGrade?: PictureGrade | null;
+  /** Decode the room picture's and the pixel streams' sRGB bytes to linear light; absent copies them. */
+  pictureDecode?: boolean;
+  /** The peak, of full, at and below which a picture unit stays dark; absent lights every byte. */
+  pictureBlackPoint?: number;
   paletteOverride?: Colour[] | null;
   basePalette?: PaletteBody | null;
   overridePalette?: PaletteBody | null;
@@ -750,6 +753,14 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     return fix.hue || isHueProfile(profileOf(fix)) || HUE_PROFILE_IDS.has(fix.profileId);
   }
 
+  // The pictures' lift, rebuilt only when its settings change: 256 levels and 256 gains, read per unit.
+  let lift: PictureLift = pictureLift(false, 0);
+  function liftFor(input: RenderInput): PictureLift {
+    const decode = !!input.pictureDecode, blackPoint = input.pictureBlackPoint ?? 0;
+    if (decode !== lift.decode || blackPoint !== lift.blackPoint) lift = pictureLift(decode, blackPoint);
+    return lift;
+  }
+
   function lightOf(u: number, fix: RenderFixture, energy: EnergyLook | null, fadeT: number,
     target: ShowDynamics | null, pixel: Colour | null = null): LightValue {
     // Keep the shown base under bursts so later fades do not capture the burst.
@@ -1004,9 +1015,10 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       .map((p) => [p.fixtureId, p]));
     const pixelOwners: (string | null)[] = new Array(rigNow.units.length).fill(null);
     // The room picture paints every non-matrix unit below voices and overrides, as a pixel stream does its panel.
-    // Both arrive sRGB-encoded from a screen and are decoded to the linear light the outputs' PWM makes.
+    // Both come from a screen: their bytes are lifted off the black point, decoded first when asked.
     const art = input.safety.acknowledged && input.picture && now < input.picture.expiresAt
       && input.picture.data instanceof Uint8Array && input.picture.data.length === rigNow.units.length * 3 ? input.picture : null;
+    const { levels, gains } = liftFor(input);
     const watch = !!voiceTop || baseKinds || seqUnits;
     let guarded = false;
     let strobed = false;
@@ -1031,10 +1043,12 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
         if (pixel && !top && !overridden) {
           const cell = u - start, point = profile.cells![cell].at ?? { x: cell % pixel.width, y: Math.floor(cell / pixel.width) };
           const at = (point.y * pixel.width + point.x) * 3;
-          colour = { r: SRGB_DECODE[pixel.data[at]], g: SRGB_DECODE[pixel.data[at + 1]], b: SRGB_DECODE[pixel.data[at + 2]], w: 0, a: 0, uv: 0 };
+          const d = pixel.data, rb = d[at], gb = d[at + 1], bb = d[at + 2], gain = gains[Math.max(rb, gb, bb)];
+          colour = { r: levels[rb] * gain, g: levels[gb] * gain, b: levels[bb] * gain, w: 0, a: 0, uv: 0 };
           pixelOwners[u] = `pixel:${pixel.leaseId}`;
         } else if (painted && !top && !overridden) {
-          const d = painted.data, [r, g, b] = gradeColour(SRGB_DECODE[d[u * 3]], SRGB_DECODE[d[u * 3 + 1]], SRGB_DECODE[d[u * 3 + 2]], input.pictureGrade, hueGraded);
+          const d = painted.data, rb = d[u * 3], gb = d[u * 3 + 1], bb = d[u * 3 + 2], gain = gains[Math.max(rb, gb, bb)];
+          const [r, g, b] = gradeColour(levels[rb] * gain, levels[gb] * gain, levels[bb] * gain, input.pictureGrade, hueGraded);
           colour = { r, g, b, w: 0, a: 0, uv: 0 };
           pixelOwners[u] = `picture:${painted.leaseId}`;
         }

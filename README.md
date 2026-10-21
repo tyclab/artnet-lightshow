@@ -275,7 +275,7 @@ keys; `PUT /api/settings` changes selected fields.
 | `artnet` | `enabled: true`, `host: '2.255.255.255'`, `port: 6454`, `universe: 0`, `discovery: true`, `sync: false` |
 | `sacn` | `enabled: false`, `host: ''` for multicast, `priority: 100`, `sourceName: 'Tyclab Lightshow'`, `universeOffset: 1`, `interface: ''`; stable generated `cid` |
 | `hue` | `bridges: []`, `latencyMs: 0`, `strobe: 'flash'`; each paired bridge has an id, address, enabled flag, area and write-only credentials |
-| `picture` | `source: 'effects'` or `'visualizer'`; `grade`: the room picture's optional colour grade, off by default, `{ enabled: false, whiteLimit: 0, saturation: 1, ceiling: 1, hueCeiling: 1 }`; see [Room picture](#room-picture) |
+| `picture` | `source: 'effects'` or `'visualizer'`; `blackPoint: 0.12`, the peak under which a picture unit stays dark; `decode: false`, sRGB to linear light; `grade`: the room picture's optional colour grade, off by default, `{ enabled: false, whiteLimit: 0, saturation: 1, ceiling: 1, hueCeiling: 1 }`; see [Room picture](#room-picture) |
 | `outputs` | `armed: false`; always reset to false at startup. `idleDisarmMin: 15`: minutes armed with nothing playing before the outputs disarm themselves; `0` never |
 | `sources` | `prolink: false`, `smtc: true` |
 | `spotify` | Client id, secret, server-written refresh token; optional `proxyBase`; `allowUnverifiedState: false` |
@@ -428,8 +428,8 @@ on a transition.
 ### Screen pictures on an LED panel
 
 An external RGB picture can replace the base picture of one patched DDP panel.
-Its bytes are sRGB and are decoded to linear light as the room picture's are
-(see [Room picture](#room-picture)).
+Its bytes are lifted off the black point, and decoded to linear light when the
+decode is on, as the room picture's are (see [Room picture](#room-picture)).
 The lighting server remains its only sender: fixture wiring, WLED's LED map,
 master blackout, brightness trims and hardware limits still apply. Manual
 overrides, pad voices and Identify retain priority over the external picture.
@@ -593,36 +593,48 @@ the helper fetches the units again and claims anew.
 | `picture:frame` | `{ leaseId, data, image? }` | `{ ok: true }` — `data` is `units * 3` RGB bytes; `image` is the picture itself, `{ width, height, data }` up to 128 × 128 RGB, for the Stage |
 | `picture:release` | `{ leaseId }` | `{ ok: true }` |
 
-A picture's bytes are sRGB, as every screen's are, while the outputs drive
-PWM, whose light is linear in the byte (the WLEDs run their realtime input
-without gamma correction). Each unit's colour is therefore decoded with the
-IEC 61966-2-1 curve before anything else, so a lamp gives the light its part of
-the screen does: sRGB 75 is 7 % light and drives 18 of 255, not 75 (29 %);
-128 drives 55; (200, 120, 60) drives (147, 48, 12) before the masters. Without
-the decode the darker channels were lifted far more than the bright ones, and
-the room washed towards white and too bright. Hue lamps get the decoded colour
-in the stream's RGB colour space (each byte times 257); the server applies no
-further curve. The Stage's screens still show the picture as sent.
+A screen's near-black pixels still light a lamp in a plain colour: a lamp has
+no black level of its own, and a byte of 20 is a dim colour on it, not black.
+**Black point** (`picture.blackPoint`, 0.12 of full by default, 0.5 at most)
+is the peak channel at and below which a picture unit stays dark. Above it the
+three channels ramp up together, from off at the black point to unchanged at
+full, so the hue holds and a 255 peak drives 255: with the default, a peak of
+30 or less is off, (64, 32, 0) drives (38, 19, 0) and (128, 64, 0) drives
+(111, 55, 0) before the masters. It lifts the room picture and a panel's pixel
+stream alike, before the grade and whether or not the grade is on.
 
-An optional colour grade then works on the decoded colour, before the masters
+**sRGB decode** (`picture.decode`, off by default) decodes each byte with the
+IEC 61966-2-1 curve before the black point, for outputs whose light is linear
+in the byte: sRGB 75 is 7 % light and drives 18 of 255, not 75; 128 drives 55;
+(200, 120, 60) drives (147, 48, 12). Leave it off for a WLED board, which
+applies its own gamma to its realtime input: the decode on top of that made
+the room and the LED curtain far too dim. Hue lamps get the colour in the
+stream's RGB colour space (each byte times 257); the server applies no further
+curve. The Stage's screens show the picture as sent either way.
+
+An optional colour grade then works on the lifted colour, before the masters
 and trims; it is off by default. **White limit** takes that share of the white
 component (the smallest channel) out and gives back the lost level in
 proportion to what is still coloured, so a pastel turns to its own colour while
 white only dims; the hue and the channel spread are kept. **Saturation** scales
 the OKLCh chroma at the colour's original hue (100 % keeps it, grey stays grey),
 and **Ceiling** scales the three channels together so none passes it; Hue lamps
-take **Hue ceiling** instead. Perform shows the grade while the visualizer is
-selected and applies a slider as it moves; `POST /api/picture/grade` takes any
-of `{ enabled, whiteLimit, saturation, ceiling, hueCeiling }` and keeps the
-fields it is not sent. Off (`enabled: false`), or a white limit of 0,
-saturation 1 and both ceilings 1, leaves the decoded colour as it is. The first
-defaults (on, 0.6, 1.25, 0.7, 0.5) made up for the missing decode; a settings
-file that still holds exactly those loads with the grade off. A settings file
-with `picture.grade` in it is refused by builds from before the grade, which
-move it aside and start from defaults: take the key out before rolling back.
+take **Hue ceiling** instead. Perform shows the black point, the decode and the
+grade while the visualizer is selected and applies a slider as it moves;
+`POST /api/picture/grade` takes any of `{ enabled, whiteLimit, saturation,
+ceiling, hueCeiling }` and keeps the fields it is not sent, and the black point
+and the decode are settings fields (`PUT /api/settings` with
+`{ picture: { blackPoint, decode } }`). Off (`enabled: false`), or a white
+limit of 0, saturation 1 and both ceilings 1, leaves the lifted colour as it
+is. The first defaults (on, 0.6, 1.25, 0.7, 0.5) were guesses from before the
+black point; a settings file that still holds exactly those loads with the
+grade off. A settings file with `picture.grade`, `picture.blackPoint` or
+`picture.decode` in it is refused by builds from before them, which move it
+aside and start from defaults: take the keys out before rolling back.
 
 One sender holds the picture at a time; `GET /api/picture` reports the selected
-source, the grade and the live lease without pixel data. The picture a frame carries goes
+source, the black point, the decode, the grade and the live lease without pixel
+data. The picture a frame carries goes
 to the pages subscribed to the DMX feed (`picture-image`, null once the sender
 is gone), and the Stage paints it on the room's screens: the objects a room
 export marks `role: screen` (the TV and the monitors in a house-model export).

@@ -254,9 +254,9 @@ export const SHOW = {
       help: 'What the base layer paints from. The visualizer picture arrives from the browser helper\'s --room mode: one '
         + 'colour per lamp cell, read from the picture at the cell\'s place on the plan, so a sweep across the screen '
         + 'sweeps across the room. Voices, pads, overrides and the matrix\'s own pixel feed stay on top either way, and '
-        + 'two seconds without a frame shows the effects again. The picture\'s sRGB colours are decoded to the linear '
-        + 'light the lamps make, so a lamp looks as bright as its part of the screen. Also switchable in Perform, which '
-        + 'has an optional colour grade for the picture, off by default.' },
+        + 'two seconds without a frame shows the effects again. Also switchable in Perform, which sets the picture\'s '
+        + 'black point (the level under which a lamp stays dark), an optional sRGB decode for lamps whose output has '
+        + 'no gamma of its own, and an optional colour grade, off by default.' },
     { path: 'outputs.armed', label: 'Outputs Armed', type: 'toggle',
       help: 'Nothing leaves the machine until a party arms it: disarmed, the show renders for the preview and the '
         + 'stage view, but no Art-Net, sACN or DDP frame goes out and every Hue bridge is handed back to its app, so '
