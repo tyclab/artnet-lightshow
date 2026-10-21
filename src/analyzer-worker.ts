@@ -43,13 +43,13 @@ export function analysisTimeoutMs(floorMs: number, msPerAudioSec: number, durati
   return Math.max(floorMs, Math.round(WARM_UP_MS + msPerAudioSec * durationSec));
 }
 
-function storedTimeoutMs(durationSec: number | null): number {
+export function storedTimeoutMs(durationSec: number | null): number {
   return analysisTimeoutMs(settings.get('analysis.analyzerTimeoutMs'),
     settings.get('analysis.analyzerTimeoutMsPerSec'), durationSec);
 }
 
 // The worker analyses the whole file; the player's length stands in for a file whose header says nothing.
-function durationOf(request: Request): number | null {
+export function durationOf(request: Pick<Request, 'source' | 'targetDurationSec'>): number | null {
   const target = request.targetDurationSec;
   return wavDurationSec(request.source) ?? (typeof target === 'number' && target > 0 ? target : null);
 }
@@ -67,14 +67,14 @@ function workerEnv(): NodeJS.ProcessEnv {
 const RANK: Record<string, number | undefined> = { current: 0, high: 1, normal: 2 };
 const DEFAULT_PRIORITY: AnalysisPriority = 'normal';
 
-function rankOf(priority: string): number {
+export function rankOf(priority: string): number {
   const rank = RANK[priority];
   return rank === undefined ? RANK[DEFAULT_PRIORITY] as number : rank;
 }
 
 const UNQUEUED = Infinity;
 
-function compareSlots(a: Pick<Request, 'priority' | 'order'>, b: Pick<Request, 'priority' | 'order'>): number {
+export function compareSlots(a: Pick<Request, 'priority' | 'order'>, b: Pick<Request, 'priority' | 'order'>): number {
   const band = rankOf(a.priority) - rankOf(b.priority);
   if (band !== 0) return band;
   const ao = a.order === undefined ? UNQUEUED : a.order;
@@ -87,7 +87,7 @@ function looksLikeReply(line: string, id: number): boolean {
   return new RegExp(`^\\{\\s*"id"\\s*:\\s*${Number(id)}\\s*[,}]`).test(line);
 }
 
-function supersededError(): Error & { superseded: true } {
+export function supersededError(): Error & { superseded: true } {
   return Object.assign(new Error('superseded by a newer current track'), { superseded: true as const });
 }
 

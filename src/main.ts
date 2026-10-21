@@ -18,6 +18,8 @@ import DeezerSource from './deezer-source.ts';
 import * as deezer from './deezer.ts';
 import AutoShow from './auto-show.ts';
 import { AnalysisCache } from './analysis-cache.ts';
+import { analysisVersion } from './analysis-version.ts';
+import { HTTP_BASE as REMOTE_ANALYSIS_HTTP, RemoteAnalysisPool } from './remote-analysis.ts';
 
 import { state, voices } from './server/state.ts';
 import { startEngine, stopEngine, setFrameHook, setPulseSource } from './server/engine.ts';
@@ -88,10 +90,19 @@ app.use(compression());
 app.use(sourceMapsForLoopback);
 
 app.use(express.static(path.join(import.meta.dirname, '..', 'public')));
+const remoteAnalysis = new RemoteAnalysisPool({
+  token: () => settings.get('analysis.workerToken'),
+  version: analysisVersion(),
+  serverModels: async () => (await modelManager.list()).models.filter((m) => m.present).map((m) => m.id),
+  jobSettings: () => ({ separator: settings.get('analysis.separator'), structureModel: settings.get('analysis.structureModel') }),
+});
+// GPU workers carry their own token, which opens these job routes and nothing under the rest of /api.
+app.use(REMOTE_ANALYSIS_HTTP, remoteAnalysis.httpRouter());
 app.use('/api', auth.httpMiddleware);   // before express.json: reject first, parse after
 app.use('/api/stage/room', express.json({ limit: '1mb' }));
 app.use(express.json());
 io.use(auth.socketMiddleware);
+remoteAnalysis.attach(io);
 
 const midi = new MidiController(state, applyPatch, processTap);
 midi.overrideFixture = applyOverride;
@@ -112,6 +123,10 @@ const deezerSource = new DeezerSource();
 
 const analysisCache = new AnalysisCache(path.join(cacheDir(), 'analysis'));
 const autoShow = new AutoShow(applyPatch, COLOR_PRESETS, PATTERNS, analysisCache);
+autoShow.useRemoteAnalysis(remoteAnalysis);
+settings.onChange((changed) => {
+  if (changed.includes('analysis.workerToken')) remoteAnalysis.disconnectAll('the worker token changed');
+});
 
 const integrations = setupIntegrations({ io, midi, spotify, nowPlaying, deezerSource, prolink, autoShow, analysisCache, liveInput });
 
@@ -123,6 +138,7 @@ modelManager.onFinished((job) => {
   if (Object.values(job.models).some((m) => m.state === 'done') && autoShow.restartWorker) {
     autoShow.restartWorker('analysis models downloaded', { whenIdle: true });
   }
+  remoteAnalysis.refreshModels().catch((err) => console.warn(`[analyzer] remote: ${messageOf(err)}`));
 });
 let liveBeforeSetup: LiveOptions | null = null;
 pythonSetup.onHooks({
@@ -175,6 +191,7 @@ spotify.onTokens((refreshToken) => {
   catch (err) { console.warn(`[spotify] could not save the session: ${messageOf(err)}`); }
 });
 
+remoteAnalysis.attachStatusRoute(app, () => ({ queue: autoShow.analysisCounts() }));
 attachRoutes(app, { midi, autoShow, spotify, nowPlaying, deezerSource, prolink, analysisCache, integrations, applier, restart: restartServer });
 attachSockets(io, { midi, integrations });
 
@@ -312,6 +329,7 @@ function shutdown(signal: string, exitCode = 0): void {
     ['artnet', () => artnetDiscovery.stop()],
     ['smtc', () => smtc.stop()],
     ['autoShow', () => autoShow.destroy()],
+    ['remote analysis', () => remoteAnalysis.shutdown()],
     ['spotify', () => spotify.disconnect()],
     ['nowPlaying', () => nowPlaying.disconnect()],
     ['deezer', () => deezerSource.disconnect()],

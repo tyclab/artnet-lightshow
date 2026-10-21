@@ -48,6 +48,8 @@ test('secrets are never handed back to the client', () => {
     // and the pre-shared key — enough to drive the whole Hue system. One pair
     // per bridge, inside its entry.
     hue: { bridges: [{ ...BRIDGE, username: 'app-key', clientKey: 'abcdef01' }] },
+    // A GPU worker's token opens only the analysis job routes, but it still is not the client's to read.
+    analysis: { workerToken: 'worker-secret' },
   });
 
   const { settings, secrets } = s.redacted();
@@ -60,7 +62,9 @@ test('secrets are never handed back to the client', () => {
     'spotify.clientSecret': true,
     'spotify.refreshToken': true,
     'deezer.arl': true,
+    'analysis.workerToken': true,
   });
+  assert.strictEqual(settings.analysis.workerToken, '');
   assert.ok(!JSON.stringify(s.redacted()).includes('abcdef01'), 'nowhere in what a client gets');
   assert.strictEqual(s.get('deezer.arl'), 'cookie-value', 'still readable server-side');
   assert.strictEqual(s.get('spotify.refreshToken'), 'a-live-session');
