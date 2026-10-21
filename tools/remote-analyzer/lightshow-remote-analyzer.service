@@ -1,0 +1,19 @@
+# systemd user unit: ~/.config/systemd/user/, then systemctl --user enable --now lightshow-remote-analyzer.
+# Restart=always with no start limit: a clean exit (a lost server, a stop by hand) must not leave it down.
+[Unit]
+Description=Tyclab Lightshow remote analysis worker (GPU)
+Documentation=https://github.com/tyclab/artnet-lightshow/blob/main/docs/remote-analysis.md
+After=docker.service network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/lightshow-remote-analyzer/agent/tools/remote-analyzer
+Environment=PATH=/etc/profiles/per-user/%u/bin:/run/current-system/sw/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env node cli.js run
+Restart=always
+RestartSec=15
+TimeoutStopSec=40
+
+[Install]
+WantedBy=default.target
