@@ -192,7 +192,9 @@ rig in 3D with its room bindings or a rehearsal. Arming is a separate action
 from preparing or previewing a look.
 Import a private floor model and place its lights with the
 [Stage room controls](docs/stage-room.md). Room geometry affects the preview;
-Rig positions still control spatial effects. Surveyed strip paths render as continuous
+Rig positions still control spatial effects. Private room imports also accept bounded
+inline triangle meshes for detailed objects; their shape and surface colour affect
+only the preview. Surveyed strip paths render as continuous
 runs with their original corners and per-section colours; moving a strip moves the whole path.
 
 To run reactive effects, configure and enable live input in Sources, select

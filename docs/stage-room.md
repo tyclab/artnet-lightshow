@@ -51,12 +51,27 @@ revision and measurement confidence can be retained in the model.
 }
 ```
 
-Objects are `box`, `cylinder` or `prism`, with role `wall` or `furniture`.
+Objects are `box`, `cylinder`, `prism` or `mesh`, with role `wall` or `furniture`.
 Position is the object's centre; size is its local width, height and depth.
 Optional `rotation` contains `x`, `y`, `z` Euler angles in radians. A cylinder's
 local axis is Y; X/Z sizes are diameters. A prism also needs a local X/Z polygon
 within its width/depth. Room polygons use world X/Z coordinates. Colours are
 optional `#RRGGBB` values. IDs must be unique within each collection.
+
+A `mesh` contains `mesh: { vertices: [[x, y, z], ...], triangles: [[i, j, k], ...] }`.
+Vertices are normalized local coordinates in −0.5…0.5, scaled by the object's
+`size`, then rotated and placed at `position`. Centre the geometry around its
+local origin when exporting. Triangle indices are zero-based and must refer to
+three different existing vertices enclosing a nonzero area; winding determines
+the outside face. Near-zero triangles (cross-product squared length ≤ 1e-20) are
+rejected. Meshes support furniture and walls; screen meshes need texture coordinates
+and are not accepted. Meshes accept at most 8,192 vertices and 16,384 triangles each,
+and a room at most 65,536 mesh vertices and 131,072 triangles. The existing 1 MB
+request limit also applies, so decimate detailed source models and round exported
+coordinates. Stage computes smooth surface normals and uses fixed neutral lighting
+to show relief without drawing triangle outlines. Object colours affect the preview
+only; they do not change fixture output colours. Mesh data is inline and private,
+with no external model URL or source asset needed by the public application.
 
 A physical light driven by several output units can use `aggregation: "weightedMean"`
 and `sources: [{ "fixtureId": 17, "unit": 0, "weight": 1 }, ...]` instead of
