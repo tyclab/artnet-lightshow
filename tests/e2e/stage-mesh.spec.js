@@ -83,3 +83,33 @@ test('a mesh shell emits its effective binding RGB and restores its base when da
   expect((await page.evaluate(() => window.meshFrame([{ r: 255 }]))).materials[0].emissive).toEqual([0, 0, 0]);
   await page.evaluate(() => window.disposeMeshRoom());
 });
+
+
+test('a material tint filters live RGB in linear space without changing white defaults or its dark base', async ({ page }) => {
+  await page.goto('about:blank');
+  await page.addScriptTag({ content: script });
+  const shell = { id: 'shell', lightBindingId: 'lamp', kind: 'box', role: 'furniture',
+    position: { x: 0, y: 1, z: 0 }, size: { x: 1, y: 1, z: 1 }, color: '#c4dbea' };
+  const model = { bounds: { width: 6, depth: 4, height: 3 }, rooms: [], bindings: [], objects: [shell] };
+  await page.evaluate(() => window.meshRig([{ objectId: 'shell', sources: [{ unit: 0, weight: 1 }] }]));
+  await page.evaluate(model => window.meshRoom(model), model);
+  const original = await page.evaluate(() => window.meshFrame([{ r: 160, g: 200, b: 255 }]));
+  shell.lightTint = '#ffffff';
+  await page.evaluate(model => window.meshRoom(model), model);
+  expect(await page.evaluate(() => window.meshFrame([{ r: 160, g: 200, b: 255 }]))).toEqual(original);
+  shell.lightTint = '#8080ff';
+  await page.evaluate(model => window.meshRoom(model), model);
+  const off = await page.evaluate(() => window.meshFrame([{}]));
+  const white = await page.evaluate(() => window.meshFrame([{ r: 255, g: 255, b: 255 }]));
+  expect(white.materials[0].emissive[0]).toBeCloseTo(0.2158605, 6);
+  expect(white.materials[0].emissive[1]).toBeCloseTo(0.2158605, 6);
+  expect(white.materials[0].emissive[2]).toBe(1);
+  const red = await page.evaluate(() => window.meshFrame([{ r: 255 }]));
+  expect(red.materials[0].emissive.slice(1)).toEqual([0, 0]);
+  const blue = await page.evaluate(() => window.meshFrame([{ b: 255 }]));
+  expect(blue.materials[0].emissive).toEqual([0, 0, 1]);
+  const dark = await page.evaluate(() => window.meshFrame([{}]));
+  expect(dark.materials).toEqual(off.materials);
+  expect(dark.image).toBe(off.image);
+  await page.evaluate(() => window.disposeMeshRoom());
+});

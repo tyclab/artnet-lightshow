@@ -207,9 +207,10 @@ test('mesh emitter missing sources retain black weight and unresolved diagnostic
 
 
 test('editing or removing a binding preserves valid furniture references without moving geometry', () => {
-  const original = { ...model, bindings: [binding('a', 10)], objects: [{ id: 'shell', lightBindingId: 'a', position: { x: 1, y: 1, z: 1 } }] };
+  const original = { ...model, bindings: [binding('a', 10)], objects: [{ id: 'shell', lightBindingId: 'a', lightTint: '#c4dbea', position: { x: 1, y: 1, z: 1 } }] };
   const renamed = ui.withRoomBinding(original, binding('renamed', 10), 'a');
   assert.equal(renamed.objects[0].lightBindingId, 'renamed');
+  assert.equal(renamed.objects[0].lightTint, '#c4dbea');
   const removed = ui.withRoomBinding(original, null, 'a');
   assert.deepEqual(removed.objects, [{ id: 'shell', position: original.objects[0].position }]);
   assert.equal(original.objects[0].lightBindingId, 'a');

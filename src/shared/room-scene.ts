@@ -80,6 +80,7 @@ export const roomSceneSchema = z.object({
     polygon: polygon.optional(),
     mesh: triangleMesh.optional(),
     lightBindingId: id.optional(),
+    lightTint: color.optional(),
   }).strict()).max(1500).default([]),
   bindings: z.array(binding).max(4096).default([]),
 }).strict().superRefine((room, ctx) => {
@@ -118,6 +119,9 @@ export const roomSceneSchema = z.object({
   });
   const bindingIds = new Set(room.bindings.map(binding => binding.id));
   room.objects.forEach((object, index) => {
+    if (object.lightTint && !object.lightBindingId) {
+      ctx.addIssue({ code: 'custom', path: ['objects', index, 'lightTint'], message: 'A light tint needs a light binding' });
+    }
     if (object.lightBindingId && (object.role !== 'furniture' || !bindingIds.has(object.lightBindingId))) {
       ctx.addIssue({ code: 'custom', path: ['objects', index, 'lightBindingId'], message: 'Only furniture objects may reference an existing light binding' });
     }

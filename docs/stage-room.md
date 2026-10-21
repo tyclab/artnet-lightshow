@@ -118,3 +118,9 @@ add restrained emission (intensity 0.25), preserving hue and directional relief.
 An off frame removes emission while leaving the physical shell visible. Multiple
 object parts may share one binding; unbound parts remain ordinary scenery. This is
 preview rendering only and never moves or changes an output fixture.
+
+A bound furniture object can optionally set `lightTint: "#c4dbea"` to model a
+coloured translucent material. Stage converts both the tint and live RGB to linear
+light and multiplies them before shading; the default white tint preserves existing
+rendering. The tint filters illumination without adding light to black frames or
+changing output colours. The object's base `color` remains its appearance when off.
