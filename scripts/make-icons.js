@@ -144,7 +144,8 @@ function near(x, y, { points, cells, half }) {
   return false;
 }
 
-function inside(x, y, { points }) {
+function inside(x, y, { points, minX, maxX, minY, maxY }) {
+  if (x < minX || x > maxX || y < minY || y > maxY) return false;
   let hit = false;
   for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
     const [xi, yi] = points[i], [xj, yj] = points[j];
