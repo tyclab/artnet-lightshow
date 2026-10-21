@@ -225,6 +225,13 @@ export const ANALYSIS = {
         + 'Analysis Timeout.' },
     { path: 'analysis.downloadTimeoutMs', label: 'Download Timeout', type: 'number', unit: 'ms', min: 10000, max: 3600000,
       help: 'How long yt-dlp may run before it is killed.' },
+    { path: 'analysis.workerToken', label: 'GPU Worker Token', type: 'secret', generate: true,
+      help: 'Lets a PC with a GPU connect and analyse tracks for this server (README: Remote GPU analysis). The token '
+        + 'opens only the analysis job routes, not this UI or its API. Blank turns remote workers off; a change '
+        + 'disconnects them until they use the new one.' },
+    { path: 'analysis.remoteWaitMs', label: 'Wait for the GPU', type: 'number', unit: 'ms', min: 0, max: 900000,
+      help: 'How long a prefetched track waits for a busy GPU worker before this machine analyses it. The playing '
+        + 'track never waits.' },
     { path: 'analysis.localRoot', label: 'Library Folder', type: 'text',
       help: 'Confine "analyse a local file" to this folder. Blank allows any path.' },
     { path: 'analysis.pythonPath', label: 'Python', type: 'text', placeholder: 'auto-detect',

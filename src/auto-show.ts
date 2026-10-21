@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import * as deezer from './deezer.ts';
 import AnalyzerWorker from './analyzer-worker.ts';
+import AnalysisRouter from './analysis-router.ts';
 import { describeModelUsage, formatModelUsage } from './model-usage.ts';
 import * as pythonEnv from './python-env.ts';
 import { SYNC_OFFSET_LIMIT_MS } from './server/presets.ts';
@@ -23,6 +24,7 @@ import * as tools from './tools.ts';
 import { messageOf, cancelledError, isCancelled } from './errors.ts';
 import type { AnalysisCache, CacheMeta } from './analysis-cache.ts';
 import type { AnalysisPriority } from './analyzer-worker.ts';
+import type { RemotePool } from './analysis-router.ts';
 import type { BeatGrid } from './shared/beat-clock.ts';
 import type { PatternDescriptor } from './show/director.ts';
 import type { Intent } from './show/intents.ts';
@@ -72,7 +74,7 @@ class AutoShow {
   declare _colorPresets: readonly NamedPreset[];
   declare _patterns: readonly PatternDescriptor[];
   declare _cache: AnalysisCache | null;
-  declare _worker: AnalyzerWorker;
+  declare _worker: AnalysisRouter;
   declare _blackoutIdx: number;
   declare analysis: Analysis | null;
   declare timeline: TimelineEvent[];
@@ -123,9 +125,9 @@ class AutoShow {
     this._colorPresets = colorPresets;
     this._patterns = patterns;
     this._cache = cache;
-    this._worker = new AnalyzerWorker(
+    this._worker = new AnalysisRouter(new AnalyzerWorker(
       pythonEnv.pythonExe, path.join(import.meta.dirname, 'analyze.py'),
-    );
+    ));
     this._worker.prewarm();
     const blackoutIdx = Array.isArray(colorPresets)
       ? colorPresets.findIndex(p => p && (p.name === 'Blackout' || p.id === 'blackout'))
@@ -338,6 +340,14 @@ class AutoShow {
       console.log(`[analyzer] Models used (${path.basename(source)}): ${formatModelUsage(result)}`);
       return result;
     });
+  }
+
+  useRemoteAnalysis(pool: RemotePool): void {
+    this._worker.attachRemote(pool);
+  }
+
+  analysisCounts(): { queued: number; local: number; remote: number } {
+    return this._worker.counts();
   }
 
   pauseAnalysis(reason: string): void {

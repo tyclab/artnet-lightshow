@@ -288,7 +288,7 @@ keys; `PUT /api/settings` changes selected fields.
 | `strobe` | Palette, rate, clock, background behaviour and brightness; see [Strobe](#strobe) |
 | `midi` | `input: ''`, `output: ''`, `clockOutput: ''`, `controlFeedback: true` |
 | `engine` | `thread: 'worker'`; `'main'` is available for diagnosis |
-| `analysis` | `analyzerTimeoutMs: 600000`, `analyzerTimeoutMsPerSec: 1500`, `downloadTimeoutMs: 300000`, `localRoot: ''`, `pythonPath: ''`, `separator: 'demucs'`, `structureModel: 'auto'`, `gpuMemory: 'auto'` |
+| `analysis` | `analyzerTimeoutMs: 600000`, `analyzerTimeoutMsPerSec: 1500`, `downloadTimeoutMs: 300000`, `localRoot: ''`, `pythonPath: ''`, `separator: 'demucs'`, `structureModel: 'auto'`, `gpuMemory: 'auto'`; `workerToken: ''` (write-only; blank turns [remote GPU workers](#remote-gpu-analysis) off), `remoteWaitMs: 120000` |
 | `setup` | `completed: false` until the first-run wizard is completed or skipped |
 
 `server.host`, `server.port`, `server.token`, engine thread and the first Deezer
@@ -991,6 +991,54 @@ pipeline output through `src/analysis/schema.py`; `npm run gen:analysis-types`
 generates the TypeScript types. Cached 2.x documents remain readable across minor
 versions: fields introduced later are optional and absent from older documents.
 
+### Remote GPU analysis
+
+A PC with an NVIDIA card can analyse tracks for the server. Its worker
+(`tools/remote-analyzer`) connects out to the server, so the PC listens on no
+port; the server sends it the job, the worker fetches the audio from the server,
+runs the same NDJSON worker as the server does in a container on its GPU, and
+posts the document back. The server stays the cache owner. On GamerTyc's RTX
+2080 SUPER a 210 s track took 40 s (49 s from a cold container) instead of
+275 s on its CPU, a 561 s track 170 s instead of 738 s, and the documents are
+the CPU's to within rounding. Setup, provisioning and troubleshooting are in
+[Remote analysis](docs/remote-analysis.md).
+
+```mermaid
+sequenceDiagram
+  participant S as Server (cache owner)
+  participant W as GPU worker
+  W->>S: connect /analysis-worker with the worker token
+  W->>S: hello: name, analysis version, models, available
+  S-->>W: compatible or why not
+  S->>W: job: id, key, size, separator and structure settings
+  W-->>S: accepted, or declined (game in front, GPU memory in use)
+  W->>S: GET /api/analysis-worker/jobs/:id/audio
+  W->>S: POST /api/analysis-worker/jobs/:id/result (document, analysis version)
+  S->>S: refuse another analysis version, else resolve and cache
+```
+
+- **Routing.** An idle worker gets the next job. With no idle worker the
+  playing track starts here at once, and a worker that frees up runs it too:
+  the first answer wins and the other copy is stopped. The playing track also
+  takes a worker from a prefetch, which goes back in the queue. A prefetch waits
+  up to `analysis.remoteWaitMs` for a busy worker, then runs here. Links and
+  anything a worker fails, drops or times out on run here.
+- **Version.** The analysis version is `<schema>+<digest>` of the Python
+  package, its launcher, `scripts/download-models.py`, `scripts/setup-panns.py`,
+  `pyproject.toml` and `uv.lock`. A worker takes jobs only at the server's
+  version, with the server's models (it may also hold SongFormer, which
+  structure `auto` uses only on a GPU); the server refuses a result from
+  another version.
+- **Access.** `analysis.workerToken` opens the `/analysis-worker` namespace and
+  `/api/analysis-worker/*` only; it opens nothing else, and the UI token does
+  not open these. A job's audio and result need its own random key too.
+- **Limits.** A remote job has the same per-request limit as one analysed
+  here, from the track's length.
+
+`GET /api/analysis/workers` lists the connected workers, their state and
+counts, the last jobs (worker, track, outcome, seconds) and the queue; the log
+names each job's worker and time under `[analyzer] remote …`.
+
 ### Playback sources
 
 | Source | Setup |
@@ -1415,6 +1463,9 @@ a file from before several bridges were possible loads its one bridge as
 | PUT | `/api/settings` | Update selected settings groups/fields |
 | POST | `/api/settings/token/suggest` | Generate a token suggestion; apply it through settings |
 | GET | `/api/models` | Model availability and current download job; `?refresh=1` refreshes the listing |
+| GET | `/api/analysis/workers` | [Remote GPU workers](#remote-gpu-analysis): connection, compatibility, availability, counts, recent jobs, the analysis queue |
+| GET | `/api/analysis-worker/jobs/:id/audio` | A worker's job audio; worker token and job key, not the UI token |
+| POST | `/api/analysis-worker/jobs/:id/result` | A worker's document or error, `{ version, result \| error, recycle?, yielded?, seconds? }`, gzip allowed, up to 64 MB; 409 for another analysis version |
 | POST | `/api/models/download` | Download selected models with `{ ids }` |
 
 ### The server
@@ -1427,6 +1478,10 @@ a file from before several bridges were possible loads its one bridge as
 | POST | `/api/server/restart` | Restart the server under the supervisor (the look comes back); 409 without one |
 
 ### Socket.IO
+
+Remote GPU workers use the `/analysis-worker` namespace with the worker token
+(`auth: { token }`); see [Remote analysis](docs/remote-analysis.md#protocol).
+The UI token does not open it and the worker token opens nothing else.
 
 The UI uses Socket.IO rather than polling. Clients send `set`, `override`,
 `fixture`, `tap`, `voice-hold`, `energy-hold` and `midi-connect`; the server emits

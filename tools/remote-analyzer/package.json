@@ -1,0 +1,17 @@
+{
+  "name": "lightshow-remote-analyzer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Analyses the lightshow's tracks on a PC's GPU and posts the documents back",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node cli.js run",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "socket.io-client": "4.8.3"
+  }
+}
