@@ -196,3 +196,31 @@ test('a stale import cannot overwrite another room edit', async ({ page, request
   expect((await refused).status()).toBe(412);
   expect((await current(request)).room.name).toBe('Newer room');
 });
+
+
+test('private triangle mesh imports render distinct geometry and preserve outputs and downloaded data', async ({ page, request }) => {
+  const before = await state(request);
+  const object = { id: 'sculpture', kind: 'mesh', role: 'furniture', position: { x: 0, y: 1, z: 0 }, size: { x: 2, y: 2, z: 2 }, color: '#aabbdd',
+    mesh: { vertices: [[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0, 0.5, -0.5], [0, 0, 0.5]], triangles: [[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]] } };
+  const model = { ...room, objects: [object] }, errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await showPanel(page);
+  await page.getByLabel('Choose room JSON').setInputFiles({ name: 'mesh-room.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(model)) });
+  await page.getByRole('button', { name: 'Use Test room', exact: true }).click();
+  await expect.poll(async () => (await current(request)).room?.objects[0]?.kind).toBe('mesh');
+  const canvas = page.locator('.stage3d-canvas');
+  await expect(canvas).toBeVisible();
+  const meshImage = await canvas.screenshot();
+  const downloading = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download room JSON', exact: true }).click();
+  const download = await downloading;
+  expect(JSON.parse(await fs.readFile(await download.path(), 'utf8')).objects[0]).toEqual(object);
+  const box = { ...object }; delete box.mesh;
+  await replace(request, { ...model, objects: [{ ...box, kind: 'box' }] });
+  await page.getByRole('button', { name: 'Reload room', exact: true }).click();
+  await expect.poll(async () => Buffer.compare(await canvas.screenshot(), meshImage)).not.toBe(0);
+  expect(errors).toEqual([]);
+  const after = await state(request);
+  expect(after.fixtures).toEqual(before.fixtures);
+  expect(after.armed).toBe(before.armed);
+});

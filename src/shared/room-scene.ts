@@ -25,6 +25,23 @@ const fixtureRef = {
 };
 const stripPath = z.array(vector).min(2).max(128).refine((points) => points.every((point, index) => !index
   || Math.hypot(point.x - points[index - 1].x, point.y - points[index - 1].y, point.z - points[index - 1].z) > 1e-6), 'Strip edges must have length');
+const meshCoordinate = z.number().finite().min(-0.5).max(0.5);
+const triangleMesh = z.object({
+  vertices: z.array(z.tuple([meshCoordinate, meshCoordinate, meshCoordinate])).min(3).max(8192),
+  triangles: z.array(z.tuple([z.number().int().min(0).max(8191), z.number().int().min(0).max(8191), z.number().int().min(0).max(8191)])).min(1).max(16384),
+}).strict().superRefine((mesh, ctx) => {
+  for (const [index, triangle] of mesh.triangles.entries()) {
+    if (new Set(triangle).size !== 3 || triangle.some(vertex => !Number.isInteger(vertex) || vertex < 0 || vertex >= mesh.vertices.length)) {
+      ctx.addIssue({ code: 'custom', path: ['triangles', index], message: 'A triangle needs three different existing vertices' });
+      continue;
+    }
+    const [a, b, c] = triangle.map(vertex => mesh.vertices[vertex]);
+    const u = b.map((value, axis) => value - a[axis]), v = c.map((value, axis) => value - a[axis]);
+    if (Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]) <= 1e-10) {
+      ctx.addIssue({ code: 'custom', path: ['triangles', index], message: 'A triangle must enclose an area' });
+    }
+  }
+});
 const bindingBase = { id, position: vector, path: stripPath.optional(), label: name.optional(), confidence };
 const contributors = z.array(z.object({ ...fixtureRef, weight: z.number().finite().positive() }).strict()).min(1).max(64)
   .superRefine((sources, ctx) => {
@@ -53,7 +70,7 @@ export const roomSceneSchema = z.object({
   objects: z.array(z.object({
     id,
     label: name.optional(),
-    kind: z.enum(['box', 'cylinder', 'prism']),
+    kind: z.enum(['box', 'cylinder', 'prism', 'mesh']),
     // A screen shows the live room picture while a sender paints.
     role: z.enum(['wall', 'furniture', 'screen']),
     position: vector,
@@ -61,9 +78,14 @@ export const roomSceneSchema = z.object({
     rotation: rotation.optional(),
     color: color.optional(),
     polygon: polygon.optional(),
+    mesh: triangleMesh.optional(),
   }).strict()).max(1500).default([]),
   bindings: z.array(binding).max(4096).default([]),
 }).strict().superRefine((room, ctx) => {
+  if (room.objects.reduce((count, object) => count + (object.mesh?.vertices.length ?? 0), 0) > 65536
+    || room.objects.reduce((count, object) => count + (object.mesh?.triangles.length ?? 0), 0) > 131072) {
+    ctx.addIssue({ code: 'custom', path: ['objects'], message: 'At most 65536 mesh vertices and 131072 triangles are allowed per room' });
+  }
   if (room.bindings.reduce((count, entry) => count + (entry.path?.length ?? 1) - 1, 0) > 8192) {
     ctx.addIssue({ code: 'custom', path: ['bindings'], message: 'At most 8192 strip edges are allowed' });
   }
@@ -94,6 +116,12 @@ export const roomSceneSchema = z.object({
     }
   });
   room.objects.forEach((object, index) => {
+    if (object.kind === 'mesh' && object.role === 'screen') {
+      ctx.addIssue({ code: 'custom', path: ['objects', index, 'role'], message: 'Triangle meshes do not support screen texture coordinates' });
+    }
+    if ((object.kind === 'mesh') !== !!object.mesh) {
+      ctx.addIssue({ code: 'custom', path: ['objects', index, 'mesh'], message: 'Only a mesh object must contain triangle mesh data' });
+    }
     if (object.kind === 'prism' && !object.polygon) {
       ctx.addIssue({ code: 'custom', path: ['objects', index, 'polygon'], message: 'A prism needs its local x/z polygon' });
     } else if (object.kind !== 'prism' && object.polygon) {

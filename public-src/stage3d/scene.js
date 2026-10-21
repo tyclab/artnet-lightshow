@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { roomObjectGeometry } from './room-geometry.js';
 import { meanLightRGB, roomViews, STAGE_FOV } from './world.js';
 
 /**
@@ -7,7 +8,7 @@ import { meanLightRGB, roomViews, STAGE_FOV } from './world.js';
  *
  * Everything is instanced — one draw for every lamp head, one for every beam,
  * one for every cell of every bar — so a rig of a few hundred lights draws at
- * the display's rate on the machine running the show. Nothing is lit by real
+ * the display's rate on the machine running the show. Fixture effects avoid real
  * lights (dozens of spotlights would not keep that rate): a lamp's lens, a
  * cell and a bulb glow in their own colour, a par's beam is a cone of light in
  * the haze, soft at its edges and fading along its length, and where a beam
@@ -180,7 +181,7 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
 
   function setRoom(model) {
     invalidate();
-    if (roomGroup) scene.remove(roomGroup);
+    if (roomGroup) { scene.remove(roomGroup); roomGroup.clear(); }
     for (const resource of roomDisposables) resource.dispose();
     roomDisposables = [];
     roomWalls = [];
@@ -207,22 +208,25 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
         mesh.position.y = 0.003;
         roomGroup.add(mesh);
       }
+      if (model.objects.some(object => object.kind === 'mesh')) {
+        roomGroup.add(keepRoom(new THREE.HemisphereLight(0xffffff, 0x444450, 1.2)));
+        const key = keepRoom(new THREE.DirectionalLight(0xffffff, 2));
+        key.position.set(-3, 6, 4);
+        roomGroup.add(key);
+      }
       for (const object of model.objects) {
-        let geometry;
-        if (object.kind === 'prism') {
-          const shape = new THREE.Shape(object.polygon.map(([x, z]) => new THREE.Vector2(x, -z)));
-          geometry = new THREE.ExtrudeGeometry(shape, { depth: object.size.y, bevelEnabled: false })
-            .rotateX(-Math.PI / 2).translate(0, -object.size.y / 2, 0);
-        } else if (object.kind === 'cylinder') {
-          geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 16).scale(object.size.x, object.size.y, object.size.z);
-        } else geometry = new THREE.BoxGeometry(object.size.x, object.size.y, object.size.z);
-        keepRoom(geometry);
-        const mesh = new THREE.Mesh(geometry, keepRoom(new THREE.MeshBasicMaterial({ color: object.color || '#747985' })));
+        const geometry = keepRoom(roomObjectGeometry(object));
+        const material = object.kind === 'mesh'
+          ? new THREE.MeshLambertMaterial({ color: object.color || '#747985' })
+          : new THREE.MeshBasicMaterial({ color: object.color || '#747985' });
+        const mesh = new THREE.Mesh(geometry, keepRoom(material));
         mesh.position.set(object.position.x, object.position.y, object.position.z);
         mesh.rotation.set(object.rotation?.x || 0, object.rotation?.y || 0, object.rotation?.z || 0);
-        const outline = new THREE.LineSegments(keepRoom(new THREE.EdgesGeometry(geometry)),
-          keepRoom(new THREE.LineBasicMaterial({ color: 0x171a21, transparent: true, opacity: 0.45 })));
-        mesh.add(outline);
+        if (object.kind !== 'mesh') {
+          const outline = new THREE.LineSegments(keepRoom(new THREE.EdgesGeometry(geometry)),
+            keepRoom(new THREE.LineBasicMaterial({ color: 0x171a21, transparent: true, opacity: 0.45 })));
+          mesh.add(outline);
+        }
         if (object.role === 'wall') roomWalls.push({ mesh, model: object });
         if (object.role === 'screen') screens.push({ material: mesh.material, color: object.color || '#747985' });
         roomGroup.add(mesh);

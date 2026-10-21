@@ -159,8 +159,58 @@ test('room API protects private geometry, supports caching and prevents stale re
   assert.equal(cached.status, 304);
   assert.equal(await cached.text(), '');
   assert.equal((await request('PUT', { ...room(), url: 'http://example.invalid' }, { 'If-Match': saved.revision })).status, 400);
+  assert.equal((await request('PUT', { ...room(), name: 'x'.repeat(1024 * 1024) }, { 'If-Match': saved.revision })).status, 413);
+  assert.equal(store.snapshot().revision, saved.revision);
   assert.equal((await request('DELETE', undefined, { 'If-Match': 'empty' })).status, 412);
   assert.equal((await request('DELETE')).status, 428);
   assert.equal((await request('DELETE', undefined, { 'If-Match': `"${saved.revision}"` })).status, 200);
   assert.deepEqual(store.snapshot(), { room: null, revision: 'empty' });
+});
+
+const meshObject = () => ({ id: 'sculpture', kind: 'mesh', role: 'furniture', position: { x: 0, y: 1, z: 0 }, size: { x: 0.2, y: 0.3, z: 0.4 }, color: '#aabbdd',
+  mesh: { vertices: [[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0, 0.5, 0.5]], triangles: [[0, 1, 2]] } });
+
+test('private normalized triangle meshes round-trip without changing light bindings', (t) => {
+  const model = room(); model.objects.push(meshObject());
+  const store = storeFor(t); store.replace(model);
+  const loaded = new RoomSceneStore(store.file).load().snapshot().room;
+  assert.deepEqual(loaded.objects[1], meshObject());
+  assert.deepEqual(loaded.bindings, roomSceneSchema.parse(room()).bindings);
+});
+
+test('triangle meshes reject invalid geometry, mismatched kinds and unbounded data', () => {
+  const mutations = [
+    object => { delete object.mesh; },
+    object => { object.kind = 'box'; },
+    object => { object.role = 'screen'; },
+    object => { object.mesh.url = 'https://example.invalid/private.obj'; },
+    object => { object.mesh.vertices[0][0] = 0.50001; },
+    object => { object.mesh.vertices[0][1] = NaN; },
+    object => { object.mesh.vertices[0][2] = Infinity; },
+    object => { object.mesh.triangles[0] = [0, 1, 3]; },
+    object => { object.mesh.triangles[0] = [0, 1, 1]; },
+    object => { object.mesh.triangles[0] = [0, 1, -1]; },
+    object => { object.mesh.triangles[0] = [0, 1, 1.5]; },
+    object => { object.mesh.vertices = [[-0.5, 0, 0], [0, 0, 0], [0.5, 0, 0]]; },
+    object => { object.mesh.vertices = [[0, 0, 0], [1e-6, 0, 0], [0, 1e-6, 0]]; },
+    object => { object.mesh.vertices = Array(8193).fill([0, 0, 0]); },
+    object => { object.mesh.triangles = Array(16385).fill([0, 1, 2]); },
+    object => { object.mesh.triangles = []; },
+  ];
+  for (const mutate of mutations) {
+    const object = meshObject(); mutate(object);
+    assert.equal(roomSceneSchema.safeParse({ ...room(), objects: [object] }).success, false, mutate.toString());
+  }
+});
+
+test('room aggregate mesh budgets apply even when each object is within its own limits', () => {
+  for (const field of ['vertices', 'triangles']) {
+    const object = meshObject();
+    const limit = field === 'vertices' ? 8192 : 16384;
+    while (object.mesh[field].length < limit) object.mesh[field].push(object.mesh[field][0]);
+    const objects = Array.from({ length: 8 }, (_, index) => ({ ...object, id: `mesh-${index}` }));
+    assert.equal(roomSceneSchema.safeParse({ ...room(), objects }).success, true);
+    objects.push({ ...object, id: 'mesh-over-budget' });
+    assert.equal(roomSceneSchema.safeParse({ ...room(), objects }).success, false);
+  }
 });
