@@ -81,6 +81,19 @@ test('put back: the look and its overrides, but never an energy effect', (t) => 
   applyPatch({ paletteOverride: null });
 });
 
+// A cue recall leaves the transport alone; the restart record is the stage as it was.
+test('put back: a show frozen at save time comes back frozen', () => {
+  applyPatch({ pattern: 'chase', running: false });
+  const saved = { savedAt: new Date().toISOString(), ...currentLook(null) };
+  assert.equal(saved.look.running, false);
+
+  applyPatch({ pattern: 'solid', running: true });
+  assert.equal(putBack(saved), true);
+  assert.equal(state.pattern, 'chase');
+  assert.equal(state.running, false);
+  applyPatch({ running: true });
+});
+
 // The settings are settings.json's: a look saved a moment before a change to
 // them must not take the change back on a restart.
 test('put back leaves the audio mode and the strobe\'s settings as they are saved', (t) => {

@@ -742,7 +742,9 @@ over. Editing or deleting the saved palette cannot alter that snapshot.
 
 Save a cue from the current look or supply a `look` explicitly. Recall restores
 its pattern/effect, colours, masters, fixture overrides and strobe settings;
-it does not save a held strobe as active. Cues can be renamed, reordered,
+it does not save a held strobe as active. A cue carries no transport: recall
+leaves a running show running and starts a stopped one, so the cue is always
+seen (cues saved with `running` still load). Cues can be renamed, reordered,
 recaptured and recalled by id or case-insensitive name.
 
 ## Voices and pads

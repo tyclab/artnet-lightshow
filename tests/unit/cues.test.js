@@ -112,6 +112,32 @@ test('recall puts the whole look back, including per-fixture overrides', () => {
   applyOverride(0, null);
 });
 
+// The party cues were all saved while the show stood frozen, and every party
+// start recalled one: the transport is not part of a look.
+test('a cue saved while the show was frozen does not freeze a running show', () => {
+  applyPatch({ pattern: 'chase', running: false });
+  const saved = { ...captureLook(), running: false };
+  assert.ok(lookSchema.safeParse(saved).success, 'an older cue that carried the transport still loads');
+
+  applyPatch({ pattern: 'rainbow', running: true });
+  recallLook(saved);
+
+  assert.strictEqual(state.pattern, 'chase');
+  assert.strictEqual(state.running, true, 'the show keeps running');
+});
+
+test('recalling a cue starts a stopped show, so the cue is seen', () => {
+  applyPatch({ pattern: 'chase', running: true });
+  const saved = captureLook();
+  assert.strictEqual(saved.running, undefined, 'a cue carries no transport');
+
+  applyPatch({ pattern: 'rainbow', running: false });
+  recallLook(saved);
+
+  assert.strictEqual(state.pattern, 'chase');
+  assert.strictEqual(state.running, true);
+});
+
 test('a look with the bars on a picture of their own comes back that way', () => {
   applyPatch({ pattern: 'hit', pixelPattern: 'impact', anchorMs: 0 });
   const saved = captureLook();
