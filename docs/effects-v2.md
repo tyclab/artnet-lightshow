@@ -149,6 +149,12 @@ There will be nine field generators and one strobe overlay. Each generator
 combines a space selector, motion, an envelope, a colour mapping, modulation
 and a background. Every one of these parameters is shared by all generators.
 
+Every generator runs in two spaces, and both are first-class looks chosen per
+preset: `room`, the metric 3D space below, and `plan`, the classic 2D stage
+plot and patch order that today's patterns use. A classic chase, wave or
+sweep across the plot stays a look of its own, not a fallback for a missing
+room.
+
 | Generator | Space | Absorbs |
 |-----------|-------|---------|
 | Wash | none: every unit at once | solid, fade, hit, color-cycle, breathe; `hd.simpleAdsr` presets, `hd.breathingFade`; ldj Glow, Drip, Trance, BeatPulse1/4, QuickFlash, CrossFade, America, MatrixSolid, TriPulse; energy glow, blinder, kill, UV wash |
@@ -213,6 +219,11 @@ technology is one canvas. The showpieces define done for the framework:
 - **The pixel wall as a window.** A 2D pixel surface samples the 3D field at
   its real position, so a wave visibly passes through it and stays continuous
   with the strips around it.
+
+Each showpiece also has a classic 2D version on the plan: the shockwave as a
+ring from the speakers' plot positions, the rising wall as a bottom-to-top fill
+of the plot, particles and orbs moving across the plot, surround as a chase
+around the plot's centre.
 
 Choreography uses them by section: a build rises, a drop detonates, a breakdown
 drifts on noise at low level, and the director keeps contrast between
@@ -282,8 +293,8 @@ photosensitivity acknowledgement, output shutdown and preview/output parity.
 | 1 | Byte-identical dedupe: one body for solid/fade/hit/strobe; `ldj.PartyStrobe` becomes an alias of `ldj.MatrixPulse`; `ramp-scatter`, `decay-scatter` and `flash-burst` call the strobe programs; the 32 non-effect rows leave the runtime catalogue | none while golden output is equal | frame diff is zero |
 | 2 | One flash limiter in the output path, replacing the four. A large-area flash is counted by the share of the room lit, so any selection that lights most of the room stays at three flashes a second when enabled | timing; safety-relevant | golden; a rise-count probe shows no lamp exceeds today's admitted rate (5 Hz Hue cap, every fourth flash at full speed; 20 Hz RGB default; `hd.*` per-lamp interval; three large-area flashes a second when enabled); preview while disarmed |
 | 3 | Space plumbing, unused by effects: binding resolver in `src/shared/`, plan fallback, optional listener and anchors in the room schema with a show override, sampling by emitter size, preview parity, disagreement report | none | unit tests; the report on a real room through a read-only GET |
-| 4 | Vertical slice and first showpieces: Sweep and Shell, end to end, in `plan` and room modes, delivering the shockwave from the speakers and the rising wall. wave, ribbon, gradient and room-wave become Sweep presets beside the old ids | none (additive) | golden for the new ids; Stage preview while disarmed; the operator on the rig; a frame-time check on a rig of a few thousand lights |
-| 5 | The other seven generators as new ids beside the old ones, each with a `plan` mode, and the remaining showpieces: light objects, 3D fireworks and rain, surround, stems in space, the pixel wall as a window | none (additive) | golden for the new ids; Stage preview while disarmed; the operator on the rig |
+| 4 | Vertical slice and first showpieces: Sweep and Shell, end to end, each in its `room` and classic `plan` version, delivering the shockwave from the speakers and the rising wall. wave, ribbon, gradient and room-wave become Sweep presets beside the old ids | none (additive) | golden for the new ids; Stage preview while disarmed; the operator on the rig; a frame-time check on a rig of a few thousand lights |
+| 5 | The other seven generators as new ids beside the old ones, each in `room` and classic `plan` versions, and the remaining showpieces: light objects, 3D fireworks and rain, surround, stems in space, the pixel wall as a window | none (additive) | golden for the new ids; Stage preview while disarmed; the operator on the rig |
 | 6 | One strobe overlay kind over the generators' selection spaces. Energy strobes, `palette-strobe` and the hold strobe become overlay presets, and the overlay's rate cap follows step 2's lit-area count | timing; safety-relevant | golden; the step 2 rise-count probe; preview while disarmed |
 | 7 | Re-express old ids as v2 presets in `plan` mode. Ids within the step 0 tolerance become aliases, the REST routes resolve them, and the effect library migrates stored specs; the rest are listed | none for aliases; listed ids need an operator decision | frame diff report per id; migration test on a stored library file |
 | 8 | 3D defaults and choreography: the look picker, director pools and default pads move to the showpieces and the height, listener and orbit presets; the director plays build, drop and breakdown arcs with contrast between sections. Waits on the decision whether the room is authoritative for effect sampling | look change | Stage preview while disarmed, then the operator on the rig |
