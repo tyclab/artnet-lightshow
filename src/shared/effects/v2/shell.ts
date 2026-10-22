@@ -68,7 +68,7 @@ function renderShell(p: ShellParams, s: ShellState, room: Room, f: EffectFrame, 
   const life = (reach + spiral + 2 * width) / speed + (p.profile === 'fill' ? p.envelope.attack + p.envelope.hold + p.envelope.release : 0);
   const t = f.beatPos - f.anchorBeat;
   const events = activeEvents(Number.isFinite(t) ? t : 0, p.trigger.beatInterval, life, 0).filter((e) => e.age >= 0);
-  const levels = new Float32Array(room.n), along = new Float32Array(room.n);
+  const levels = new Float64Array(room.n), along = new Float64Array(room.n);
   for (const event of events) {
     const strength = launchStrength(p, s, f, event.index);
     if (!(strength > 0)) continue;
