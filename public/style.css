@@ -213,7 +213,8 @@ header {
   white-space: nowrap;
   text-align: right;
 }
-@media (max-width: 47.5em) { .site-kicker { display: none; } }
+/* Below a wide desktop the kicker would push the status pills onto a row of their own. */
+@media (max-width: 79.9375em) { .site-kicker { display: none; } }
 
 .header-nav { display: flex; gap: 2px; margin-left: 8px; }
 .nav-link {
@@ -863,7 +864,8 @@ button.cb-bpm-num:focus-visible { outline: .125rem solid var(--accent); outline-
 .show-switch-hint { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .show-switch.on .show-switch-hint { color: var(--text-2); }
 .show-switch.blackout.on .show-switch-hint { color: var(--text-2); }
-.show-masters { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; min-width: 0; }
+/* The blackout hint gives way first: the master needs its label, a usable slider and the value. */
+.show-masters { display: grid; grid-template-columns: minmax(0, max-content) minmax(13.5rem, 1fr); gap: 8px; min-width: 0; }
 .show-master {
   display: flex;
   align-items: center;

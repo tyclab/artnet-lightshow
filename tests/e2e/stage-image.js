@@ -1,6 +1,13 @@
 // Read the presented canvas; an idle WebGL drawing buffer may already have been discarded.
+// Only whole pixels inside the canvas: at a fractional offset an element screenshot rounds
+// outward and takes in a row of the frame's border.
 export async function stageImage(page) {
-  const png = await page.locator('.stage3d-canvas').screenshot();
+  const canvas = page.locator('.stage3d-canvas');
+  await canvas.scrollIntoViewIfNeeded();
+  const box = await canvas.boundingBox();
+  const x = Math.ceil(box.x), y = Math.ceil(box.y);
+  const clip = { x, y, width: Math.floor(box.x + box.width) - x, height: Math.floor(box.y + box.height) - y };
+  const png = await page.screenshot({ clip });
   return page.evaluate((base64) => new Promise((resolve, reject) => {
     const image = new window.Image();
     image.onerror = reject;
