@@ -356,9 +356,10 @@ test("families cover every public engine kind", () => {
     ['energy.whiteStrobe', 'energy.colorStrobe', 'energy.blinder', 'energy.uvWash', 'energy.kill', 'energy.glow', 'strobe']);
   assert.deepStrictEqual(FAMILIES.map((f) => [f.id, f.app]), [
     ...['channel', 'iteration', 'rotation', 'wave', 'matrix', 'studio', 'visualizer', 'bitmap', 'macro'].map((e) => [`ldj.${e}`, 'ldj']),
-    ...hd.map((f) => [f.id, 'hd']), ['own.party', 'own'], ['own.energy', 'own'],
+    ...hd.map((f) => [f.id, 'hd']), ['own.party', 'own'], ['own.energy', 'own'], ['spatial', 'own'],
   ]);
-  assert.deepStrictEqual(FAMILIES.filter((f) => f.app === 'own').map((f) => f.name), ['Party Looks', 'Energy']);
+  assert.deepStrictEqual(FAMILIES.filter((f) => f.app === 'own').map((f) => f.name), ['Party Looks', 'Energy', 'Spatial']);
+  assert.ok(FAMILIES.find((f) => f.id === 'spatial').kinds.every((k) => k.kind.startsWith('v2.')));
   const listed = FAMILIES.flatMap((f) => f.kinds.map((k) => k.kind)).sort();
   const internal = [...KINDS.values()].filter((d) => d.internal).map((d) => d.kind);
   assert.deepStrictEqual(internal, ['pattern.bundle']);

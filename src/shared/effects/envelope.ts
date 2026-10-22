@@ -32,7 +32,7 @@ export function eventInterval(p: HdParams, loopLength: number, musicMode: AudioM
   return atLeast(TICK, source / repetitions);
 }
 
-export function sampleEnvelope(age: number, p: HdParams): number {
+export function sampleEnvelope(age: number, p: Pick<HdParams, 'attack' | 'hold' | 'release' | 'curve'>): number {
   if (!(age >= 0)) return 0;
   const attack = nonNegative(p.attack), hold = nonNegative(p.hold), release = nonNegative(p.release);
   const length = attack + hold + release;

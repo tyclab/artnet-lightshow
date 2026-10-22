@@ -4,7 +4,7 @@
 import './index.ts';
 import { HOLD_STROBE } from '../look-math.ts';
 import { PATTERN_FUNCS } from '../patterns.ts';
-import { kindOf, validateSpec } from './registry.ts';
+import { KINDS, kindOf, validateSpec } from './registry.ts';
 import { DISCO_PRESETS } from './disco.ts';
 import { ENERGY_KIND_BY_ID } from './energy.ts';
 import { HD_DEFAULTS } from './hd.ts';
@@ -325,6 +325,8 @@ export const FAMILIES: readonly CatalogueFamily[] = deepFreeze([
   family('hd.disco', 'hd', 'Disco'),
   // Party Looks groups presets whose kinds belong to other families; each kind is listed once.
   { ...family('own.party', 'own', 'Party Looks'), kinds: [] }, family('own.energy', 'own', 'Energy'),
+  // The v2 generators: each sampled in the room (metres) or on the classic plot.
+  family('spatial', 'own', 'Spatial', [...KINDS.keys()].filter((kind) => kind.startsWith('v2.'))),
 ]);
 
 const HD_PALETTES: BuiltinPalette[] = [
