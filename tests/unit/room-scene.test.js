@@ -252,3 +252,45 @@ test('object opacity round-trips and rejects nonfinite or out-of-range values', 
     assert.equal(roomSceneSchema.safeParse(model).success, false, String(opacity));
   }
 });
+
+const speaker = () => ({ id: 'speakerLeft', position: { x: 1, y: 0.9, z: -0.4 } });
+const desk = () => ({ id: 'desk', label: 'Desk', position: { x: 1, y: 1.15, z: 0.8 }, facingDeg: 90 });
+
+test('a version 1 room without anchors or listeners parses unchanged', () => {
+  const parsed = roomSceneSchema.parse(room());
+  assert.equal('anchors' in parsed, false);
+  assert.equal('listeners' in parsed, false);
+  assert.deepEqual(roomSceneSchema.parse(parsed), parsed);
+});
+
+test('rooms carry optional named anchors and listening positions', () => {
+  const parsed = roomSceneSchema.parse({ ...room(), anchors: [speaker()], listeners: [desk()] });
+  assert.equal(parsed.version, 1);
+  assert.deepEqual(parsed.anchors, [speaker()]);
+  assert.deepEqual(parsed.listeners, [desk()]);
+});
+
+test('anchors and listeners stay inside the room bounds', () => {
+  const outside = (entry) => ({ ...entry, position: { ...entry.position, x: 9 } });
+  for (const model of [{ ...room(), anchors: [outside(speaker())] }, { ...room(), listeners: [outside(desk())] }]) {
+    const result = roomSceneSchema.safeParse(model);
+    assert.equal(result.success, false);
+    assert.ok(result.error.issues.some((issue) => issue.message === 'Position is outside the room bounds'));
+  }
+});
+
+test('anchor and listener ids are unique across the whole room', () => {
+  for (const anchors of [[{ ...speaker(), id: 'left' }], [speaker(), speaker()], [{ ...speaker(), id: 'desk' }], [{ ...speaker(), id: 'wall' }]]) {
+    const result = roomSceneSchema.safeParse({ ...room(), anchors, listeners: [desk()] });
+    assert.equal(result.success, false, JSON.stringify(anchors.map((a) => a.id)));
+    assert.ok(result.error.issues.some((issue) => issue.message === 'Duplicate id'));
+  }
+});
+
+test('a room holds at most 32 anchors and 8 listeners', () => {
+  const anchors = Array.from({ length: 33 }, (_, k) => ({ ...speaker(), id: `a${k}` }));
+  const listeners = Array.from({ length: 9 }, (_, k) => ({ ...desk(), id: `l${k}` }));
+  assert.equal(roomSceneSchema.safeParse({ ...room(), anchors }).success, false);
+  assert.equal(roomSceneSchema.safeParse({ ...room(), listeners }).success, false);
+  assert.equal(roomSceneSchema.safeParse({ ...room(), anchors: anchors.slice(0, 32), listeners: listeners.slice(0, 8) }).success, true);
+});

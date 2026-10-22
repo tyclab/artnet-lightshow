@@ -89,6 +89,14 @@ sources. Moving its position translates the whole path. Point-only imports remai
 re-export known strip geometry to give them their physical shape. Room imports accept at most
 8192 strip edges and reject zero-length edges and paths outside the room bounds.
 
+Optional `anchors` name points effects can start from, such as speakers:
+`[{ "id": "speakerLeft", "position": { "x": -1.5, "y": 1, "z": -1.5 } }]`. Optional
+`listeners` are listening positions with a facing in degrees, seen from above: 0 looks
+toward −z (the top of the Rig plot) and 90 toward +x:
+`[{ "id": "desk", "position": { "x": 0, "y": 1.15, "z": 0 }, "facingDeg": 0 }]`.
+Both stay inside the room bounds; a room holds up to 32 anchors and 8 listeners, and their
+IDs must be unique across the whole room. A room without them is unchanged.
+
 Models accept up to 128 room polygons, 1,500 objects and 4,096 bindings, with up
 to 128 vertices per polygon, 8,192 total source references and a 1 MB JSON
 request limit. External asset URLs, scripts and unrecognised fields are rejected. Keep the original floor-plan

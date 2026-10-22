@@ -84,6 +84,10 @@ export const roomSceneSchema = z.object({
     lightTint: color.optional(),
   }).strict()).max(1500).default([]),
   bindings: z.array(binding).max(4096).default([]),
+  // Optional and without defaults, so a room saved before they existed parses to the same value.
+  anchors: z.array(z.object({ id, label: name.optional(), position: vector }).strict()).max(32).optional(),
+  listeners: z.array(z.object({ id, label: name.optional(), position: vector,
+    facingDeg: z.number().finite().min(-360).max(360) }).strict()).max(8).optional(),
 }).strict().superRefine((room, ctx) => {
   if (room.objects.reduce((count, object) => count + (object.mesh?.vertices.length ?? 0), 0) > 65536
     || room.objects.reduce((count, object) => count + (object.mesh?.triangles.length ?? 0), 0) > 131072) {
@@ -104,6 +108,17 @@ export const roomSceneSchema = z.object({
       ids.add(item.id);
       if ('position' in item && (!withinFloor(item.position.x, item.position.z)
         || item.position.y < -1 || item.position.y > room.bounds.height + 1)) {
+        ctx.addIssue({ code: 'custom', path: [collection, index, 'position'], message: 'Position is outside the room bounds' });
+      }
+    });
+  }
+  // Effects name anchors and listeners by id, so theirs are unique across every collection.
+  const taken = new Set([...room.rooms, ...room.objects, ...room.bindings].map((item) => item.id));
+  for (const collection of ['anchors', 'listeners'] as const) {
+    room[collection]?.forEach((item, index) => {
+      if (taken.has(item.id)) ctx.addIssue({ code: 'custom', path: [collection, index, 'id'], message: 'Duplicate id' });
+      taken.add(item.id);
+      if (!withinFloor(item.position.x, item.position.z) || item.position.y < -1 || item.position.y > room.bounds.height + 1) {
         ctx.addIssue({ code: 'custom', path: [collection, index, 'position'], message: 'Position is outside the room bounds' });
       }
     });
