@@ -104,13 +104,6 @@ test('party frames on forty placed fixtures meet the calibrated mean CPU budget'
 
     const frame = () => { beat += 0.1; renderFrame(); };
 
-    // The setup took effect: the engine is handed all three voices and a playing sequence.
-    const input = renderInput();
-    const playing = input.voices.map((v) => v.id);
-    for (const id of [STROBE_VOICE_ID, ...padVoices.map((v) => v.id)]) assert.ok(playing.includes(id), `voice ${id} plays`);
-    assert.ok(input.sequenceTransport, 'the sequence plays');
-    assert.equal(input.sequenceRevision, sequencer.table().revision);
-
     const calibration = calibrate();
     let cpu = 0;
     const ms = [];
@@ -124,6 +117,12 @@ test('party frames on forty placed fixtures meet the calibrated mean CPU budget'
       const used = process.cpuUsage(cpu0);
       cpu += (used.user + used.system) / 1000 / FRAMES / 5;
     }
+    // The first measured render adopts the sequence; no unmeasured frames prepare it.
+    const input = renderInput();
+    const playing = input.voices.map((v) => v.id);
+    for (const id of [STROBE_VOICE_ID, ...padVoices.map((v) => v.id)]) assert.ok(playing.includes(id), `voice ${id} plays`);
+    assert.ok(input.sequenceTransport, 'the sequence plays');
+    assert.equal(input.sequenceRevision, sequencer.table().revision);
     ms.sort((a, b) => a - b);
     const mean = ms.reduce((a, b) => a + b, 0) / ms.length;
     const p95 = ms[Math.floor(ms.length * 0.95)];
