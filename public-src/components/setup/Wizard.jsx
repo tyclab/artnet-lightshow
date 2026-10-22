@@ -154,7 +154,7 @@ function Outputs({ register }) {
       <fieldset class="wizard-group">
         <legend>WLED</legend>
         <p class="setting-help">WLED strips and panels are sent their pixels directly, over DDP. Found ones can be added to the patch now, in
-          eight zones like an LED bar; add one as a wash or pixel by pixel under Rig → Outputs → WLED.</p>
+          pixel by pixel to retain motion detail; choose a wash or fixed zones under Rig → Outputs → WLED.</p>
         <div class="discovery-head"><button type="button" class="btn sm" onClick={findWleds}>Find WLEDs</button></div>
         {wleds && wleds.length > 0 && (
           <ul class="wizard-found">

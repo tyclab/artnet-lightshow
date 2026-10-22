@@ -3,6 +3,7 @@ import { api, librarySig, pick, send } from '../state.js';
 import { parseHex, toHex } from '../../src/shared/palette-model.ts';
 import { colorToCss } from '../utils.js';
 import { PaletteEditor, isRandom, paletteName } from './PaletteEditor.jsx';
+import { CURATED_PALETTE_IDS } from '../../src/shared/colour-sliders.ts';
 import { PaletteLibrary } from './PaletteLibrary.jsx';
 
 export const overrideBody = (palette) => ({ paletteId: palette.id });
@@ -25,6 +26,7 @@ export function activeOverride(override, palettes, id = null, body = null) {
 export function PaletteStrip({ initialTarget = 'override' }) {
   const s = pick(['palette', 'basePalette', 'paletteOverride', 'overridePalette', 'paletteOverrideId',
     'builtinPalettes', 'userPalettes', 'colorPresets', 'colorA', 'colorB', 'colorC', 'colorD', 'pattern']);
+  const [expanded, setExpanded] = useState(false);
   const [target, setTarget] = useState(initialTarget);
   const [draft, setDraft] = useState(null);
   const [invalid, setInvalid] = useState(false);
@@ -71,13 +73,14 @@ export function PaletteStrip({ initialTarget = 'override' }) {
     <div class="perform-override">
       {override && <button type="button" class={`override-pad${active === 'off' ? ' active' : ''}`} aria-pressed={active === 'off'} data-override="off"
         onClick={() => api('/api/palette-override', { method: 'DELETE' })}><span class="override-name">Off</span></button>}
-      {all.map((p) => <button key={p.id} type="button" class={`override-pad${active === p.id ? ' active' : ''}`}
+      {all.filter((p) => expanded || builtin.length <= CURATED_PALETTE_IDS.length || CURATED_PALETTE_IDS.includes(p.id) || user.some((u) => u.id === p.id) || p.id === active).map((p) => <button key={p.id} type="button" class={`override-pad${active === p.id ? ' active' : ''}`}
         aria-pressed={active === p.id} data-override={override ? p.id : undefined} data-palette={p.id} onClick={() => choose(p)}>
         <span class="override-swatches" aria-hidden="true">{(override && active === p.id ? s.paletteOverride : p.colours).map((c, i) =>
           <span key={i} class={isRandom(c) ? 'random' : ''} style={isRandom(c) ? {} : { background: c.length <= 7 ? c : colorToCss(parseHex(c)) }} />)}</span>
         <span class="override-name">{paletteName(p)}</span>
       </button>)}
     </div>
+    <button type="button" class="btn sm" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? 'Show curated palettes' : 'Show all palettes'}</button>
     {override && all.some((p) => p.id === active && p.colours.some(isRandom)) && <p class="muted">Random colours held — tap again to reroll</p>}
     {draft && <div class="palette-draft">
       <PaletteEditor body={draft} onBodyChange={setDraft} onInvalid={setInvalid} builtin={builtin} user={user} />

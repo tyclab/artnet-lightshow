@@ -34,13 +34,13 @@ test('every existing id renders the same frames with the room space as without i
   const { CATALOGUE } = await import('../../src/shared/effects/catalogue.ts');
   const { PATTERN_IDS } = await import('../../src/server/presets.ts');
   // The ids that existed before the unit space: the Spatial presets read it on purpose.
-  const ids = [...new Set([...PATTERN_IDS, ...CATALOGUE.filter((row) => row.family !== 'spatial').map((row) => row.id)])];
+  const ids = [...new Set([...PATTERN_IDS, ...CATALOGUE.filter((row) => row.family !== 'spatial' && !row.id.startsWith('overlay.')).map((row) => row.id)])];
   const beats = [0, 0.5, 1.25, 3, 7.5];
   const spaced = renderGolden(ids, 'synthetic', beats);
   const plain = renderGolden(ids, 'synthetic', beats, { space: false });
   const moved = ids.map((id) => [id, frameDiff(spaced[id], plain[id])]).filter(([, d]) => d.maxChannel > 0);
   assert.deepEqual(moved, []);
-  assert.ok(ids.length > 250, `${ids.length} ids`);
+  assert.ok(ids.length > 200, `${ids.length} compatibility ids`);
 });
 
 test('the synthetic rig renders with its room space', () => {

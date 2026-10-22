@@ -103,7 +103,7 @@ const HD_GUARDED = new Set(['hd.simpleAdsr', 'hd.positionChase', 'hd.radialPulse
   'v2.sweep', 'v2.shell', 'v2.orbit', 'v2.scatter', 'v2.neural']);
 
 export function hdGuarded(kind: string | null | undefined): boolean {
-  return !!kind && HD_GUARDED.has(kind);
+  return !!kind && (kind.startsWith('v2.') || HD_GUARDED.has(kind.startsWith('compat.') ? kind.slice(7) : kind));
 }
 
 const effectRooms = new WeakMap<Layout['units'], Room>();

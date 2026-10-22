@@ -20,6 +20,7 @@ import { audioToTempWav } from '../audio-file.ts';
 import { applyRekordbox } from '../rekordbox-analysis.ts';
 import { AutoSync } from '../auto-sync.ts';
 import LiveDirector from '../show/live-director.ts';
+import { SPATIAL_AUTO_PATTERNS } from '../show/look.ts';
 import { PATTERNS } from './presets.ts';
 import { settings } from './settings.ts';
 import { baseEffect, effectChanged, identify, setAudioSource, setEffectSource, setSequenceSource, setMasterSource } from './engine.ts';
@@ -415,7 +416,7 @@ function setupIntegrations({ io, midi, spotify, nowPlaying, deezerSource, prolin
   // Suppress live-director patches while a timeline plays so the two cannot fight over the look.
   const liveDirector = liveInput ? new LiveDirector({
     applyPatch: (patch) => { if (!autoShow.running) applyPatch(patch); },
-    patterns: PATTERNS,
+    patterns: [...PATTERNS, ...SPATIAL_AUTO_PATTERNS],
     pixels: () => currentRig().hasPixels,
   }) : null;
   if (liveInput && liveDirector) liveInput.onEvent((e) => liveDirector.onEvent(e));

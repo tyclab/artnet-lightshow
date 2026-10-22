@@ -140,18 +140,18 @@ test('clip audition and Apply preserve the preset and fixture target', async ({ 
   expect((await request.put('/api/sequence', { data: draft })).ok()).toBe(true);
   const before = await (await request.get('/api/effects')).json();
   const editor = await openClipEditor(page);
-  await editor.getByLabel('Stagger', { exact: true }).fill('0.75');
-  await editor.getByRole('button', { name: 'Hold to audition' }).focus();
+  await editor.getByLabel('Step Beats', { exact: true }).fill('0.75');
+  await editor.getByRole('button', { name: 'Hold on live rig' }).focus();
   await page.keyboard.down('Enter');
   try {
-    const live = await until(request, (s) => s.voices.some((v) => v.spec.params.stagger === 0.75));
-    expect(live.voices.find((v) => v.spec.params.stagger === 0.75).targets).toEqual([target]);
+    const live = await until(request, (s) => s.voices.some((v) => v.spec.params.stepBeats === 0.75));
+    expect(live.voices.find((v) => v.spec.params.stepBeats === 0.75).targets).toEqual([target]);
     expect((await current(request)).clips[0].presetId).toBe('hd.neonDomino');
   } finally { await page.keyboard.up('Enter'); }
   await editor.getByRole('button', { name: 'Apply to clip' }).click();
   await expect(editor).toHaveCount(0);
   const changed = (await current(request)).clips[0];
-  expect(changed.effect.params.stagger).toBe(0.75);
+  expect(changed.effect.params.stepBeats).toBe(0.75);
   expect(changed.presetId).toBeUndefined();
   expect(changed.targets).toBe('lane');
   expect(await (await request.get('/api/effects')).json()).toEqual(before);
@@ -159,18 +159,18 @@ test('clip audition and Apply preserve the preset and fixture target', async ({ 
 
 test('a refused clip Apply keeps the edited draft for a successful retry', async ({ page, request }) => {
   const editor = await openClipEditor(page);
-  await editor.getByLabel('Stagger', { exact: true }).fill('0.75');
+  await editor.getByLabel('Step Beats', { exact: true }).fill('0.75');
   await page.route('**/api/sequence', (route) => route.request().method() === 'PUT'
     ? route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'Rejected test edit' }) })
     : route.continue());
   await editor.getByRole('button', { name: 'Apply to clip' }).click();
   await expect(editor.getByRole('alert')).toBeVisible();
-  await expect(editor.getByLabel('Stagger', { exact: true })).toHaveValue('0.75');
+  await expect(editor.getByLabel('Step Beats', { exact: true })).toHaveValue('0.75');
   expect((await current(request)).clips[0].presetId).toBe('hd.neonDomino');
   await page.unroute('**/api/sequence');
   await editor.getByRole('button', { name: 'Apply to clip' }).click();
   await expect(editor).toHaveCount(0);
-  expect((await current(request)).clips[0].effect.params.stagger).toBe(0.75);
+  expect((await current(request)).clips[0].effect.params.stepBeats).toBe(0.75);
 });
 
 test('named grouped clips move together through undo, redo and Save', async ({ page, request }) => {

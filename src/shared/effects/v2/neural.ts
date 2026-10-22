@@ -11,7 +11,8 @@ import type { Room } from '../../room.ts';
 export const neuralSchema = v2CommonSchema.extend({
   layout: z.enum(['height', 'distance', 'zones']).default('height'),
   // The wash with no music.
-  idle: z.number().min(0).max(1).default(0.08),
+  idle: z.number().min(0).max(1).default(0),
+  speakerAnchors: z.array(z.string().max(100)).max(32).default(['speakerLeft', 'speakerRight']),
   // Share of a band level kept per 25 ms frame: 0 follows at once.
   smoothing: z.number().min(0).max(0.98).default(0.35),
   pitchColour: z.boolean().default(true),
@@ -32,11 +33,14 @@ const BAND_COLOUR = [0, 1 / 3, 2 / 3];
 
 function heardBands(p: NeuralParams, s: NeuralState, f: EffectFrame): Bands | null {
   const audio = f.audioMode === 'reactive' ? f.audio : null;
-  if (!audio) return null;
+  if (!audio) { s.bands = null; return null; }
   const target: Bands = [clamp(audio.party.bass), clamp(audio.party.mid), clamp(audio.party.high)];
   if (!s.bands) { s.bands = target; return target; }
   const keep = Math.pow(p.smoothing, Math.max(0, f.dtMs) / FRAME);
-  s.bands = s.bands.map((v, k) => target[k] + (v - target[k]) * keep) as Bands;
+  s.bands = s.bands.map((v, k) => {
+    const level = target[k] + (v - target[k]) * keep;
+    return level < 1 / 65536 ? 0 : level;
+  }) as Bands;
   return s.bands;
 }
 
@@ -63,9 +67,10 @@ function renderNeural(p: NeuralParams, s: NeuralState, room: Room, f: EffectFram
   const bands = heardBands(p, s, f);
   const reading = neuralReading(f.audioMode === 'reactive' ? f.audio : null, s);
   const trigger = triggerLevel(p, f);
-  const anchors = Object.values(room.space?.anchors ?? {});
+  const anchors = p.speakerAnchors.flatMap((id) => room.space?.anchors[id] ? [room.space.anchors[id]] : []);
   const speakers = (anchors.length ? anchors : [room.space?.listener ?? centreOf(pos)]).map((a) => pointIn(room, pos, a) ?? centreOf(pos));
   const reach = Math.max(1e-6, ...speakers.map((sp) => farthestCorner(pos, sp)));
+  const background = p.idle > 0 ? { ...p, background: Math.max(p.background, p.idle) } : p;
   for (let i = 0; i < room.n; i++) {
     let level = 0, band = 0;
     if (bands) {
@@ -73,7 +78,7 @@ function renderNeural(p: NeuralParams, s: NeuralState, room: Room, f: EffectFram
       for (let k = 0; k < 3; k++) if (given[k] > level) { level = given[k]; band = k; }
     }
     const colour = p.pitchColour && reading ? reading.frequency : BAND_COLOUR[band];
-    paint(p, f, colour, Math.max(p.idle, level) * trigger, out[i]);
+    paint(background, f, colour, level * trigger, out[i]);
   }
 }
 

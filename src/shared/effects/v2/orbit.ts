@@ -9,6 +9,7 @@ export const orbitSchema = v2CommonSchema.extend({
   axis: z.enum(['listener', 'centre']).default('listener'),
   profile: z.enum(['sectors', 'gradient', 'beacon']).default('beacon'),
   sectors: z.number().int().min(1).max(32).default(4),
+  sectorSoftnessDeg: z.number().min(0).max(180).default(30),
   beamDeg: z.number().min(1).max(360).default(40),
   turnsPerBar: z.number().min(-16).max(16).default(1),
   // Degrees of lag per metre above the axis's height, so the beam climbs as it turns.
@@ -38,9 +39,22 @@ function renderOrbit(p: OrbitParams, room: Room, f: EffectFrame, out: EffectSlot
       const spread = reach > 1e-6 ? (Math.atan2(pos.size[i], reach) * 180) / Math.PI : 180;
       paint(p, f, around / 360, soft(offset, p.beamDeg, spread) * trigger, out[i]);
     } else if (p.profile === 'sectors') {
-      // Sector k is centred k sectors round from the beam; its colour is palette entry k.
-      const k = Math.round((wrap180(offset) / 360) * p.sectors + p.sectors) % p.sectors;
+      const sector = frac(offset / 360) * p.sectors;
+      const k = Math.floor(sector), fraction = sector - k;
+      const reach = Math.hypot(pos.x[i] - axis.x, pos.z[i] - axis.z);
+      const spread = Math.atan2(pos.size[i], Math.max(1e-6, reach)) * 180 / Math.PI;
+      const edge = Math.min(0.49, (p.sectorSoftnessDeg / 2 + spread) / (360 / p.sectors));
+      const raw = edge > 0 ? Math.max(0, Math.min(1, (fraction - 0.5 + edge) / (2 * edge))) : Number(fraction >= 0.5);
+      const mix = raw * raw * (3 - 2 * raw);
       paint(p, f, (k % palette) / palette, trigger, out[i]);
+      if (mix > 0) {
+        const next = { ...out[i] };
+        paint(p, f, (((k + 1) % p.sectors) % palette) / palette, trigger, next);
+        const a = out[i].colour, b = next.colour;
+        const blend = (x = 0, y = 0) => x + (y - x) * mix;
+        out[i].colour = { r: blend(a.r, b.r), g: blend(a.g, b.g), b: blend(a.b, b.b),
+          w: blend(a.w, b.w), a: blend(a.a, b.a), uv: blend(a.uv, b.uv) };
+      }
     } else {
       paint(p, f, frac(offset / 360), trigger, out[i]);
     }

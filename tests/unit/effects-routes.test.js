@@ -166,7 +166,7 @@ test('GET /api/effects lists families, built-ins, user presets and both palette 
   assert.equal(res.body.ok, true);
   assert.deepEqual(res.body.families, json(FAMILIES));
   assert.deepEqual(res.body.builtin, json(CATALOGUE));
-  assert.equal(res.body.builtin.length, 256);
+  assert.equal(res.body.builtin.length, CATALOGUE.length);
   assert.deepEqual(res.body.user, [preset]);
   assert.deepEqual(res.body.palettes, { builtin: json(ALL_PALETTES), user: [palette] });
   assert.equal(res.body.palettes.builtin.length, 54);
@@ -274,7 +274,7 @@ test("concurrent preset edits persist in order", async (t) => {
   const [saved] = s.effectLibrary.list().user;
   assert.ok(['First', 'Second'].includes(saved.name));
   assert.equal(saved.spec.params.cadence, saved.name === 'First' ? 4 : 8, 'one edit whole, never half of each');
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(s.dir, 'effects.json'), 'utf8')), { presets: [saved] });
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(s.dir, 'effects.json'), 'utf8')), { version: 2, presets: [saved] });
   assert.deepEqual(fs.readdirSync(s.dir).filter((f) => f.endsWith('.tmp')), []);
 });
 

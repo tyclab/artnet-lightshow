@@ -6,12 +6,16 @@ import { accentStrobes, bandSchema, isFlashEnvelope, paint, positionsOf, trigger
 import type { Positions } from './common.ts';
 import type { EffectFrame, EffectSlot } from '../types.ts';
 import type { Room } from '../../room.ts';
+import { pickSegments, selectionOf } from './selection.ts';
 
-// Random units on every step: single, or every unit within a radius of each pick (room space only).
+// Balance physical segments by fixture and place; explicit cell mode retains radius-based picks.
 export const scatterSchema = v2CommonSchema.extend({
+  selection: z.enum(['segments', 'lamps', 'cells']).default('segments'),
+  segmentM: z.number().min(0.1).max(10).default(0.5),
+  placeM: z.number().min(0.25).max(10).default(1.5),
   density: z.number().min(0).max(1).default(0.15),
   stepBeats: z.number().min(1 / 16).max(16).default(0.25),
-  // Metres; density stays the share of lights lit, so clusters mean fewer, larger patches.
+  // Cell mode only, in metres; clusters trade fewer picks for larger patches.
   clusterM: z.number().min(0).max(10).default(0),
   // With live audio, a step fires only on a hit in one of these bands; empty fires every step.
   bands: z.array(bandSchema).max(4).default([]),
@@ -77,7 +81,7 @@ function neighbourhood(pos: Positions, n: number, radius: number): Map<number, n
 // picks until `count` lights are lit (a light keeps its first pick's colour). Pure in the seed and the
 // step, so it is worked out once and remembered.
 const stepMemo = new WeakMap<Positions, Map<string, { units: Int32Array; colours: Float32Array }>>();
-const KEEP_STEP_LIGHTS = 32;
+const KEEP_STEP_LIGHTS = 128;
 function stepLights(pos: Positions, n: number, seed: EffectFrame['seed'], step: number, count: number, cluster: number): { units: Int32Array; colours: Float32Array } {
   let memo = stepMemo.get(pos);
   if (!memo) { memo = new Map(); stepMemo.set(pos, memo); }
@@ -129,10 +133,12 @@ function renderScatter(p: ScatterParams, s: ScatterState, room: Room, f: EffectF
   // At least one pick a step, so a sparse density still plays on a small rig.
   const count = p.density > 0 ? Math.min(n, Math.max(1, Math.round(p.density * n))) : 0;
   const cluster = p.clusterM > 0 && !pos.plan ? p.clusterM : 0;
+  const selection = p.selection !== 'cells' && room.lamps ? selectionOf(room, p.space, p.selection === 'lamps' ? 0 : p.segmentM, p.placeM) : null;
   for (let step = now - back; step <= now && count > 0; step++) {
     const level = sampleEnvelope(t - step * p.stepBeats, p.envelope);
     if (!(level > 0) || !fires(p, s, f, step)) continue;
-    const { units, colours } = stepLights(pos, n, f.seed, step, count, cluster);
+    const { units, colours } = selection ? pickSegments(selection, f.seed, step, p.density)
+      : stepLights(pos, n, f.seed, step, count, cluster);
     for (let k = 0; k < units.length; k++) {
       const i = units[k];
       if (level > levels[i]) { levels[i] = level; along[i] = colours[k]; }

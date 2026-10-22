@@ -51,17 +51,27 @@ test('the viewpoints, and the keys on the stage', async ({ page }) => {
 });
 
 test('rehearsing on the Stage view: the planned show at any moment, whatever the rig is doing', async ({ page, request }) => {
+  // Fixed planned content tests isolation independently of spatial coverage, dark rests and track expression.
+  await page.route('**/api/auto/timeline', async (route) => {
+    const response = await route.fetch(), body = await response.json();
+    body.data.timeline = [{ timeMs: 0, action: 'patch', data: {
+      pattern: 'v2.wash', bpm: body.data.bpm, beatDivision: 1, basePalette: { colours: ['#FFFFFF'] },
+      showDynamics: { level: 1, bass: 1, vocal: 1, air: 1, width: 1, motion: 1, decay: 1 },
+    } }];
+    await route.fulfill({ response, json: body });
+  });
   await set(request, { masterBlackout: true });
   await open(page, 'stage');
   await page.getByRole('button', { name: 'Rehearse track' }).click();
   await expect(page.locator('.stage3d-tools .panel-tag')).toHaveText('Rehearsal');
-  await page.getByRole('slider', { name: 'Rehearsal position' }).fill('60000');
-  await expect(page.locator('.stage3d-time')).toHaveText('1:00 / 4:07');
-  await expect(page.getByRole('img', { name: /The rig in 3D/ })).toHaveAttribute('aria-label', /rehearsing the track at 1:00/);
-  await expect.poll(() => litShare(page), { message: 'the show is planned to be lit here' }).toBeGreaterThan(0.01);
+  await page.getByRole('slider', { name: 'Rehearsal position' }).fill('8000');
+  await expect(page.locator('.stage3d-time')).toHaveText('0:08 / 4:07');
+  await expect(page.getByRole('img', { name: /The rig in 3D/ })).toHaveAttribute('aria-label', /rehearsing the track at 0:08/);
+  await expect.poll(() => litShare(page), { message: 'the planned wash shows under the live blackout' }).toBeGreaterThan(0.01);
+  const pausedAt = await page.locator('.stage3d-time').textContent();
 
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await expect(page.locator('.stage3d-time')).not.toHaveText('1:00 / 4:07');
+  await expect(page.locator('.stage3d-time')).not.toHaveText(pausedAt);
   await page.getByRole('button', { name: 'Pause' }).click();
   await page.getByRole('button', { name: 'Back to live' }).click();
   await expect(page.locator('.stage3d-tools .panel-tag')).toHaveText('Outputs off');

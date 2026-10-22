@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { sampleEnvelope } from '../envelope.ts';
-import { samplePalette } from '../palette.ts';
+import { parseHex, samplePalette } from '../palette.ts';
 import type { Room } from '../../room.ts';
 import type { EffectFrame, EffectSlot } from '../types.ts';
 
@@ -33,6 +33,7 @@ export const v2CommonSchema = z.object({
   envelope: envelopeSchema.default({ ...ENVELOPE_DEFAULT }),
   colour: z.enum(['along', 'time', 'solid']).default('along'),
   background: unit.default(0),
+  backgroundColour: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#FFFFFF'),
 });
 export type V2Common = z.output<typeof v2CommonSchema>;
 
@@ -142,8 +143,22 @@ export function soft(distance: number, width: number, size: number): number {
 export function paint(common: V2Common, frame: EffectFrame, position01: number, level: number, out: EffectSlot): void {
   const pos = common.colour === 'solid' ? 0
     : common.colour === 'time' ? frac((frame.beatPos - frame.anchorBeat) / TIME_CYCLE_BEATS) : position01;
-  out.colour = frame.gradient?.sample(pos) ?? samplePalette(frame.palette, pos);
-  const lit = common.background + (1 - common.background) * clamp(level);
+  const foreground = clamp(level);
+  const background = common.background * (1 - foreground);
+  const lit = foreground + background;
+  if (!(lit > 0)) {
+    out.colour = { r: 0, g: 0, b: 0, w: 0, a: 0, uv: 0 };
+    out.level = 0;
+    out.strength = 0;
+    return;
+  }
+  const colour = frame.gradient?.sample(pos) ?? samplePalette(frame.palette, pos);
+  if (background > 0) {
+    const base = parseHex(common.backgroundColour);
+    const mix = (a = 0, b = 0) => (a * foreground + b * background) / lit;
+    out.colour = { r: mix(colour.r, base.r), g: mix(colour.g, base.g), b: mix(colour.b, base.b),
+      w: mix(colour.w, base.w), a: mix(colour.a, base.a), uv: mix(colour.uv, base.uv) };
+  } else out.colour = colour;
   out.level = lit;
   out.strength = lit > 0 ? 1 : 0;
 }

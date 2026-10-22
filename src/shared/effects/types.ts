@@ -6,6 +6,7 @@ import type { AudioFrame } from './audio-frame.ts';
 import type { PaletteAccess } from './palette.ts';
 import type { GradientSettings, ResolvedGradient } from '../palette-model.ts';
 import type { UnitSpace } from '../space.ts';
+import type { PictureFeatures } from '../picture-features.ts';
 export type { PaletteEntry } from '../palette-model.ts';
 import type { PaletteEntry } from '../palette-model.ts';
 
@@ -60,7 +61,15 @@ export type Seed = [number, number, number, number];
 
 export type EffectCommand = 'stop' | 'comboBreak' | 'toggleDirection' | 'fadeToBaseline' | 'setPulserBaselineColor';
 
+export interface EffectModulation {
+  sectionProgress?: number;
+  section?: string;
+  stems?: { bass?: number; drums?: number; vocals?: number; hats?: number };
+}
+
 export interface EffectFrame {
+  modulation?: EffectModulation;
+  pictureFeatures?: PictureFeatures | null;
   hardware?: readonly HardwareCaps[];
   admission?: AdmissionPolicy;
   gradient?: ResolvedGradient | null;

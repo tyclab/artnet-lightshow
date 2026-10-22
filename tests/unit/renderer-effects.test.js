@@ -538,7 +538,7 @@ test("playing manual strobes suppress Disco automatic flashes", () => {
   assert.strictEqual(flag([strobe({ startedAtMs: 10 })]), false, 'not started');
   assert.strictEqual(flag([strobe({ untilMs: 0 })]), false, 'ended');
   assert.strictEqual(flag([strobe({ targets: [99] })]), false, 'on no fixture of the patch');
-  assert.strictEqual(flag([voice('pad', preset('energy.whiteStrobe'))]), false, 'a strobe-channel energy is not the manual strobe');
+  assert.strictEqual(flag([voice('pad', preset('energy.whiteStrobe'))]), true, 'the energy preset shares the strobe overlay');
   // The hold strobe as the energy burst counts too, when the renderer plays it.
   assert.strictEqual(captureState(r, probe(), 0, { energy: HOLD_STROBE }).frames.at(-1).frame.manualStrobeActive, true);
 });
@@ -579,7 +579,11 @@ test("energies preserve native dies and fold missing bar dies", () => {
       return bytes;
     };
     const settle = Array.from({ length: 81 }, (_, k) => k * 25);
-    for (const e of ['white-strobe', 'color-strobe', 'blinder', 'uv-wash', 'kill', 'glow']) assert.deepStrictEqual(bytes({ energy: e }, [10]), expected(e), e);
+    for (const e of ['white-strobe', 'color-strobe']) {
+      const kind = e === 'white-strobe' ? 'energy.whiteStrobe' : 'energy.colorStrobe';
+      assert.deepStrictEqual(bytes({ voices: [voice('legacy-energy', spec({ kind }))], safety: { acknowledged: true, hdFlashIntervalMs: 350 } }, [10]), expected(e), `${e} saved compatibility spec`);
+    }
+    for (const e of ['blinder', 'uv-wash', 'kill', 'glow']) assert.deepStrictEqual(bytes({ energy: e }, [10]), expected(e), e);
     for (const level of [0, 0.5, 1]) assert.deepStrictEqual(bytes({ energy: 'glow', showDynamics: { level } }, settle), expected(`glow@${level}`), `glow at ${level}`);
     assert.deepStrictEqual(bytes({ energy: 'blinder', showDynamics: { level: 0.3 } }, settle), expected('blinder@0.3'), 'the burst bypasses the expression');
     assert.deepStrictEqual(bytes({ energy: 'blinder', masterDimmer: 128 }, [10]), expected('blinder-master'), 'and follows the master');

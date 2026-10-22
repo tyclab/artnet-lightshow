@@ -19,13 +19,14 @@ import type { FrameSummary, Ticker } from './frame-clock.ts';
 import type { CommandResult, FadeRequest, RenderInput, SyncTestRequest, VoiceFrame } from './renderer.ts';
 import type { Profile, PulseReading } from '../types/rig.ts';
 import type { AudioFrame } from '../shared/effects/audio-frame.ts';
-import type { EffectSpec, HdMaster } from '../shared/effects/types.ts';
+import type { EffectModulation, EffectSpec, HdMaster } from '../shared/effects/types.ts';
 import type { MusicalTime } from './conductor.ts';
 import type { SequenceFrame } from './sequencer.ts';
 import { validateSpec } from '../shared/effects/registry.ts';
 import { effectContentKey } from '../shared/effects/layer.ts';
 import { pixelInputs } from './pixel-input-live.ts';
 import { pictureInput } from './picture-live.ts';
+import { PictureFeatureExtractor } from '../shared/picture-features.ts';
 
 export type EngineThread = 'worker' | 'main';
 
@@ -50,6 +51,7 @@ const STOP_TIMEOUT_MS = 300;
 let clock = () => performance.now();
 
 const renderer = createRenderer({ profileOf: getProfile, profilesRevision, now: clock() });
+const pictureFeatures = new PictureFeatureExtractor();
 
 // Translate performance.now() into the process clock once so voice and worker lifetimes align.
 const WORKER_CLOCK_SHIFT = hrtimeMs() - performance.now();
@@ -166,6 +168,10 @@ function voiceFrames(): VoiceFrame[] {
 function renderInput(): RenderInput {
   const effect = currentEffect();
   noteEffect(state.pattern, effect);
+  const pictureSource = settings.get('picture.source');
+  const picture = pictureInput.current(thread === 'worker' ? WORKER_CLOCK_SHIFT : 0);
+  const features = pictureFeatures.update(pictureSource === 'inspired' ? picture : null, pictureInput.image(true),
+    clock() + (thread === 'worker' ? WORKER_CLOCK_SHIFT : 0));
   return {
     running: state.running,
     pattern: state.pattern,
@@ -193,6 +199,7 @@ function renderInput(): RenderInput {
     identify: identify.request(),
     universes: activeUniverses(),
     pulse: runPulseSource(),
+    modulation: runModulationSource(),
     audio: runAudioSource(),
     audioMode: settings.get('audio.mode'),
     master: { ...(masterSource?.() ?? settings.get('audio.master')) },
@@ -206,8 +213,9 @@ function renderInput(): RenderInput {
     effect,
     effectRevision,
     voices: voiceFrames(),
-    pixelInputs: pixelInputs.frames(thread === 'worker' ? WORKER_CLOCK_SHIFT : 0),
-    picture: settings.get('picture.source') === 'visualizer' ? pictureInput.current(thread === 'worker' ? WORKER_CLOCK_SHIFT : 0) : null,
+    pixelInputs: pictureSource === 'inspired' ? [] : pixelInputs.frames(thread === 'worker' ? WORKER_CLOCK_SHIFT : 0),
+    picture: pictureSource === 'visualizer' ? picture : null,
+    pictureFeatures: features,
     pictureGrade: settings.get('picture.grade'),
     pictureDecode: settings.get('picture.decode'),
     pictureBlackPoint: settings.get('picture.blackPoint'),
@@ -257,6 +265,22 @@ function runPulseSource(): PulseReading | null {
 function setPulseSource(fn: (() => PulseReading | null) | null | undefined): void {
   pulseSource = typeof fn === 'function' ? fn : null;
   pulseFailed = false;
+}
+
+let modulationSource: (() => EffectModulation | undefined) | null = null;
+let modulationFailed = false;
+function runModulationSource(): EffectModulation | undefined {
+  try { return modulationSource?.(); }
+  catch (err) {
+    if (!modulationFailed) console.warn(`[engine] modulation source failed: ${messageOf(err)}`);
+    modulationFailed = true;
+    return undefined;
+  }
+}
+
+function setModulationSource(fn: (() => EffectModulation | undefined) | null | undefined): void {
+  modulationSource = typeof fn === 'function' ? fn : null;
+  modulationFailed = false;
 }
 
 let audioSource: (() => AudioFrame | null) | null = null;
@@ -611,6 +635,7 @@ export {
   engineStatus,
   setFrameHook,
   setPulseSource,
+  setModulationSource,
   setAudioSource,
   setMasterSource,
   setEffectSource,

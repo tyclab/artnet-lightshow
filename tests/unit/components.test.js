@@ -36,7 +36,10 @@ async function load() {
         export { Pads, PadEditor, padGlyph, padBody, contentRows, padChoices } from './public-src/components/Pads.jsx';
         export { StrobePad, StrobeSettings, strobeBody, strobeChoices } from './public-src/components/StrobePad.jsx';
         export { createVoiceHolds } from './public-src/hold-control.js';
-        export { BUILTIN_PALETTES, CATALOGUE, FAMILIES } from './src/shared/effects/index.ts';
+        export { BUILTIN_PALETTES, FAMILIES } from './src/shared/effects/index.ts';
+        import { CATALOGUE as CURRENT_CATALOGUE, LEGACY_PRESETS } from './src/shared/effects/catalogue.ts';
+        export { CURRENT_CATALOGUE };
+        export const CATALOGUE = [...LEGACY_PRESETS, ...CURRENT_CATALOGUE.filter((row) => !LEGACY_PRESETS.some((old) => old.id === row.id))];
         export { requiresAcknowledgement } from './src/shared/effects/registry.ts';
       `,
       resolveDir: ROOT,
@@ -217,7 +220,7 @@ test('following the music again is POST /api/tempo/auto', async () => {
 
 // ── The Effects view, its inspector and the palette editor ─────────────────
 
-// The catalogue rows as the server lists them in `patterns` (src/server/presets.ts).
+// A pre-migration library snapshot exercises the retained rich editors; current picker retirement is checked separately.
 const PRESET_ROWS = ui.CATALOGUE.filter((p) => !p.legacy).map((p) => ({
   id: p.id, name: p.name, desc: p.desc, ...(p.party ? { party: true } : {}), ...(p.pixel ? { pixel: true } : {}),
   app: p.app, family: p.family, rapidFlash: ui.requiresAcknowledgement(p.spec), scope: p.spec.scope ?? null,
@@ -894,4 +897,18 @@ test('saved pattern pad names agree between the deck and command bar', () => {
   assert.strictEqual(padLabels(ui.html(ui.h(ui.Pads, {})))[0], 'Closing phrase');
   const strip = ui.html(ui.h(ui.CommandBar, {}));
   assert.strictEqual(/class="cb-energy-name">([^<]*)</.exec(strip)[1], 'Closing phrase');
+});
+
+
+test('the current catalogue hides compatibility rows while saved rich effects remain editable', () => {
+  givenLibrary({ patterns: ui.CURRENT_CATALOGUE.filter((p) => !p.legacy).map((p) => ({
+    id: p.id, name: p.name, app: p.app, family: p.family, retired: p.retired, rapidFlash: ui.requiresAcknowledgement(p.spec),
+  })) });
+  const html = ui.html(ui.h(ui.Effects, {}));
+  assert.ok(rowOf(html, 'v2.chase'));
+  assert.equal(rowOf(html, 'ldj.StrobeCycle'), null);
+  const migrated = { ...USER_PRESET, id: 'migrated', spec: { ...USER_PRESET.spec, kind: 'compat.hd.positionChase' } };
+  ui.librarySig.value = { ...ui.librarySig.value, user: [migrated] };
+  const inspector = ui.html(ui.h(ui.Inspector, { id: 'migrated' }));
+  for (const label of ['Stagger', 'Direction', 'Order', 'Repetitions', 'Loop length']) assert.match(inspector, new RegExp(`>${label}<`));
 });

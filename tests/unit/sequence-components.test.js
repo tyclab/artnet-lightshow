@@ -238,8 +238,8 @@ test('clips show their preset by name, a saved preset\'s first', () => {
   given({ sequence: STATUS, effects: [{ id: 'mine-1', name: 'My wash' }] });
   const seq = { ...SEQ, clips: [{ ...SEQ.clips[0], presetId: 'hd.neonDomino' }, { ...SEQ.clips[1], presetId: 'mine-1' }] };
   const html = ui.html(ui.h(ui.Sequence, { initial: { sequence: seq } }));
-  assert.match(html, /class="seq-clip-label">Neon Domino</);
-  assert.match(html, /aria-label="Neon Domino, beats 0 to 16"/);
+  assert.match(html, /class="seq-clip-label">Chase 2D</);
+  assert.match(html, /aria-label="Chase 2D, beats 0 to 16"/);
   assert.match(html, /class="seq-clip-label">My wash</);
   assert.doesNotMatch(html, />hd\.neonDomino</);
 });

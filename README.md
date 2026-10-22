@@ -197,6 +197,27 @@ while outputs are disarmed and draw every light off, because nothing is transmit
 draws the rendered look that arming would send and the label becomes **Preview (disarmed)**; the choice
 lasts until the page reloads and is shared by both views.
 They say **Live output** once outputs are armed.
+
+**Audition effects** in Stage or the fixture plot plays any current or saved effect
+against a deterministic 124 BPM demo: build, drop, breakdown and groove, with
+synthetic beat, bass, mid and high levels. Pause, restart or scrub the demo; switch
+Stage between **3D room** and **2D plot** to inspect the same moment. These are
+simulated audio levels, so no music file or audio input is required. The audition
+uses its own palette and transport. It sends no look, engine, room or output
+commands. Rapid effects need an acknowledgement local to this browser preview;
+it does not enable flashing on the server. Arming ends the audition. In the
+inspector, **Audition on Stage** previews an edited draft; **Hold on live rig**
+is the separate live voice control.
+
+```mermaid
+flowchart LR
+  Demo[Local demo timeline] --> Audio[Typed audio and section source]
+  Draft[Selected effect or edited draft] --> Preview[Browser preview sampler]
+  Audio --> Preview
+  Rig[Read-only patch and room] --> Preview
+  Preview --> Room[3D room]
+  Preview --> Plot[2D plot]
+```
 Import a private floor model and place its lights with the
 [Stage room controls](docs/stage-room.md). Room geometry affects the preview and the
 room form of the [Spatial effects](#spatial-effects); every other effect still reads the Rig
@@ -234,8 +255,9 @@ The effect catalogue and show workflows cover the Party & Disco and the
 Entertainment scope. The detailed fields below describe the data contract as
 well as the browser controls. See [feature coverage](docs/feature-coverage.md)
 for deliberate scope decisions and the upstream adoption policy.
-[Effects v2](docs/effects-v2.md) is the plan to fold the effect engines
-into a few spatial generators; its first phase is the Spatial group below.
+[Effects v2](docs/effects-v2.md) records the spatial framework and compatibility
+decisions. The Spatial group is the default catalogue for new shows; old effect
+and palette ids remain available to saved shows and integrations.
 
 An **effect** draws the lights. A **look** combines the base effect, colours and fixture
 settings. A **pattern** is a reusable sequence of clips. Favourites are quick access
@@ -280,8 +302,8 @@ select theme, screen wake lock and fullscreen for the current device.
 
 ### Spatial effects
 
-The **Spatial** group leads the Effects view. Its presets are parameter sets of
-five generators, and every one comes twice: the room form (`v2.<name>`) samples
+The **Spatial** group leads the Effects view. Its 39 named looks are parameter sets of
+eleven generators, and every one comes twice: the room form (`v2.<name>`) samples
 each light's position in metres, and the 2D twin (`v2.<name>.2d`, named "… 2D")
 plays the same parameters across the Rig plot as a picture whose top is "up".
 Both are looks of their own; the 2D twin never needs a room.
@@ -291,8 +313,75 @@ Both are looks of their own; the 2D twin never needs a room.
 | Sweep | a plane through the room by azimuth and elevation (90° runs floor to ceiling): crest, line, comet, gradient or stripe, looping, bouncing or random | Groove Wave, Big Room Wave, Ascent, Double Wave, Swagger, Beat Accent Wash, Volume Gate Wash |
 | Shell | rings from a speaker anchor, the listener, the centre or a random light, outward or inward, optionally twisted into a vortex | Impact, Vortex, Speaker Shockwave |
 | Orbit | a beam, sectors or a colour wheel turning round the listener from their facing | Rotation, Swirl, Beacon |
-| Scatter | random lights on every step, single or in clusters by radius, optionally only on band hits | Scatter Strobe, Scatter Fade, Scatter Grow, Popcorn, Frequency Burst |
+| Scatter | random places, fixtures and physical segments, optionally only on band hits | Scatter Strobe, Scatter Fade, Scatter Grow, Frequency Burst |
 | Neural | bass, mids and highs placed by height, by distance from the speakers, or by zone round the listener | Neural, Neural Distance |
+| Wash | a steady colour or a shared breathing envelope | Wash, Breathe |
+| Step | a pulse following an axis, each strip's cell order, height or listener azimuth | Chase, Path Runner, Surround |
+| Zones | alternating or filling sides, height bands, distances or stem regions | Zones, Surround Answer, Near and Far, Stems in Space |
+| Noise | continuous clouds, aurora or flames sampled in space | Drifting Clouds, Aurora, Fire |
+| Particles | soft objects and ballistic sparks, trails, falling drops and floor splashes | Light Orbs, Orb Collision, Fireworks, Rain |
+| Visualizer | the incoming picture's palette and motion speed drive an independent spatial field | Visualizer Flow, Visualizer Drift |
+
+Rising Wall fills from the floor with build-section progress. Falling Wall releases
+that fill from ceiling to floor over one bar before a drop detonates into a shockwave,
+fireworks or colliding orbs. The automatic director and default pads use these
+spatial looks. Strobe overlays select all lights, steps, scattered segments or zones
+over the underlying look. Popcorn is absent from the chooser; its old ids resolve
+to Scatter Fade so saved sequences still load.
+Automatic shows on rigs without pixel surfaces prefer broad room fields over
+particle paths that may miss sparse lamps. Neural and Visualizer looks stay manual
+choices because their live inputs are not guaranteed by track analysis alone.
+
+Room coordinates are metres: **x** runs across the room, **y is height above the
+floor**, and **z** runs along its depth. Vertical pixel surfaces must have room
+bindings or per-cell height data; a flat plot alone cannot describe a hanging
+curtain. A Sweep at 90° elevation climbs vertically. For a diagonal, set its
+**From Point** and **To Point** (or named anchors), for example `(-2, 0.1, -2)`
+to `(2, 2.5, 2)`. The crest travels through that line in all three dimensions;
+Particles can use the same endpoints for an orb path. Choose points in your own
+room's bounds. In the 2D twin, the endpoints project onto the plot; a purely vertical
+path uses plot bottom to top so it still has visible motion.
+
+Pixel addressing and effect selection are separate. Waves and particles sample
+every addressable pixel. Scatter first balances occupied places, then fixtures,
+then one physical segment within each chosen fixture. Its defaults use 1.5 m
+places and 0.5 m segments: a keyboard or curtain does not receive thousands of
+times the chances of a single lamp. **Selection: Lamps** flashes whole fixtures;
+**Cells** restores independent random pixels and enables the old cluster-radius
+control. New WLED imports default to **Pixels**; existing zone patches retain
+their configured groups until explicitly repatched.
+
+Unlit cells have zero RGB and zero brightness. Background defaults to off; an
+explicit background has its own colour, independent of colour A. Rotation blends
+its sector boundaries, including the emitter's size, to avoid a hard wall-wide
+colour jump.
+
+For an incoming visualizer, select **Picture → Colour + motion** and a Visualizer
+Flow or Drift look. The room sender supplies frames; the effect extracts dominant
+colours and temporal motion, then animates the room or plot itself. Pixel positions
+are not copied. A missing, expired or black feed goes dark. **Visualizer** remains
+the direct-picture mode. The built-in Audition supplies a synthetic picture signal
+so these effects can also be tried while disarmed.
+
+```mermaid
+flowchart LR
+    Music[Beat, bands and section progress] --> Field[Spatial generator]
+    Picture[Incoming visualizer picture] --> Features[Palette and motion speed]
+    Features --> Field
+    Room[Metric unit positions and emitter sizes] --> Field
+    Field --> Compose[Base, sequence and overlay voices]
+    Compose --> Guard[Shared output guard]
+    Guard --> Preview[Stage preview]
+    Guard --> Outputs[Outputs when armed by an operator]
+```
+
+Retired catalogue rows stay resolvable but are hidden from new-show pickers.
+The version-2 saved-effect library keeps authored legacy parameters through
+compatibility adapters; those engines remain for exact legacy playback. Selected
+old preset ids intentionally map to modern 2D looks. The alias frame-diff script
+(`node scripts/effects-v2-alias-diff.js`) records those changes without rewriting
+the original golden fixtures. The colour strip offers a curated set and a hue-pair
+generator; **Show all** retains every historical palette id.
 
 Every generator shares one trigger: the timeline, a beat accent (a pulse per interval,
 as strong as its band with live audio) or a volume gate (the band above its threshold).
@@ -325,7 +414,7 @@ keys; `PUT /api/settings` changes selected fields.
 | `artnet` | `enabled: true`, `host: '2.255.255.255'`, `port: 6454`, `universe: 0`, `discovery: true`, `sync: false` |
 | `sacn` | `enabled: false`, `host: ''` for multicast, `priority: 100`, `sourceName: 'TycStation Lightshow'`, `universeOffset: 1`, `interface: ''`; stable generated `cid` |
 | `hue` | `bridges: []`, `latencyMs: 0`, `strobe: 'flash'`; each paired bridge has an id, address, enabled flag, area and write-only credentials |
-| `picture` | `source: 'effects'` or `'visualizer'`; `blackPoint: 0.12`, the peak under which a picture unit stays dark; `decode: false`, sRGB to linear light; `grade`: the room picture's optional colour grade, off by default, `{ enabled: false, whiteLimit: 0, saturation: 1, ceiling: 1, hueCeiling: 1 }`; see [Room picture](#room-picture) |
+| `picture` | `source: 'effects'`, `'visualizer'` or `'inspired'` (Colour + motion); `blackPoint: 0.12`, the peak under which a picture unit stays dark; `decode: false`, sRGB to linear light; `grade`: the room picture's optional colour grade, off by default, `{ enabled: false, whiteLimit: 0, saturation: 1, ceiling: 1, hueCeiling: 1 }`; see [Room picture](#room-picture) |
 | `outputs` | `armed: false`; always reset to false at startup. `idleDisarmMin: 15`: minutes armed with nothing playing before the outputs disarm themselves; `0` never |
 | `sources` | `prolink: false`, `smtc: true` |
 | `spotify` | Client id, secret, server-written refresh token; optional `proxyBase`; `allowUnverifiedState: false` |
@@ -493,6 +582,9 @@ Every helper light output also follows the Lightshow's **Picture** selector:
 **Effects** releases the curtain, panel and room leases and pauses capture;
 **Visualizer** resumes them automatically. The fullscreen display
 continues to follow the local Party Visuals switch.
+**Colour + motion** resumes only the room feed for the spatial Visualizer effects;
+direct curtain and panel streams stay paused so their pictures cannot cover the
+generated animation.
 
 The default mode only manages the display: it does not read the Lightshow token,
 connect to the lighting server or claim a fixture. Add `--curtain` to stream the
@@ -519,6 +611,12 @@ visualizer. It returns the newest completed picture, discards pictures older tha
 navigation and cleanup invalidate pending work. Browsers without WebGL2 retain
 the synchronous 2-D fallback. The helper installs its page functions once per
 connection instead of recompiling them for every capture.
+
+These GPU buffers hold recent live pictures while Chrome finishes reading them;
+they do not pre-render future lighting frames. Spatial effects run on the CPU at
+the lighting engine's 44 Hz. The separate optional GPU analysis worker processes
+music ahead of playback and caches beat, section and stem data, which helps the
+director anticipate a build or drop. That cache also contains no rendered lights.
 
 Every 30 seconds each output reports a small JSON summary: acknowledged frames
 per second over the whole reporting interval, capture and acknowledgement latency
@@ -621,7 +719,7 @@ feed reads that same canvas without a desktop capture or OBS process.
 
 The same canvas can paint the whole rig. The strip's **Picture** selector (also
 Settings → Show → Picture Source, or `POST /api/picture/source` with
-`{ "source": "effects" | "visualizer" }`) chooses what the base layer paints
+`{ "source": "effects" | "visualizer" | "inspired" }`) chooses what the base layer paints
 from. With **Visualizer** selected, a sender claims the room picture over the
 authenticated socket and sends one RGB colour per rig unit, sampled from the
 picture at the unit's plan position: the plot's left-to-right is the picture's
@@ -634,8 +732,11 @@ blackouts stay above it, the master and trims still apply, and two seconds
 without a frame shows the effects again. With **Effects** selected the server
 accepts and ignores room frames; the browser helper releases all its light
 inputs instead, including dedicated curtain and panel feeds, and resumes when
-**Visualizer** is selected. Other external pixel-input clients keep their own
-independent ownership and are unaffected by this selector.
+**Visualizer** is selected. **Colour + motion** (`inspired`) keeps the room feed
+for palette/motion extraction and suppresses all direct pixel inputs, including
+an older helper's still-active panel leases, so they cannot cover the spatial
+animation. The updated helper also pauses those captures. Other external
+pixel-input clients keep independent ownership in Effects and Visualizer modes.
 
 ```powershell
 node cli.js --browser-profile $profile --visualizer-url $url --room
@@ -808,7 +909,14 @@ role. Without authored gradients, effects keep their existing interpolation.
 `paletteOverride` and `paletteOverrideId` remain compatible with existing
 clients. Old indexed palettes retain their curated 2/3/4-colour variants;
 old palette files, presets and cues load without losing colours or Random.
-The library offers every built-in and saved palette in either destination.
+The palette strip opens with a curated selection. **Show all palettes** reveals
+the complete catalogue; every existing palette ID still works through REST and
+Home Assistant. The shared editor and the active colour slot offer hue,
+saturation and brightness sliders. RGB edits retain the white, amber and UV
+emitters, available as separate numeric fields. **Generate a hue pair** controls
+the starting hue, angular separation, saturation and brightness; it fills the
+editor draft, which can then be applied or saved as a palette. The library offers
+every built-in and saved palette in either destination.
 
 Random stage slots roll once when selected. Cues snapshot full palette bodies.
 A sequence captures the override's colours, gradients and id; stop, unload
@@ -922,7 +1030,7 @@ Unsaved changes are marked, and replacing or unloading them asks for confirmatio
 Timing and playlist settings are under Edit; saved tempo, music mode and initial
 palette take effect on Play. Select a clip to edit its timing/targets or open its
 effect settings. Apply to clip embeds that edited effect without changing its
-source preset. Hold to audition uses the clip's targets and releases on exit.
+source preset. **Hold on live rig** launches a live voice using the clip's targets and releases on exit. **Audition on Stage** previews the draft locally while disarmed.
 Playlist rows support click or keyboard activation to start/jump; activating the
 playing row stops it. Saved patterns can be renamed, mapped to lanes or deleted.
 Clips can carry a name; selected clips can be grouped, moved together by beats

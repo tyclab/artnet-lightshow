@@ -3,16 +3,20 @@ import { stateSig, dmxSig, connectedSig, emitFixture, stagePreviewSig } from '..
 import { colorToCss, fixtureOutputColor, fixtureCellColors, meanLight, fmtTime, patchedAt, stageMode } from '../utils.js';
 import { useDmxFeed } from '../use-dmx.js';
 import { useRehearsalTrack, useRehearsalSampler, useUnitSpace } from '../rehearsal.js';
+import { Audition } from './Audition.jsx';
+import { auditionSig, setAudition, useAuditionSampler } from '../audition.js';
 import { NowPlaying } from './NowPlaying.jsx';
 import { useTimeline } from '../use-timeline.js';
 import { stagePositions } from '../../src/shared/stage.ts';
 import { buildRig, lineOf, rigSignature } from '../../src/shared/rig.ts';
 import { STAGE_EDGES, clamp, geometryOf, placeAt, pointIn, surfaceStyle } from '../stage-geometry.js';
 
-export function StagePreview() {
+export function StagePreview({ controls = true } = {}) {
   const s = stateSig.value;
   const fixtures = s.fixtures || [];
   const connected = connectedSig.value;
+  const audition = auditionSig.value;
+  const auditioning = audition.active && !s.armed;
   const { data } = useTimeline();
   const { edit, playing, position, preview: previewLook } = stagePreviewSig.value;
   const setUi = (patch) => { stagePreviewSig.value = { ...stagePreviewSig.value, ...patch }; };
@@ -33,7 +37,7 @@ export function StagePreview() {
   // Rehearsal needs a timeline to rehearse. Deriving it rather than clearing the
   // flag in an effect keeps the panel honest the moment the analysis goes away,
   // and means losing it does not cost the operator their scrub position.
-  const rehearsal = stagePreviewSig.value.rehearsal && !!data;
+  const rehearsal = !auditioning && stagePreviewSig.value.rehearsal && !!data;
   const mode = stageMode({ rehearsing: rehearsal, connected, armed: s.armed, preview: previewLook });
   // Disarmed and not previewing, the lights draw as the blackout draws them: off.
   const shown = mode.lit ? s : { ...s, masterBlackout: true };
@@ -42,13 +46,14 @@ export function StagePreview() {
   const space = useUnitSpace(rig, [rigSignature(drawn), s.profiles]);
   const sample = useRehearsalSampler(data, space);
   // One entry per light: a par, or each cell of a bar.
-  const preview = rehearsal ? sample(position, fixtures, s.colorPresets, rig) : null;
+  const auditionSample = useAuditionSampler(space);
+  const preview = auditioning ? auditionSample(audition.position, fixtures, s.colorPresets, rig) : rehearsal ? sample(position, fixtures, s.colorPresets, rig) : null;
   // Read inside the branch that uses it: a signal subscribes on read, so while
   // rehearsing this panel is driven by its own scrub position and has no reason
   // to wake — and re-sample the whole timeline — on every live DMX frame.
-  const dmx = rehearsal ? null : dmxSig.value;
+  const dmx = rehearsal || auditioning ? null : dmxSig.value;
   // Live, the plot draws the DMX feed; rehearsing, it draws the timeline.
-  useDmxFeed(!rehearsal);
+  useDmxFeed(!rehearsal && !auditioning);
 
   // Follows the *track*, not the timeline. A replan — an intensity nudge, a
   // palette change — re-mints timelineRevision and hands us a new `data` for the
@@ -100,7 +105,7 @@ export function StagePreview() {
     if (!active || active.pointerId !== event.pointerId) return;
     drag.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    if (save && active.patch) emitFixture({ id: active.id, ...active.patch });
+    if (save && !auditionSig.peek().active && active.patch) emitFixture({ id: active.id, ...active.patch });
     setDraft(null);
   };
   const grab = (event, id, extra = {}) => {
@@ -113,12 +118,13 @@ export function StagePreview() {
   return <section class="panel stage-panel">
     <header class="panel-head">
       <h2 class="panel-title">Stage preview</h2>
-      <span class="panel-tag">{mode.tag}</span>
-      {connected && !s.armed && !rehearsal && <button class={`btn sm ${previewLook ? 'active' : ''}`} aria-pressed={!!previewLook}
+      <span class="panel-tag">{auditioning ? 'Audition · browser only' : mode.tag}</span>
+      {connected && !s.armed && !rehearsal && !auditioning && <button class={`btn sm ${previewLook ? 'active' : ''}`} aria-pressed={!!previewLook}
         title="Draw what arming would send; nothing goes out" onClick={() => setUi({ preview: !previewLook })}>Preview look</button>}
-      <button class={`btn sm ${edit ? 'active' : ''}`} disabled={!connected} aria-pressed={edit}
+      <button class={`btn sm ${edit ? 'active' : ''}`} disabled={!connected || auditioning} aria-pressed={edit}
         onClick={() => { setUi({ edit: !edit }); drag.current = null; setDraft(null); }}> {edit ? 'Done positioning' : 'Position fixtures'}</button>
     </header>
+    {controls && <Audition compact />}
     <div class={`stage-surface ${edit ? 'editing' : ''}`} role="group"
       aria-label="Stage layout, viewed from the audience"
       style={surfaceStyle}>
@@ -201,10 +207,10 @@ export function StagePreview() {
     <p class="look-note">{edit
       ? `Drag fixtures or use arrow keys.${rig.hasPixels ? ' Drag a bar\'s end handle to turn or stretch it.' : ''} Positions are saved with the show.`
       : 'Numbers are patch order. Patterns travel across the stage as placed here, left to right. Colours approximate the output.'}</p>
-    <p class="stage-now" aria-live="polite"><strong>Now playing</strong> <NowPlaying /></p>
-    {data && <div class="stage-rehearsal">
+    <p class="stage-now" aria-live="polite"><strong>{auditioning ? 'Audition' : 'Now playing'}</strong> {auditioning ? audition.name || audition.id : <NowPlaying />}</p>
+    {data && !auditioning && <div class="stage-rehearsal">
       <button class={`btn sm ${rehearsal ? 'active' : ''}`} aria-pressed={rehearsal}
-        onClick={() => setUi({ rehearsal: !rehearsal, playing: false })}>{rehearsal ? 'Return to live' : 'Rehearse track'}</button>
+        onClick={() => { setAudition({ active: false, playing: false }); setUi({ rehearsal: !rehearsal, playing: false }); }}>{rehearsal ? 'Return to live' : 'Rehearse track'}</button>
       {rehearsal && <>
         <button class="btn sm" onClick={() => setUi({ position: position >= duration ? 0 : position, playing: !playing })}>{playing ? 'Pause preview' : 'Play preview'}</button>
         <input type="range" min="0" max={duration} step="100" value={position} aria-label="Rehearsal position"

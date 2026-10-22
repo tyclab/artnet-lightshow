@@ -10,6 +10,7 @@ import { LiveAutomation } from '../../src/server/live-automation.ts';
 test('starter generation is a valid editable playlist and excludes rapid effects by default', () => {
   const { sequence, skipped } = generatePlaylist({ template: 'universal' }, CATALOGUE, []);
   assert.ok(sequence.clips.length > 5);
+  assert.ok(sequence.clips.every((clip) => clip.presetId.startsWith('v2.')), 'starter uses current Spatial effects');
   assert.ok(skipped.some((p) => p.reason === 'Rapid effect omitted'));
   const table = buildTable(sequence, (id) => CATALOGUE.find((p) => p.id === id)?.spec, 1);
   assert.ok(table.clips.every((c) => !requiresAcknowledgement(c.spec)));

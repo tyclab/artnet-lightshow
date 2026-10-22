@@ -134,7 +134,7 @@ export function blankSequence(shelf = []) {
 
 // What the server refuses in a clip (400): a legacy row, which has no effect,
 // and one that paces its own flashes (the strobe, Disco's automatic strobe).
-const clipHolds = (p) => !!p && !p.legacy && !!p.spec && !pacesOwnFlashes(p.spec);
+const clipHolds = (p) => !!p && !p.legacy && !p.retired && !!p.spec && !pacesOwnFlashes(p.spec);
 
 /** The presets a clip can play, in the pad editor's order: favourites, saved ones, party ones, the rest. */
 export function clipPresetRows(library, favourites = []) {
@@ -153,7 +153,7 @@ export function clipPresetRows(library, favourites = []) {
 export function newClip(seq, { laneId, startBeat, beatsPerBar, selected, library = [], rows = [], acknowledged = false }) {
   const from = seq.clips.find((c) => c.id === selected && c.presetId) || [...seq.clips].reverse().find((c) => c.presetId);
   const rapid = new Set(rows.filter((r) => r.rapidFlash).map((r) => r.id));
-  const plays = (p) => !p.legacy && !(p.spec && pacesOwnFlashes(p.spec)) && (acknowledged || !rapid.has(p.id));
+  const plays = (p) => !p.legacy && !p.retired && !(p.spec && pacesOwnFlashes(p.spec)) && (acknowledged || !rapid.has(p.id));
   const presetId = from ? from.presetId : (library.find(plays) || {}).id;
   if (!presetId) return null;
   return { id: newId('c'), laneId, startBeat, lengthBeats: beatsPerBar, loopBeats: beatsPerBar, presetId, targets: 'lane', mute: false };

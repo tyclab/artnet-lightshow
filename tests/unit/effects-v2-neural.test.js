@@ -24,7 +24,7 @@ const slotOf = (fixtureId) => layout.units.list.findIndex((u) => rig.fixtures[ri
 test('Neural registers with its defaults', () => {
   assert.equal(kindOf('v2.neural').app, 'own');
   const p = validateSpec(neural({})).params;
-  assert.deepEqual([p.layout, p.idle, p.smoothing, p.pitchColour], ['height', 0.08, 0.35, true]);
+  assert.deepEqual([p.layout, p.idle, p.smoothing, p.pitchColour], ['height', 0, 0.35, true]);
 });
 
 test('Disco and Neural share one reading of pitch and level', () => {
@@ -89,4 +89,14 @@ test('smoothing eases a change between frames', () => {
   const next = renderKind(spec, room, frameAt(1.05, { audio: heard({ bass: 0 }) }), first.state).out;
   const floor = slotOf(3);
   assert.ok(next[floor].level > 0.3 && next[floor].level < 0.9, `eased: ${next[floor].level}`);
+});
+
+test('lost audio clears smoothing so resuming silence cannot resurrect the old colour', () => {
+  const spec = neural({ smoothing: 0.98 });
+  const active = renderKind(spec, room, frameAt(1, { audio: heard({ bass: 1 }) }));
+  assert.ok(active.out.some((slot) => slot.level > 0));
+  const disconnected = renderKind(spec, room, frameAt(1.05), active.state);
+  const silent = renderKind(spec, room, frameAt(1.1, { audio: heard({}) }), disconnected.state);
+  for (const rendered of [disconnected, silent]) assert.ok(rendered.out.every((slot) => slot.level === 0
+    && Object.values(slot.colour).every((channel) => channel === 0)));
 });

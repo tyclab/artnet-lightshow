@@ -21,7 +21,7 @@ import type { Ahdsr, Curve, EffectKindDef, EffectSpec, PaletteEntry, RgbEnvelope
 
 interface CatalogueMetadata {
   id: string; name: string; desc: string; app: 'hd' | 'ldj' | 'own'; family: string;
-  party?: boolean; pixel?: boolean; aliases?: string[];
+  party?: boolean; pixel?: boolean; aliases?: string[]; retired?: boolean;
   lengthBeats?: number;
 }
 // Legacy ids keep their pattern function; preset links must not redirect playback.
@@ -135,6 +135,7 @@ function ldjPresets(): CataloguePreset[] {
       const visualizer = VISUALIZER_PRESETS.find((p) => p.id === row.id)!;
       rows.push(ldjRow(row.id, visualizer.name, 'visualizer', { kind: 'ldj.visualizer', params: visualizer.params, palette: RANDOM_RANDOM }));
     } else if (row.kind === 'preset') {
+      if (row.name === 'PartyStrobe') continue;
       rows.push(ldjRow(row.id, ldjName(row.name), row.engine, { kind: row.id, ...(row.name === 'America' ? {} : { palette: RANDOM_RANDOM }) }));
     }
   }
@@ -142,6 +143,8 @@ function ldjPresets(): CataloguePreset[] {
     rows.push(ldjRow(`ldj.bitmap.${pattern}`, BITMAP_LABELS[pattern] ?? words(pattern), 'bitmap',
       { kind: 'ldj.bitmap', params: { pattern }, palette: RANDOM_RANDOM }));
   }
+  const pulse = rows.find((row) => row.id === 'ldj.MatrixPulse');
+  if (pulse) pulse.aliases = ['ldj.PartyStrobe'];
   return rows;
 }
 
@@ -257,8 +260,8 @@ const OWN_ROWS: CataloguePreset[] = OWN_LOOKS.map(([id, name, desc, preset]) =>
   ({ id, name, desc, app: 'own', family: 'own.party', party: true, legacy: true, ...(preset ? { preset } : {}) }));
 
 const ENERGY_LABELS: Record<keyof typeof ENERGY_KIND_BY_ID, [name: string, desc: string]> = {
-  'white-strobe': ['White Strobe', 'Cold white, fastest strobe'],
-  'color-strobe': ['Colour Strobe', 'Colour A, fastest strobe'],
+  'white-strobe': ['White Strobe', 'White strobe overlay, up to five flashes a second'],
+  'color-strobe': ['Colour Strobe', 'Colour A strobe overlay, up to five flashes a second'],
   blinder: ['Blinder', 'Every emitter at full — the brightest the rig goes'],
   'uv-wash': ['UV Wash', 'Blacklight — UV alone, no strobe'],
   kill: ['Kill', 'Everything out for as long as it is held'],
@@ -267,13 +270,25 @@ const ENERGY_LABELS: Record<keyof typeof ENERGY_KIND_BY_ID, [name: string, desc:
 const CONTROL_ROWS: CataloguePreset[] = [
   ...Object.entries(ENERGY_KIND_BY_ID).map(([alias, kind]): CataloguePreset => {
     const [name, desc] = ENERGY_LABELS[alias as keyof typeof ENERGY_KIND_BY_ID];
-    return { id: kind, name, desc, app: 'own', family: 'own.energy', aliases: [alias], spec: validateSpec({ kind }) };
+    const spec = alias === 'white-strobe' || alias === 'color-strobe'
+      ? validateSpec({ kind: 'strobe', palette: null, params: { colourMode: alias === 'white-strobe' ? 'white' : 'first',
+        clock: 'beat', flashesPerSecond: 5, continueBetween: false } }) : validateSpec({ kind });
+    return { id: kind, name, desc, app: 'own', family: 'own.energy', aliases: [alias], spec };
   }),
   // Use a null palette for the hold strobe so look colours show between override selections.
   { id: 'palette-strobe', name: 'Palette Strobe', desc: 'Flashes in the look\'s colours on the beat over the running look, up to five a second',
     app: 'own', family: 'own.energy',
     spec: validateSpec({ kind: 'strobe', palette: null, params: { clock: 'beat', flashesPerSecond: 5, continueBetween: true } }) },
 ];
+
+const OVERLAY_ROWS: CataloguePreset[] = (['all', 'step', 'scatter', 'zone'] as const).flatMap((selection) =>
+  (['room', 'plan'] as const).map((space) => ({
+    id: `overlay.${selection}${space === 'plan' ? '.2d' : ''}`, name: `${selection[0].toUpperCase()}${selection.slice(1)} Strobe${space === 'plan' ? ' 2D' : ''}`,
+    desc: `A strobe voice over the running look, selecting ${selection === 'all' ? 'every lamp' : selection === 'step' ? 'lamps in spatial order' : selection === 'scatter' ? 'lamps and compact patches across the room' : 'alternating halves'}; ${space === 'room' ? 'room positions' : 'classic plot'}.`,
+    app: 'own' as const, family: 'own.energy',
+    spec: validateSpec({ kind: 'strobe', palette: null, params: { selection, space, density: selection === 'step' ? 0.1 : 0.25,
+      flashesPerSecond: 5, continueBetween: true, clock: 'beat' } }),
+  })));
 
 const GENTLE_ROWS: CataloguePreset[] = [
   { id: 'party.fire', name: 'Fire', desc: 'A gentle amber and ember wash, drifting over a long swell without strobing',
@@ -290,7 +305,24 @@ const GENTLE_ROWS: CataloguePreset[] = [
     }) },
 ];
 
-export const CATALOGUE: readonly CataloguePreset[] = deepFreeze([...LDJ_PRESETS, ...HD_PRESETS, ...DISCO_ROWS, ...OWN_ROWS, ...CONTROL_ROWS, ...GENTLE_ROWS, ...V2_PRESETS]);
+export const V2_ALIASES: Readonly<Record<string, string>> = deepFreeze({
+  'ldj.ScatterStrobe': 'v2.scatterStrobe.2d', 'ldj.ScatterFade': 'v2.scatterFade.2d', 'ldj.ScatterGrow': 'v2.scatterGrow.2d',
+  'ldj.GrooveWave': 'v2.grooveWave.2d', 'ldj.BigRoomWave': 'v2.bigRoomWave.2d', 'ldj.Ascent': 'v2.ascent.2d',
+  'ldj.DoubleWave': 'v2.doubleWave.2d', 'ldj.Swagger': 'v2.swagger.2d', 'ldj.Impact': 'v2.impact.2d', 'ldj.Vortex': 'v2.vortex.2d',
+  'ldj.Rotation': 'v2.rotation.2d', 'ldj.Swirl': 'v2.swirl.2d', 'ldj.Beacon': 'v2.beacon.2d',
+  'ldj.Popcorn': 'v2.scatterFade.2d', 'v2.popcorn': 'v2.scatterFade', 'v2.popcorn.2d': 'v2.scatterFade.2d',
+  'hd.neonDomino': 'v2.chase.2d', 'hd.bassBloom': 'v2.impact.2d', 'hd.auroraDrift': 'v2.grooveWave.2d',
+  'hd.prismRicochet': 'v2.swagger.2d', 'hd.meteorShower': 'v2.ascent.2d', 'hd.starlightScatter': 'v2.scatterFade.2d',
+  'hd.velvetBreath': 'v2.breathe.2d', 'hd.afterglowGate': 'v2.volumeGateWash.2d', 'hd.voltageConfetti': 'v2.frequencyBurst.2d',
+  'ldj.Perlin': 'v2.noise.2d', 'ldj.NorthernLights': 'v2.aurora.2d',
+});
+export const LEGACY_PRESETS: readonly CataloguePreset[] = deepFreeze([...LDJ_PRESETS, ...HD_PRESETS, ...DISCO_ROWS, ...OWN_ROWS, ...GENTLE_ROWS]);
+const modern = V2_PRESETS.map((preset): CataloguePreset => ({ ...preset,
+  aliases: Object.entries(V2_ALIASES).filter(([, target]) => target === preset.id).map(([id]) => id),
+}));
+const available = new Set(modern.map((row) => row.id));
+const compatibility = LEGACY_PRESETS.filter((row) => !available.has(V2_ALIASES[row.id])).map((row) => ({ ...row, ...(row.id.startsWith('party.') ? {} : { retired: true }) }));
+export const CATALOGUE: readonly CataloguePreset[] = deepFreeze([...compatibility, ...CONTROL_ROWS, ...OVERLAY_ROWS, ...modern]);
 const INDEX = presetIndex(CATALOGUE);
 
 export function presetById(id: string): CataloguePreset | null {
@@ -305,7 +337,7 @@ export function energyEffectSpec(energy: string): EffectSpec | null {
 }
 
 function family(id: string, app: CatalogueFamily['app'], name: string, extra: string[] = []): CatalogueFamily {
-  const kinds = [...new Set([...CATALOGUE.flatMap((p) => (p.legacy || p.family !== id ? [] : [p.spec.kind])), ...extra])];
+  const kinds = [...new Set([...[...CATALOGUE, ...LEGACY_PRESETS].flatMap((p) => (p.legacy || p.family !== id ? [] : [p.spec.kind])), ...extra])];
   return { id, app, name, kinds: kinds.map((kind) => {
     const def = kindOf(kind)!;
     return { kind, defaults: plain(def.defaults), capabilities: def.capabilities ? plain(def.capabilities) : null,
@@ -320,12 +352,12 @@ const HD_FAMILY_NAMES: Record<HdKind, string> = {
 };
 
 export const FAMILIES: readonly CatalogueFamily[] = deepFreeze([
-  ldjFamily('channel'), ldjFamily('iteration'), ldjFamily('rotation'), ldjFamily('wave'), ldjFamily('matrix', ['ldj.matrixBoard']),
+  ldjFamily('channel'), ldjFamily('iteration'), ldjFamily('rotation'), ldjFamily('wave'), ldjFamily('matrix', ['ldj.matrixBoard', 'ldj.PartyStrobe']),
   ldjFamily('studio'), ldjFamily('visualizer'), ldjFamily('bitmap'), ldjFamily('macro'),
   ...(Object.keys(HD_DEFAULTS) as HdKind[]).map((kind) => family(kind, 'hd', HD_FAMILY_NAMES[kind])),
   family('hd.disco', 'hd', 'Disco'),
   // Party Looks groups presets whose kinds belong to other families; each kind is listed once.
-  { ...family('own.party', 'own', 'Party Looks'), kinds: [] }, family('own.energy', 'own', 'Energy'),
+  { ...family('own.party', 'own', 'Party Looks'), kinds: [] }, family('own.energy', 'own', 'Energy', ['energy.whiteStrobe', 'energy.colorStrobe']),
   // The v2 generators: each sampled in the room (metres) or on the classic plot.
   family('spatial', 'own', 'Spatial', [...KINDS.keys()].filter((kind) => kind.startsWith('v2.'))),
 ]);

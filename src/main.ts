@@ -18,12 +18,13 @@ import { createOsNowPlaying, osNowPlayingKind } from './os-now-playing.ts';
 import DeezerSource from './deezer-source.ts';
 import * as deezer from './deezer.ts';
 import AutoShow from './auto-show.ts';
+import { SPATIAL_AUTO_PATTERNS } from './show/look.ts';
 import { AnalysisCache } from './analysis-cache.ts';
 import { analysisVersion } from './analysis-version.ts';
 import { HTTP_BASE as REMOTE_ANALYSIS_HTTP, RemoteAnalysisPool } from './remote-analysis.ts';
 
 import { state, voices } from './server/state.ts';
-import { startEngine, stopEngine, setFrameHook, setPulseSource } from './server/engine.ts';
+import { startEngine, stopEngine, setFrameHook, setPulseSource, setModulationSource } from './server/engine.ts';
 import { artnetDiscovery } from './server/output.ts';
 import { conductor } from './server/conductor.ts';
 import { applyPatch, applyOverride, setFixtureMaxBrightness, processTap, setPersist, setHooks, flushPendingPersist } from './server/patch.ts';
@@ -123,7 +124,7 @@ const nowPlaying = new NowPlayingSource();
 const deezerSource = new DeezerSource();
 
 const analysisCache = new AnalysisCache(path.join(cacheDir(), 'analysis'));
-const autoShow = new AutoShow(applyPatch, COLOR_PRESETS, PATTERNS, analysisCache);
+const autoShow = new AutoShow(applyPatch, COLOR_PRESETS, [...PATTERNS, ...SPATIAL_AUTO_PATTERNS], analysisCache);
 autoShow.useRemoteAnalysis(remoteAnalysis);
 settings.onChange((changed) => {
   if (changed.includes('analysis.workerToken')) remoteAnalysis.disconnectAll('the worker token changed');
@@ -134,6 +135,7 @@ const integrations = setupIntegrations({ io, midi, spotify, nowPlaying, deezerSo
 autoShow.useFrameClock();
 setFrameHook(() => autoShow.tick());
 setPulseSource(() => autoShow.pulse());
+setModulationSource(() => autoShow.modulation());
 // Recycle an idle worker after model downloads so current analysis is not interrupted.
 modelManager.onFinished((job) => {
   if (Object.values(job.models).some((m) => m.state === 'done') && autoShow.restartWorker) {

@@ -51,7 +51,7 @@ test('the same seed picks the same units', () => {
 
 test('a cluster lights only units within its radius of each picked centre', () => {
   const { room } = syntheticRoom();
-  const spec = scatter({ density: 0.02, clusterM: 0.4, stepBeats: 0.5, envelope: FLASH });
+  const spec = scatter({ selection: 'cells', density: 0.02, clusterM: 0.4, stepBeats: 0.5, envelope: FLASH });
   const out = renderKind(spec, room, frameAt(0.01)).out;
   const on = out.map((s, i) => (s.level > 0 ? i : -1)).filter((i) => i >= 0);
   assert.ok(on.length > Math.round(0.02 * room.n), 'clusters light more than their centres');

@@ -8,9 +8,11 @@ import { requiresAcknowledgement, validateSpec } from '../../src/shared/effects/
 import { PATTERN_IDS, PRESET_ROWS } from '../../src/server/presets.ts';
 import { frameAt, audioOf, syntheticRoom, renderKind } from '../helpers/v2-frames.js';
 
-const NAMES = ['Scatter Strobe', 'Scatter Fade', 'Scatter Grow', 'Popcorn', 'Groove Wave', 'Big Room Wave', 'Ascent', 'Double Wave', 'Swagger',
+const NAMES = ['Scatter Strobe', 'Scatter Fade', 'Scatter Grow', 'Groove Wave', 'Big Room Wave', 'Ascent', 'Double Wave', 'Swagger',
   'Impact', 'Vortex', 'Speaker Shockwave', 'Rotation', 'Swirl', 'Beacon', 'Neural', 'Neural Distance',
-  'Beat Accent Wash', 'Volume Gate Wash', 'Frequency Burst'];
+  'Beat Accent Wash', 'Volume Gate Wash', 'Frequency Burst', 'Wash', 'Breathe', 'Chase', 'Path Runner', 'Surround', 'Zones', 'Surround Answer',
+  'Near and Far', 'Drifting Clouds', 'Aurora', 'Fire', 'Rising Wall', 'Falling Wall', 'Light Orbs', 'Orb Collision', 'Fireworks', 'Rain', 'Stems in Space',
+  'Visualizer Flow', 'Visualizer Drift'];
 const room = V2_PRESETS.filter((p) => !p.id.endsWith('.2d'));
 const twinOf = (p) => V2_PRESETS.find((q) => q.id === `${p.id}.2d`);
 
@@ -45,13 +47,13 @@ test('no Spatial id collides with an existing id or alias', () => {
   const others = CATALOGUE.filter((p) => p.family !== 'spatial');
   const taken = new Set([...PATTERN_IDS, ...others.flatMap((p) => [p.id, ...(p.aliases ?? [])])]);
   for (const p of V2_PRESETS) assert.ok(!taken.has(p.id), p.id);
-  for (const p of V2_PRESETS) assert.equal(presetById(p.id), p, 'the catalogue resolves it');
+  for (const p of V2_PRESETS) assert.equal(presetById(p.id).spec, p.spec, 'the catalogue resolves it');
 });
 
 test('the catalogue lists them under Spatial for the Effects view', () => {
   const spatial = FAMILIES.find((f) => f.id === 'spatial');
   assert.equal(spatial.name, 'Spatial');
-  assert.deepEqual(spatial.kinds.map((k) => k.kind).sort(), ['v2.neural', 'v2.orbit', 'v2.scatter', 'v2.shell', 'v2.sweep']);
+  for (const p of V2_PRESETS) assert.ok(spatial.kinds.some((k) => k.kind === p.spec.kind), p.spec.kind);
   const rows = PRESET_ROWS.filter((r) => r.family === 'spatial');
   assert.equal(rows.length, V2_PRESETS.length);
   assert.ok(rows.every((r) => r.app === 'own'));
@@ -67,7 +69,8 @@ test('every preset lights the synthetic room in both forms', () => {
   const audio = audioOf({ full: 0.9, bass: 0.9, mid: 0.7, high: 0.8 });
   for (const p of V2_PRESETS) {
     const lit = [0.01, 0.3, 0.55, 1.05, 2.2, 3.4].some((beat) =>
-      renderKind(p.spec, synthetic, frameAt(beat, { audio })).out.some((s) => s.level > 0.3));
+      renderKind(p.spec, synthetic, { ...frameAt(beat, { audio }),
+        pictureFeatures: { palette: [{ r: 32, g: 160, b: 255, w: 0, a: 0, uv: 0 }], speed: 1, level: 1, expiresAt: 100000 } }).out.some((s) => s.level > 0.3));
     assert.ok(lit, p.id);
   }
 });

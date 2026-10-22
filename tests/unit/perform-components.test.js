@@ -396,7 +396,7 @@ test('the position reads bars.beats, and the bar follows the time signature', ()
 
 test('each lane shows its playing clip by its preset\'s name, a saved preset\'s first', () => {
   const nameOf = ui.presetNameOf([{ id: 'mine-1', name: 'My wash' }]);
-  assert.deepStrictEqual(ui.laneRows(STATUS, SEQ, nameOf), [{ id: 'front', lane: 'Front', clip: 'Neon Domino' }, { id: 'back', lane: 'back', clip: null }]);
+  assert.deepStrictEqual(ui.laneRows(STATUS, SEQ, nameOf), [{ id: 'front', lane: 'Front', clip: 'Chase 2D' }, { id: 'back', lane: 'back', clip: null }]);
   const lanes = (clip) => ui.laneRows({ ...STATUS, lanes: [{ id: 'front', clip }] }, SEQ, nameOf)[0].clip;
   assert.strictEqual(lanes('c2'), 'My wash');
   assert.strictEqual(lanes('c3'), 'Effect', 'an effect of its own, no preset');
@@ -420,7 +420,7 @@ test("playing transport exposes clip position and controls", () => {
   const html = ui.html(ui.h(ui.Transport, { initial: { sequence: SEQ } }));
   for (const label of ['Pause', 'Stop', 'Next', 'Shuffle', 'Loop']) assert.match(html, new RegExp(`aria-label="${label}"`));
   assert.match(html, /class="transport-position"[^>]*>3\.2</);
-  assert.match(html, /Front[\s\S]*Neon Domino/);
+  assert.match(html, /Front[\s\S]*Chase 2D/);
 });
 
 test("paused transport offers play and unloading", () => {

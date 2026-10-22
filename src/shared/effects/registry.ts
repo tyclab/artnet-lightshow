@@ -13,7 +13,8 @@ export function registerKind<P, S>(def: EffectKindDef<P, S>): void {
 }
 
 export function kindOf(kind: string): EffectKindDef | null {
-  return KINDS.get(kind) ?? null;
+  const canonical = /^compat\.(hd|ldj)\./.test(kind) ? kind.slice(7) : kind;
+  return KINDS.get(canonical) ?? null;
 }
 
 export function requiresAcknowledgement(spec: EffectSpec): boolean {
@@ -37,7 +38,7 @@ let internalAdmitted = false;
 const paramsSchema = z.record(z.string(), z.unknown());
 const specSchema = z.object({
   admission: admissionPolicySchema.optional(),
-  kind: z.string().refine((kind) => KINDS.has(kind) && (internalAdmitted || !KINDS.get(kind)!.internal), 'unknown effect kind'),
+  kind: z.string().refine((kind) => kindOf(kind) !== null && (internalAdmitted || !kindOf(kind)!.internal), 'unknown effect kind'),
   params: paramsSchema.optional(),
   palette: z.array(z.union([
     z.string().regex(HEX_COLOUR, 'expected a full colour hex value'),
@@ -82,7 +83,7 @@ function validateAdmitted(raw: unknown): EffectSpec {
     raw = { ...raw, ...gradient, palette: colours };
   }
   const supplied = specSchema.parse(raw);
-  const def = KINDS.get(supplied.kind)!;
+  const def = kindOf(supplied.kind)!;
   // Only absence inherits a recommendation: false, zero and null remain explicit.
   const present = Object.fromEntries(Object.entries(supplied).filter(([, value]) => value !== undefined));
   const merged = specSchema.parse({ ...def.defaults, ...present, brightness: supplied.brightness ?? def.defaults.brightness ?? 1 });

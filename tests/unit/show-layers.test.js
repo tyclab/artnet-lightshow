@@ -215,6 +215,8 @@ test('rehearsal preserves the strobe panel\'s white-channel behavior', () => {
   ]);
   const red = sample(500, fixtures, COLOR_PRESETS, rig);
   assert.deepStrictEqual([red[0].r > 200, red[16].r, red[16].w], [true, 0, 0], 'a red look: the colour zones red, the white line dark');
-  const strobe = sample(1100, fixtures, COLOR_PRESETS, rig);
+  const strobe = sample(1050, fixtures, COLOR_PRESETS, rig);
   assert.deepStrictEqual([strobe[16].r, strobe[16].w], [0, 255], 'the white strobe lights it');
+  const gap = sample(1175, fixtures, COLOR_PRESETS, rig);
+  assert.deepStrictEqual([gap[16].r, gap[16].w], [0, 0], 'the software overlay goes black between admitted flashes');
 });

@@ -32,6 +32,7 @@ import type { EnergyData, PatchData, TimelineEvent } from './show/render.ts';
 import type { Analysis } from './show/score.ts';
 import type { PulseTrack } from './show/pulse.ts';
 import type { PulseReading } from './types/rig.ts';
+import type { EffectModulation } from './shared/effects/types.ts';
 
 export type AutoShowStatus = 'idle' | 'downloading' | 'analyzing' | 'ready' | 'playing';
 
@@ -189,7 +190,19 @@ class AutoShow {
   pulse(): PulseReading | null {
     if (!this.running || !this._pulse || !this._getPositionMs) return null;
     const positionMs = this.getPositionMs();
-    return Number.isFinite(positionMs) ? this._pulse.at(positionMs) : null;
+    if (!Number.isFinite(positionMs)) return null;
+    return this._pulse.at(positionMs);
+  }
+
+  modulation(): EffectModulation | undefined {
+    if (!this.running || !this._getPositionMs) return undefined;
+    const positionMs = this.getPositionMs();
+    if (!Number.isFinite(positionMs)) return undefined;
+    const time = positionMs / 1000;
+    const section = this.analysis?.segments?.find((part) => typeof part.start === 'number' && typeof part.end === 'number'
+      && Number.isFinite(part.start) && Number.isFinite(part.end) && time >= part.start && time < part.end);
+    if (!section || typeof section.start !== 'number' || typeof section.end !== 'number') return undefined;
+    return { section: section.role, sectionProgress: (time - section.start) / (section.end - section.start) };
   }
 
   _sceneAnchorMs(positionMs: number): number | null {

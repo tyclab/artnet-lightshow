@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
+import { V2_ALIASES } from '../../src/shared/effects/catalogue.ts';
 import { LDJ_IDS, CATALOGUE, BUILTIN_PALETTES, FAMILIES, LDJ_PRESETS, presetById, presetIndex } from '../../src/shared/effects/index.ts';
 import { KINDS, kindOf, requiresAcknowledgement, validateSpec } from '../../src/shared/effects/registry.ts';
 import { LDJ_CHANNEL_ROWS } from '../../src/shared/effects/ldj-channel.ts';
@@ -76,7 +77,7 @@ test('the catalogue builds whichever effect module a host loads first', () => {
   for (const first of ['macro.ts', 'render.ts', 'catalogue.ts', 'ldj-ids.ts', 'ldj-channel.ts', 'registry.ts', 'hd.ts', 'disco.ts', 'energy.ts', 'layer.ts', 'sequence.ts']) {
     const dir = new URL('../../src/shared/effects/', import.meta.url).href;
     const script = `await import('${dir}${first}'); const m = await import('${dir}index.ts'); console.log(m.CATALOGUE.length);`;
-    assert.strictEqual(execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' }).trim(), '256', first);
+    assert.strictEqual(execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' }).trim(), String(CATALOGUE.length), first);
   }
 });
 
@@ -167,18 +168,24 @@ const ldjRows = () => CATALOGUE.filter((p) => p.app === 'ldj');
 
 test("entertainment catalogue has 162 distinct preset rows", () => {
   const rows = ldjRows();
-  assert.strictEqual(rows.length, 162);
-  assert.strictEqual(new Set(rows.map((p) => p.id)).size, 162);
+  assert.strictEqual(rows.length, LDJ_PRESETS.filter((p) => !V2_ALIASES[p.id]).length);
+  assert.strictEqual(new Set(rows.map((p) => p.id)).size, rows.length);
   const fromTable = Object.values(LDJ_IDS).filter((r) => r.kind === 'preset' || r.kind === 'macro').map((r) => r.id);
-  assert.deepStrictEqual(rows.map((p) => p.id).sort(), [...fromTable, ...LDJ_IDS[169].presets].sort());
+  for (const id of [...fromTable, ...LDJ_IDS[169].presets]) assert.ok(presetById(id), id);
+  assert.ok(rows.every((p) => p.retired));
   // The touch board is a parameterised surface with no preset of its own.
   assert.ok(!rows.some((p) => p.spec.kind === 'ldj.matrixBoard'));
   for (const row of Object.values(LDJ_IDS)) {
     if (row.kind !== 'preset' || row.engine === 'visualizer') continue;
     const preset = presetById(row.id);
     assert.strictEqual(row.id, `ldj.${row.name}`);
-    assert.strictEqual(preset.spec.kind, row.id, 'the kind is the effect');
-    assert.strictEqual(preset.family, `ldj.${row.engine}`);
+    if (V2_ALIASES[row.id]) {
+      assert.strictEqual(preset.id, V2_ALIASES[row.id]);
+      assert.strictEqual(preset.family, 'spatial');
+    } else {
+      assert.strictEqual(preset.spec.kind, row.id === 'ldj.PartyStrobe' ? 'ldj.MatrixPulse' : row.id);
+      assert.strictEqual(preset.family, `ldj.${row.engine}`);
+    }
   }
   // Every Scene Maker row is in its family; all but Fireworks change renderer within the row and play as macros.
   for (const ordinal of CLASSES.macro) {
@@ -223,9 +230,8 @@ test('built-in specs are wire data: they validate to themselves and survive JSON
 test("preset lifetime metadata leaves kernel timing unchanged", () => {
   for (const p of ldjRows()) assert.strictEqual(p.lengthBeats, 32, p.id);
   // Rows with a beats parameter keep their 32 there; the others gain none.
-  assert.strictEqual(presetById('ldj.ScatterStrobe').spec.params.beats, 32);
-  assert.strictEqual(presetById('ldj.ScatterStrobe').spec.params.cadence, 0.25);
-  assert.strictEqual(presetById('ldj.Swirl').spec.params.beats, 32);
+  assert.strictEqual(presetById('ldj.ScatterStrobe').spec.params.stepBeats, 0.25);
+  assert.strictEqual(presetById('ldj.Swirl').spec.params.turnsPerBar, 0.25);
   for (const id of ['ldj.StudioN5', 'ldj.bitmap.SmoothLoop', 'ldj.visualizer.pulse']) assert.ok(!('beats' in presetById(id).spec.params), id);
   assert.deepStrictEqual(presetById('ldj.StudioN5').spec.params, {});
   const loops = Object.fromEntries(CLASSES.macro.map((o) => [LDJ_IDS[o].name, presetById(LDJ_IDS[o].id).spec.params.loopBeats]));

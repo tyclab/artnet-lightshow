@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 // The entry point registers every kind, so a stored spec validates against it.
 import { CATALOGUE, deepFreeze, presetById } from '../shared/effects/index.ts';
+import { EFFECT_LIBRARY_VERSION, migrateEffectSpec } from '../shared/effects/migrate.ts';
 import { requiresAcknowledgement, validateSpec } from '../shared/effects/registry.ts';
 import { canonical } from '../shared/effects/layer.ts';
 import { PATTERN_FUNCS } from '../shared/patterns.ts';
@@ -73,6 +74,7 @@ const storedSpec = z.unknown().transform((raw, ctx): EffectSpec => {
 });
 
 const fileSchema = z.object({
+  version: z.number().int().min(0).max(EFFECT_LIBRARY_VERSION).default(0),
   presets: z.array(z.object({
     id: z.string().min(1).max(64),
     name: nameSchema,
@@ -109,7 +111,7 @@ export class EffectLibrary extends JsonStore {
 
   load(): this {
     const saved = this.readValid(fileSchema);
-    if (saved) this._install(saved.presets);
+    if (saved) this._install(saved.presets.map((preset) => ({ ...preset, spec: migrateEffectSpec(preset.spec, saved.version) })));
     return this;
   }
 
@@ -199,7 +201,7 @@ export class EffectLibrary extends JsonStore {
   // Persist before publishing so runtime state cannot diverge from the saved library.
   _commit(next: readonly UserPreset[]): void {
     try {
-      this.writeJson({ presets: next });
+      this.writeJson({ version: EFFECT_LIBRARY_VERSION, presets: next });
     } catch (err) {
       console.warn(`[effects] could not save ${this.file}: ${messageOf(err)}`);
       throw new HttpError(500, `Could not save the effect library: ${messageOf(err)}`);

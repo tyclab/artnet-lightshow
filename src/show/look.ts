@@ -2,6 +2,8 @@
 
 import { paletteBankForSize } from '../server/palettes.ts';
 import { blend, unit } from './score.ts';
+import { V2_PRESETS } from '../shared/effects/v2/presets.ts';
+import { requiresAcknowledgement } from '../shared/effects/registry.ts';
 import type { Analysis, Reading, Score } from './score.ts';
 import type { BurstKind } from './intents.ts';
 import type { Genre, Mood } from '../types/analysis.ts';
@@ -112,6 +114,25 @@ const RHYTHMIC = new Set(['chase', 'chase-rev', 'runner', 'pairs', 'ping-pong',
 const FLOWY = new Set(['solid', 'fade', 'wave', 'sparkle', 'twinkle', 'gradient', 'plasma']);
 const PULSE_PATTERNS = new Set(['drums', 'stems']);
 const EXPRESSIVE = new Set(['ensemble', 'ribbon']);
+
+const SPATIAL_MATCH: Record<string, string[]> = {
+  solid: ['v2.wash'], fade: ['v2.breathe'], ribbon: ['v2.lightOrbs', 'v2.aurora'], wave: ['v2.grooveWave'],
+  gradient: ['v2.bigRoomWave'], plasma: ['v2.noise'], twinkle: ['v2.scatterGrow'], sparkle: ['v2.scatterFade'],
+  chase: ['v2.chase', 'v2.surround'], runner: ['v2.pathRunner', 'v2.lightOrbs'], 'ping-pong': ['v2.swagger'],
+  pairs: ['v2.surroundAnswer'], sections: ['v2.zones'], split: ['v2.rotation'], 'stack-up': ['v2.risingWall'],
+  'random-flash': ['v2.scatterFade'], hit: ['v2.speakerShockwave'], burst: ['v2.fireworks'],
+  ensemble: ['v2.stemsSpace'], stems: ['v2.stemsSpace'], drums: ['v2.speakerShockwave'], comet: ['v2.lightOrbs'],
+  'color-cycle': ['v2.swirl'],
+};
+const INPUT_ONLY = new Set(V2_PRESETS.filter((p) => ['v2.neural', 'v2.visualizer'].includes(p.spec.kind)).map((p) => p.id));
+const PARTICLE_PATHS = new Set(V2_PRESETS.filter((p) => p.spec.kind === 'v2.particles').map((p) => p.id));
+
+// A few whole lamps can miss a particle path entirely; automatic shows need spatial coverage and seekable inputs.
+export const automaticPattern = (id: string, pixels: boolean): boolean => !INPUT_ONLY.has(id) && (pixels || !PARTICLE_PATHS.has(id));
+export const SPATIAL_AUTO_PATTERNS = V2_PRESETS.filter((p) => !p.id.endsWith('.2d') && automaticPattern(p.id, true) && !requiresAcknowledgement(p.spec))
+  .map(({ id, name, desc }) => ({ id, name, desc }));
+for (const id of [...RHYTHMIC]) for (const spatial of SPATIAL_MATCH[id] ?? []) RHYTHMIC.add(spatial);
+for (const id of [...FLOWY]) for (const spatial of SPATIAL_MATCH[id] ?? []) FLOWY.add(spatial);
 
 // Measured energy remains a floor even when the classifier confidently names a quiet genre.
 const STYLE_DRIVE: Record<string, number> = { dance: 0.85, moderate: 0.6, rock: 0.42, calm: 0.12 };
@@ -271,6 +292,7 @@ function pickPattern({ character, available, score = null, seed = 0, drive = 0.5
   pictures?: ReadonlySet<string> | null;
   avoid?: ReadonlySet<string> | null;
 }): string {
+  available = new Set([...available].filter((id) => automaticPattern(id, pixels)));
   const c: Character = character || {};
   const low = unit(c.kick) * 0.6 + unit(c.bassline) * 0.4;
   const voice = unit(c.vocal);
@@ -279,11 +301,14 @@ function pickPattern({ character, available, score = null, seed = 0, drive = 0.5
   const pulse = unit(c.pulse, 0.4);
 
   const genrePool = new Set([...blend(score ? score.subgenre : {}, SUBGENRE_PATTERNS).keys()]);
+  for (const id of [...genrePool]) for (const spatial of SPATIAL_MATCH[id] ?? []) genrePool.add(spatial);
   const trust = unit(score && score.genreTrust);
 
   const pictured = (pixelPool: string[]) => (pixels ? pixelPool : pictures ? pixelPool.filter((p) => pictures.has(p)) : []);
   const pickFrom = (pool: string[], pixelPool: string[] = []): string => {
     let filtered = [...pool, ...pictured(pixelPool)].filter((p) => available.has(p));
+    const spatial = [...pool, ...pixelPool].flatMap((p) => SPATIAL_MATCH[p] ?? []).filter((p) => available.has(p));
+    if (spatial.length) filtered = [...new Set(spatial)];
     if (trust >= 0.25 && genrePool.size) {
       const biased = filtered.filter((p) => genrePool.has(p));
       if (biased.length) filtered = biased;
@@ -338,8 +363,9 @@ function pickPattern({ character, available, score = null, seed = 0, drive = 0.5
 const PAR_PICTURES: ReadonlySet<string> = new Set(['gradient', 'plasma', 'comet', 'burst']);
 const PAR_PICTURES_WITH_DRUMS: ReadonlySet<string> = new Set([...PAR_PICTURES, 'drums']);
 
-function availableFor(patterns: readonly { id: string }[], analysis: { pulse?: unknown } | null | undefined): Set<string> {
-  const ids = new Set(patterns.map((p) => p.id));
+function availableFor(patterns: readonly { id: string }[], analysis: { pulse?: unknown } | null | undefined,
+  { pixels = false }: { pixels?: boolean } = {}): Set<string> {
+  const ids = new Set(patterns.map((p) => p.id).filter((id) => automaticPattern(id, pixels)));
   if (!analysis || !analysis.pulse) for (const id of PULSE_PATTERNS) ids.delete(id);
   return ids;
 }

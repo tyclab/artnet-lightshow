@@ -17,16 +17,16 @@ export const PLAYLIST_TEMPLATES = [
   { id: 'empty', name: 'My Playlist' },
 ] as const;
 
-const UNIVERSAL = new Set(['StrobeCycle', 'PartyStrobe', 'Swirl', 'GrowCycle', 'FadeCycle', 'SoftStrobe', 'Fireworks',
-  'Drip', 'Glow', 'Blur', 'Split', 'Flip', 'CrossFade', 'GrooveWave', 'FillCycle', 'QuickFlash', 'BigRoomMix',
-  'DoubleFill', 'Ascent', 'DoubleWave', 'Impact', 'Swagger', 'Vortex', 'Blackout'].map((name) => `ldj.${name}`));
+const UNIVERSAL = new Set(['scatterStrobe', 'scatterFade', 'scatterGrow', 'grooveWave', 'bigRoomWave', 'ascent',
+  'doubleWave', 'swagger', 'impact', 'vortex', 'speakerShockwave', 'rotation', 'swirl', 'beacon', 'neural',
+  'beatAccentWash', 'volumeGateWash', 'chase', 'surround', 'risingWall', 'lightOrbs', 'fireworks', 'rain', 'noise'].map((name) => `v2.${name}`));
 const generatorSchema = z.object({
   template: z.enum(['universal', 'bonus', 'compatible', 'all', 'empty']),
   name: z.string().trim().min(1).max(80).optional(),
   lengthBeats: z.number().finite().int().min(1).max(1024).default(32),
   includeRapid: z.boolean().default(false),
 }).strict();
-type Preset = { id: string; name: string; legacy?: boolean; spec?: EffectSpec };
+type Preset = { id: string; name: string; legacy?: boolean; retired?: boolean; spec?: EffectSpec };
 
 function playableOn(spec: EffectSpec, caps: HardwareCaps, bpm: number, parent?: AdmissionPolicy): boolean {
   const policy = stricterPolicy(parent, spec.admission);
@@ -39,10 +39,9 @@ export function generatePlaylist(raw: unknown, presets: Preset[], caps: Hardware
   const options = validate(generatorSchema, raw, 'playlist generator');
   const skipped: { id: string; name: string; reason: string }[] = [];
   const rows = presets.filter((preset) => {
-    if (options.template === 'empty') return false;
+    if (options.template === 'empty' || preset.retired) return false;
     if (options.template === 'universal' && !UNIVERSAL.has(preset.id)) return false;
-    if (options.template === 'bonus' && (!preset.id.startsWith('ldj.') || UNIVERSAL.has(preset.id)
-      || preset.id.startsWith('ldj.visualizer.') || preset.id.startsWith('ldj.Matrix'))) return false;
+    if (options.template === 'bonus' && (!preset.id.startsWith('v2.') || UNIVERSAL.has(preset.id))) return false;
     const reason = !preset.spec || preset.legacy ? 'Classic look; use it outside a playlist'
       : pacesOwnFlashes(preset.spec) ? 'Self-paced strobe; use its dedicated pad'
         : !options.includeRapid && requiresAcknowledgement(preset.spec) ? 'Rapid effect omitted'

@@ -56,6 +56,7 @@ function renderCore(inst: EffectInstance, frame: FrameBase & { roll?: number }, 
 // Each rate group keeps the full room and seed, preserving lamp selection and geometry.
 export function renderEffect(inst: EffectInstance, frame: FrameBase & { roll?: number }, room: Room, stepper: EffectStepper, out: EffectSlot[],
   prepare?: (state: unknown) => void): void {
+  stepper.prepareKind(inst.id, inst.spec.kind, frame.nowMs);
   if (!frame.hardware?.length || inst.spec.kind === 'macro' || inst.spec.kind === 'pattern.bundle') {
     renderCore(inst, { ...frame, admission: stricterPolicy(frame.admission, inst.spec.admission) }, room, stepper, out, prepare);
     return;

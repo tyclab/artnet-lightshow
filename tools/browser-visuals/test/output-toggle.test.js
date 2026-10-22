@@ -62,3 +62,22 @@ test('selecting Effects during capture drops all pending visualizer frames and r
   assert.equal(h.calls.filter(({ event }) => event.endsWith('release')).length, 4);
   assert.ok(h.pumps.every(pump => pump.lease === null && pump.retryAt === 0));
 });
+
+test('Colour + motion keeps only the room capture and drops pending curtain and panel frames', async () => {
+  const h = outputs(), captured = [];
+  for (const pump of h.pumps) pump.capture = () => new Promise(resolve => captured.push(resolve));
+  const pending = h.step(); await Promise.resolve();
+  assert.equal(captured.length, 4);
+  h.source('inspired', 2);
+  for (const resolve of captured) resolve({ width: 2, height: 1, data: new Uint8Array(6).fill(128) });
+  await pending;
+  assert.deepEqual(h.calls.filter(({ event }) => event.endsWith('frame')).map(({ id }) => id), ['room']);
+  assert.equal(h.calls.filter(({ event }) => event.endsWith('release')).length, 3);
+  assert.ok(h.pumps.slice(0, 3).every(pump => pump.lease === null));
+  assert.ok(h.pumps[3].lease);
+  h.source('visualizer', 3); h.time(100);
+  for (const pump of h.pumps) pump.capture = async () => ({ width: 2, height: 1, data: new Uint8Array(6) });
+  await h.step();
+  assert.equal(h.calls.filter(({ event }) => event.endsWith('claim')).length, 7, 'only the three paused feeds reclaim');
+  assert.ok(h.pumps.every(pump => pump.lease));
+});

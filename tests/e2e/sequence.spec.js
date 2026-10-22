@@ -58,7 +58,7 @@ test('the sequence transport fetches lane and clip names on opening the view', a
   expect((await request.post('/api/sequence/play', { data: {} })).ok()).toBe(true);
   await open(page, 'sequence');
   await expect(page.locator('.transport-lanes')).toContainText('Front wash');
-  await expect(page.locator('.transport-lanes')).toContainText('Neon Domino');
+  await expect(page.locator('.transport-lanes')).toContainText('Chase 2D');
 });
 
 test('a clip added in the editor plays, and the lane cursor moves', async ({ page }) => {

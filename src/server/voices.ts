@@ -178,7 +178,7 @@ export function lengthBeatsOf(spec: EffectSpec, presetLengthBeats?: number | nul
     const loop = scopedLoopLength(spec, params as unknown as HdParams);
     if (positive(loop)) return loop;
   }
-  if (spec.kind.startsWith('ldj.') && positive(params.beats)) return params.beats;
+  if (/^(compat\.)?ldj\./.test(spec.kind) && positive(params.beats)) return params.beats;
   if (spec.kind === 'macro' && positive(params.loopBeats)) return params.loopBeats;
   if (spec.kind === BUNDLE_KIND && positive(params.lengthBeats)) return params.lengthBeats;
   return spec.scope === 'singleBeat' ? 1 : 4;

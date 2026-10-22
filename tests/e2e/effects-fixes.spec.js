@@ -9,7 +9,7 @@ test.beforeEach(async ({ request }) => {
 async function sheetFor(page, name) {
   await open(page, 'effects');
   await page.getByLabel('Search effects').fill(name);
-  await page.getByRole('button', { name: `Edit ${name}` }).first().click();
+  await page.getByRole('button', { name: `Edit ${name}`, exact: true }).first().click();
   return page.getByRole('dialog', { name: 'Edit effect' });
 }
 
@@ -20,7 +20,7 @@ async function withPalette(sheet) {
 }
 
 test('a hex colour typed key by key stays as typed until Enter', async ({ page }) => {
-  const sheet = await sheetFor(page, 'Neon Domino');
+  const sheet = await sheetFor(page, 'Chase');
   const hex = await withPalette(sheet);
   await hex.fill('');
   await hex.pressSequentially('#ff0');
@@ -32,7 +32,7 @@ test('a hex colour typed key by key stays as typed until Enter', async ({ page }
 });
 
 test('an unfinished hex colour blocks Save copy', async ({ page }) => {
-  const sheet = await sheetFor(page, 'Neon Domino');
+  const sheet = await sheetFor(page, 'Chase');
   const hex = await withPalette(sheet);
   await sheet.getByRole('button', { name: 'Save as…' }).click();
   await expect(sheet.getByRole('button', { name: 'Save copy' })).toBeEnabled();
@@ -42,8 +42,8 @@ test('an unfinished hex colour blocks Save copy', async ({ page }) => {
 });
 
 test('after Revert removes itself, Escape still closes the sheet and Tab stays in it', async ({ page }) => {
-  const sheet = await sheetFor(page, 'Neon Domino');
-  await sheet.getByLabel('Stagger', { exact: true }).fill('0.25');
+  const sheet = await sheetFor(page, 'Chase');
+  await sheet.getByLabel('Step Beats', { exact: true }).fill('0.25');
   await sheet.getByRole('button', { name: 'Revert' }).click();
   await expect(sheet.getByRole('button', { name: 'Revert' })).toHaveCount(0);
   await page.keyboard.press('Tab');
@@ -54,7 +54,7 @@ test('after Revert removes itself, Escape still closes the sheet and Tab stays i
 });
 
 test('Apply recommended drops an unfinished hex colour', async ({ page }) => {
-  const sheet = await sheetFor(page, 'Neon Domino');
+  const sheet = await sheetFor(page, 'Chase');
   const hex = await withPalette(sheet);
   await hex.fill('#12');
   await expect(hex).toHaveAttribute('aria-invalid', 'true');
@@ -63,12 +63,18 @@ test('Apply recommended drops an unfinished hex colour', async ({ page }) => {
   await expect(sheet.getByLabel('Colour 1', { exact: true })).toHaveValue(/^#[0-9A-F]{6}([0-9A-F]{2})?$/);
 });
 
-test('a number typed into Cadence is not clamped mid-typing', async ({ page }) => {
-  const sheet = await sheetFor(page, 'Drip');
-  const cadence = sheet.getByLabel('Cadence', { exact: true });
-  await cadence.fill('');
-  await cadence.pressSequentially('0.5');
-  await expect(cadence).toHaveValue('0.5');
-  await cadence.blur();
-  await expect(cadence).toHaveValue('0.5');
+test('a saved legacy effect retains its unclamped Cadence editor', async ({ page, request }) => {
+  const spec = { kind: 'ldj.Drip', params: { cadence: 2, beats: 32 }, palette: ['#FFFFFF', '#00A0FF'], brightness: 1 };
+  const saved = await request.post('/api/effects', { data: { name: 'Authored drip', spec } });
+  expect(saved.ok()).toBe(true);
+  const { preset } = await saved.json();
+  try {
+    const sheet = await sheetFor(page, 'Authored drip');
+    const cadence = sheet.getByLabel('Cadence', { exact: true });
+    await cadence.fill('');
+    await cadence.pressSequentially('0.5');
+    await expect(cadence).toHaveValue('0.5');
+    await cadence.blur();
+    await expect(cadence).toHaveValue('0.5');
+  } finally { await request.delete(`/api/effects/${encodeURIComponent(preset.id)}`); }
 });

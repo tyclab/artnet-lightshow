@@ -181,6 +181,7 @@ class ShowDirector {
 
     if (context.pixels) this._mapPixels(intents, context);
     if (context.panels) this._mapPanels(intents, context);
+    this._mapSpatial(intents, context);
     // Apply operator edits before geometry adaptation so authored travelling looks can still be mirrored.
     const edited = this.overlay ? applyOverlay(intents, this.overlay, context.sections) : intents;
     if (!context.pixels) this._mapPars(edited, context);
@@ -304,6 +305,7 @@ class ShowDirector {
     const { available } = context;
     for (const intent of intents) {
       if (intent.kind !== INTENT.SCENE || !intent.pattern) continue;
+      if (intent.pattern.startsWith('v2.')) { intent.pixelMap = 'stage'; continue; }
       const source = String(intent.source);
       if (source === 'buildup:rise' && available.has('stack-up')) intent.pattern = 'stack-up';
       const section = this._sectionOf(intent, context);
@@ -312,6 +314,68 @@ class ShowDirector {
         || (!source.startsWith('buildup:') && source !== 'break' && !!section && MIRRORED_ROLES.has(section.role));
       intent.pixelMap = symmetric && MIRRORED_LOOKS.has(intent.pattern) ? 'mirror' : 'stage';
     }
+  }
+
+  _mapSpatial(intents: Intent[], context: PlanContext): void {
+    const roles: Record<string, string[]> = {
+      intro: ['v2.noise', 'v2.aurora', 'v2.breathe'], verse: ['v2.lightOrbs', 'v2.stemsSpace', 'v2.grooveWave'],
+      prechorus: ['v2.risingWall'], buildup: ['v2.risingWall'], chorus: ['v2.surround', 'v2.rotation', 'v2.stemsSpace'],
+      drop: ['v2.speakerShockwave', 'v2.fireworks', 'v2.orbCollision'], breakdown: ['v2.noise', 'v2.aurora', 'v2.rain'],
+      bridge: ['v2.lightOrbs', 'v2.stemsSpace', 'v2.surroundAnswer'], instrumental: ['v2.stemsSpace', 'v2.surround'],
+      outro: ['v2.noise', 'v2.breathe', 'v2.aurora'],
+    };
+    let lastSection = -1, lastPattern: string | null = null;
+    const bySection = new Map<number, string>();
+    const releases = context.available.has('v2.fallingWall') ? context.drops
+      .filter((drop) => context.buildups.some((build) => Math.abs(endOf(build) - drop.t) < 0.3))
+      .map((drop) => ({ start: Math.round(drop.t * 1000), end: Math.round((drop.t + (context.barSec ?? 240 / context.baseBpm)) * 1000) })) : [];
+    for (const intent of intents) {
+      if (intent.kind !== INTENT.SCENE || !intent.pattern) continue;
+      const source = String(intent.source), section = this._sectionOf(intent, context);
+      const build = source.startsWith('buildup:') ? context.buildups.find((b) => intent.timeMs / 1000 >= b.t - 0.25 && intent.timeMs / 1000 <= endOf(b) + 0.25) : null;
+      const role = build ? 'buildup' : source.startsWith('drop:') ? 'drop' : source === 'break' ? 'breakdown' : section?.role;
+      let pool = (roles[role ?? ''] ?? []).filter((id) => context.available.has(id));
+      if (!pool.length) continue;
+      if (section && section.index !== lastSection) {
+        const fresh = pool.filter((id) => id !== lastPattern);
+        if (fresh.length) pool = fresh;
+      }
+      const index = Math.abs((section?.identity ?? 0) + context.trackSeed);
+      let pattern = bySection.get(section?.index ?? -1) ?? pool[index % pool.length];
+      if (build) pattern = pool[0];
+      else if (source.startsWith('drop:')) pattern = pool[index % pool.length];
+      else if (source === 'break') pattern = pool[0];
+      else if (section) {
+        bySection.set(section.index, pattern);
+        lastSection = section.index; lastPattern = pattern;
+      }
+      if (source === 'drop:anchor' && releases.some((r) => Math.abs(r.start - intent.timeMs) < 2)) pattern = 'v2.fallingWall';
+      intent.pattern = pattern;
+      intent.pixelPattern = null; intent.panelPattern = null; intent.pixelMap = 'stage'; intent.split = 0;
+      intent.strobeSpeed = 0;
+      intent.pixelSpan = null; intent.pixelFrom = null;
+      if (pattern === 'v2.risingWall') {
+        const start = build?.t ?? section?.start, end = build ? endOf(build) : section?.end;
+        if (start !== undefined && end !== undefined && end > start) {
+          intent.pixelSpan = Math.max(1, beatsBetween(context, start, end));
+          intent.pixelFrom = unit((intent.timeMs / 1000 - start) / (end - start));
+        }
+      }
+    }
+    for (const release of releases) {
+      const anchor = intents.find((i) => i.kind === INTENT.SCENE && i.source === 'drop:anchor' && Math.abs(i.timeMs - release.start) < 2);
+      if (!anchor || anchor.kind !== INTENT.SCENE) continue;
+      for (let i = intents.length - 1; i >= 0; i--) {
+        const intent = intents[i];
+        if (intent !== anchor && intent.kind === INTENT.SCENE && intent.source.startsWith('drop:')
+          && intent.timeMs >= release.start && intent.timeMs < release.end) intents.splice(i, 1);
+      }
+      const pool = roles.drop.filter((id) => context.available.has(id));
+      if (pool.length) intents.push(scene(release.end, { pattern: pool[Math.abs(context.trackSeed) % pool.length], colors: anchor.colors,
+        pixelPattern: null, panelPattern: null, pixelMap: 'stage', pixelSpan: null, pixelFrom: null, split: 0, strobeSpeed: 0, beatDivision: 1 },
+      { source: 'drop:detonate', priority: PRIORITY.DROP }));
+    }
+    intents.sort((a, b) => a.timeMs - b.timeMs || a.priority - b.priority);
   }
 
   _sectionOf(intent: SceneIntent, context: PlanContext): PlannedSection | null {
@@ -382,7 +446,7 @@ class ShowDirector {
       trackSeed: trackSeedOf(analysis),
       finalReturns: lastReturns(sections),
       continuous: hasScore(analysis),
-      available: look.availableFor(this.patterns, analysis),
+      available: look.availableFor(this.patterns, analysis, { pixels: this.pixels }),
       pixels: this.pixels,
       panels: this.pixels && this.panels,
       pictures: this.pixels ? null

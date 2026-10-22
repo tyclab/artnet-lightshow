@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { hash01 } from '../hash.ts';
 import { registerKind } from '../registry.ts';
-import { accentStrobes, directionOf, extentAlong, lengthIn, paint, planDirectionOf, positionsOf, project, soft, triggerLevel, v2CommonSchema } from './common.ts';
+import { accentStrobes, bandGate, directionOf, extentAlong, lengthIn, paint, planDirectionOf, positionsOf, project, soft, triggerLevel, v2CommonSchema } from './common.ts';
+import { pathEndpoints } from './path.ts';
 import type { Point, Positions } from './common.ts';
 import type { EffectFrame, EffectSlot } from '../types.ts';
 import type { Room } from '../../room.ts';
@@ -10,13 +11,20 @@ import type { Room } from '../../room.ts';
 export const sweepSchema = v2CommonSchema.extend({
   azimuthDeg: z.number().min(-720).max(720).default(0),
   elevationDeg: z.number().min(-90).max(90).default(0),
-  profile: z.enum(['crest', 'line', 'comet', 'gradient', 'stripe']).default('crest'),
+  profile: z.enum(['crest', 'line', 'comet', 'gradient', 'stripe', 'fill']).default('crest'),
   // Metres (plot fractions of a nominal 4 m plot in plan space) and metres per beat.
   width: z.number().min(0.01).max(20).default(0.6),
   speed: z.number().min(0).max(40).default(1.5),
   motion: z.enum(['loop', 'bounce', 'random']).default('loop'),
   // Degrees the plane turns per lap, continuously.
   turnPerLap: z.number().min(-720).max(720).default(0),
+  fillSource: z.enum(['cycle', 'once', 'section', 'volume']).default('cycle'),
+  lengthBeats: z.number().min(1).max(256).default(16),
+  falling: z.boolean().default(false),
+  fromAnchor: z.string().min(1).max(120).nullable().default(null),
+  toAnchor: z.string().min(1).max(120).nullable().default(null),
+  fromPoint: z.object({ x: z.number().min(-100).max(100), y: z.number().min(0).max(100), z: z.number().min(-100).max(100) }).nullable().default(null),
+  toPoint: z.object({ x: z.number().min(-100).max(100), y: z.number().min(0).max(100), z: z.number().min(-100).max(100) }).nullable().default(null),
 });
 export type SweepParams = z.output<typeof sweepSchema>;
 
@@ -84,18 +92,35 @@ function renderSweep(p: SweepParams, room: Room, f: EffectFrame, out: EffectSlot
   const space = pos.plan ? 'plan' : 'room';
   const width = lengthIn(space, p.width);
   const travel = lengthIn(space, p.speed) * (f.beatPos - f.anchorBeat);
-  const pass = passOf(p, pos, Number.isFinite(travel) ? travel : 0, width, f.seed);
+  let pass = passOf(p, pos, Number.isFinite(travel) ? travel : 0, width, f.seed);
+  const { from, to } = pathEndpoints(p, room, pos);
+  if (from && to) {
+    const dx = to.x - from.x, dy = pos.plan ? 0 : to.y - from.y, dz = to.z - from.z, distance = Math.hypot(dx, dy, dz);
+    if (distance > 1e-6) {
+      const d = { x: dx / distance, y: dy / distance, z: dz / distance };
+      const lo = from.x * d.x + (pos.plan ? 0 : from.y * d.y) + from.z * d.z;
+      const phase = travel / distance, lap = Math.floor(phase), q = phase - lap;
+      const reversed = p.motion === 'bounce' && lap % 2 === 1;
+      pass = { d, lo, hi: lo + distance, crest: lo + (reversed ? 1 - q : q) * distance, heading: reversed ? -1 : 1, lap };
+    }
+  }
   const span = Math.max(1e-6, pass.hi - pass.lo);
   // A loop also draws the crest a lap behind, so it re-enters at the start while it leaves at the end.
   const loopLength = p.motion === 'loop' ? span + 2 * width : 0;
   const trigger = triggerLevel(p, f);
+  const age = Math.max(0, f.beatPos - f.anchorBeat);
+  const progress = p.fillSource === 'volume' ? bandGate(p, f) ?? 1 : p.fillSource === 'once' ? Math.min(1, age / p.lengthBeats) : p.fillSource === 'section'
+    ? f.modulation?.sectionProgress ?? Math.min(1, age / p.lengthBeats) : age / p.lengthBeats % 1;
+  const fill = p.falling ? 1 - progress : progress;
   for (let i = 0; i < room.n; i++) {
     const at = project(pos, i, pass.d);
     const delta = (at - pass.crest) * pass.heading;
-    let lit = profileLevel(p.profile, delta, width, pos.size[i]);
-    if (loopLength) lit = Math.max(lit, profileLevel(p.profile, delta + loopLength, width, pos.size[i]));
     const along = p.profile === 'gradient' ? (at - pass.crest) / (span + 2 * width) : (at - pass.lo) / span;
-    paint(p, f, along, lit * trigger, out[i]);
+    let lit = p.profile === 'fill' ? (fill <= 0 ? 0 : Math.min(1, Math.max(0, (fill - along) * span / Math.max(width, pos.size[i]) + 0.5)))
+      : profileLevel(p.profile, delta, width, pos.size[i]);
+    if (p.profile === 'fill') lit *= 0.78 + 0.22 * (1 + Math.cos(age * Math.PI * 2 * (1 + 3 * progress))) / 2;
+    if (loopLength && p.profile !== 'fill') lit = Math.max(lit, profileLevel(p.profile, delta + loopLength, width, pos.size[i]));
+    paint(p, f, p.falling ? 1 - along : along, lit * trigger, out[i]);
   }
 }
 

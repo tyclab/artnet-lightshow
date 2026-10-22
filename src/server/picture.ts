@@ -9,7 +9,7 @@ export const PICTURE_IMAGE_MAX = 128;
 
 export interface PictureRig { signature: string; units: number }
 
-interface Lease { leaseId: string; owner: string; signature: string; units: number; expiresAt: number; nextFrame: number; data: Uint8Array | null; image: PictureImage | null }
+interface Lease { leaseId: string; owner: string; signature: string; units: number; expiresAt: number; nextFrame: number; data: Uint8Array | null; image: PictureImage | null; imageCurrent: boolean }
 
 export class PictureInputError extends Error {
   code: string;
@@ -65,7 +65,7 @@ export class PictureInput {
     if (typeof value.signature !== 'string' || value.signature !== current.signature) return refuse('STALE', 'The rig changed: fetch the units again');
     if (this.lease && this.lease.owner !== owner) return refuse('BUSY', 'The picture already has a sender');
     const lease = this.lease ?? { leaseId: randomUUID(), owner, signature: current.signature, units: current.units,
-      expiresAt: this.now() + PICTURE_TTL_MS, nextFrame: -Infinity, data: null, image: null };
+      expiresAt: this.now() + PICTURE_TTL_MS, nextFrame: -Infinity, data: null, image: null, imageCurrent: false };
     this.lease = lease;
     return { ok: true as const, leaseId: lease.leaseId, units: lease.units, ttlMs: PICTURE_TTL_MS, maxFps: PICTURE_MAX_FPS, format: 'rgb24', order: 'units' };
   }
@@ -85,6 +85,7 @@ export class PictureInput {
     const image = (raw as { image?: unknown }).image;
     const picture = image === undefined ? null : pictureImage(image);
     lease.data = Uint8Array.from(data); lease.nextFrame = next; lease.expiresAt = now + PICTURE_TTL_MS;
+    lease.imageCurrent = picture !== null;
     if (picture) lease.image = picture;
     return { ok: true };
   }
@@ -99,9 +100,9 @@ export class PictureInput {
     return lease ? { units: lease.units, remainingMs: Math.max(0, Math.ceil(lease.expiresAt - this.now())), receiving: lease.data !== null } : null;
   }
   /** The sender's picture, while its lease paints. */
-  image(): PictureImage | null {
+  image(currentFrameOnly = false): PictureImage | null {
     this.prune();
-    return this.lease && this.lease.data ? this.lease.image : null;
+    return this.lease && this.lease.data && (!currentFrameOnly || this.lease.imageCurrent) ? this.lease.image : null;
   }
   current(clockShift = 0): PictureFrame | null {
     this.prune();

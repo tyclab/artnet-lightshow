@@ -87,7 +87,8 @@ test.after(async () => {
 // Every burst the director can reach for. `color-strobe` and `glow` derive from
 // the look's slot A, so they are the ones that catch a preview reading the wrong
 // colour rather than the wrong constant.
-for (const burst of ['blinder', 'white-strobe', 'uv-wash', 'kill', 'color-strobe', 'glow']) {
+// Software strobe overlays need matched frame times; effects-v2-overlay tests both paths on their pulse grid.
+for (const burst of ['blinder', 'uv-wash', 'kill', 'glow']) {
   test(`${burst} previews as the rig drives it`, async () => {
     applyPatch({ colorA: 1, energyOverride: burst, masterDimmer: 255, masterBlackout: false });
     conductor.tap();

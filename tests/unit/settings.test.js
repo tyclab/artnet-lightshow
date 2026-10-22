@@ -376,7 +376,7 @@ test('effect safety and Hue settings validate and persist', () => {
 // their own, never a parameter of the kind.
 test('strobe settings enforce flash-rate and palette bounds', () => {
   assert.deepStrictEqual(DEFAULTS.strobe, {
-    function: 'palette', speed: 128, flashesPerSecond: 2, continueBetween: true, clock: 'beat', brightness: 1, onMs: 100, blackMs: 100, palette: ['#FFFFFF'],
+    colourMode: 'palette', selection: 'all', space: 'plan', density: 0.25, segmentM: 0.5, placeM: 1.5, zone: 'width', function: 'palette', speed: 128, flashesPerSecond: 2, continueBetween: true, clock: 'beat', brightness: 1, onMs: 100, blackMs: 100, palette: ['#FFFFFF'],
   });
   const older = store();
   fs.writeFileSync(older.file, JSON.stringify({ artnet: { host: '10.0.0.9' } }));
