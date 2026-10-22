@@ -191,6 +191,13 @@ Macro (Scene Maker), bundle (pad pattern) and sequence remain the show layer.
 The Entertainment Visualizer and Studio become a base and accent voice pair and
 a pad launch mode instead of kinds.
 
+## The operator's list
+
+Built first, in Phase A ([plan](superpowers/plans/2026-10-22-effects-v2-phase-a.md)): Light DJ's
+scatter strobe and its pseudo-3D rotation and wave effects, made truly spatial; Hue Dynamics'
+neural analyser and its beat features (beat accent, volume gate, frequency burst) as triggers every
+generator shares. Each one in the room and in classic 2D.
+
 ## Next level
 
 Consolidation is the floor, not the goal. v2 exists for effects the 2D plan
