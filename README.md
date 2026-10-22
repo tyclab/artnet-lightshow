@@ -1,15 +1,15 @@
-# Tyclab Lightshow
+# TycStation Lightshow
 
 Lighting controller for Art-Net, sACN, WLED/DDP, OpenRGB and Philips Hue
 Entertainment. Control it from the browser, MIDI, Bitfocus Companion or REST.
 Manual looks, effects, pads and sequences work without Python; analysed shows
 and live audio use the optional analysis environment.
 
-[Tyclab Lightshow](https://github.com/tyclab/artnet-lightshow) builds on
+[TycStation Lightshow](https://github.com/tyclab/artnet-lightshow) builds on
 [LightD31’s ArtNet Lightshow](https://github.com/LightD31/artnet-lightshow) under
 the [MIT license](LICENSE). It combines reviewed upstream improvements with
 Tyclab’s own workflows and deployment revisions. An upstream release is not
-a Tyclab Lightshow release.
+a TycStation Lightshow release.
 
 ## Upstream integration
 
@@ -43,7 +43,7 @@ flowchart LR
   Fork[Tyclab workflows and saved shows] --> Review
   Review --> Adapt[Integrate improvements and preserve migrations]
   Adapt --> Tests[Safety / protocol / browser regressions]
-  Tests --> Release[Tyclab Lightshow build]
+  Tests --> Release[TycStation Lightshow build]
 ```
 
 ## Signal flow
@@ -91,7 +91,7 @@ start the pattern engine.
 
 ### Packaged builds
 
-Tyclab Lightshow has no published release packages yet. Use a pinned source checkout,
+TycStation Lightshow has no published release packages yet. Use a pinned source checkout,
 or build a package on the target operating system with `npm run package`.
 The [CI workflows](https://github.com/tyclab/artnet-lightshow/actions) test Windows
 and Linux packaging. Packages include Node; install the analysis environment
@@ -282,7 +282,7 @@ keys; `PUT /api/settings` changes selected fields.
 |---------|---------------------|
 | `server` | `host: '127.0.0.1'`, `port: 3000`, `token: ''`, `publicUrl: ''` |
 | `artnet` | `enabled: true`, `host: '2.255.255.255'`, `port: 6454`, `universe: 0`, `discovery: true`, `sync: false` |
-| `sacn` | `enabled: false`, `host: ''` for multicast, `priority: 100`, `sourceName: 'Tyclab Lightshow'`, `universeOffset: 1`, `interface: ''`; stable generated `cid` |
+| `sacn` | `enabled: false`, `host: ''` for multicast, `priority: 100`, `sourceName: 'TycStation Lightshow'`, `universeOffset: 1`, `interface: ''`; stable generated `cid` |
 | `hue` | `bridges: []`, `latencyMs: 0`, `strobe: 'flash'`; each paired bridge has an id, address, enabled flag, area and write-only credentials |
 | `picture` | `source: 'effects'` or `'visualizer'`; `blackPoint: 0.12`, the peak under which a picture unit stays dark; `decode: false`, sRGB to linear light; `grade`: the room picture's optional colour grade, off by default, `{ enabled: false, whiteLimit: 0, saturation: 1, ceiling: 1, hueCeiling: 1 }`; see [Room picture](#room-picture) |
 | `outputs` | `armed: false`; always reset to false at startup. `idleDisarmMin: 15`: minutes armed with nothing playing before the outputs disarm themselves; `0` never |
@@ -448,12 +448,12 @@ The optional `tools/browser-visuals` helper uses Music Assistant's existing
 MilkDrop canvas in a dedicated fullscreen Chrome profile. It removes the artwork,
 timeline and visual tint, and follows the local Party Visuals on/off switch.
 Music Assistant remains the renderer and audio source. OBS is not required.
-Every helper light output also follows the lightshow's **Picture** selector:
+Every helper light output also follows the Lightshow's **Picture** selector:
 **Effects** releases the curtain, panel and room leases and pauses capture;
 **Visualizer** resumes them automatically. The fullscreen display
 continues to follow the local Party Visuals switch.
 
-The default mode only manages the display: it does not read the lightshow token,
+The default mode only manages the display: it does not read the Lightshow token,
 connect to the lighting server or claim a fixture. Add `--curtain` to stream the
 same canvas to one patched panel. Add `--panels 38:20x6,39:20x6` for additional
 full-grid fixtures; it works with or without `--curtain` and `--room`. All outputs
@@ -516,7 +516,7 @@ Update the paired Party Visuals browser launcher as well: older installed
 launchers explicitly pass `--fps 10`, which overrides this helper's default.
 
 With `--curtain`, `--panels` or `--room` on Windows, the helper keeps the displays on while
-the lightshow reports armed outputs. Monitors whose lighting is a USB device,
+the Lightshow reports armed outputs. Monitors whose lighting is a USB device,
 such as the LG 27GN950-B rings that OpenRGB drives, drop that device when the
 display sleeps, and nobody touches the show PC at a party to wake it. A hidden
 Windows PowerShell child holds one display-required request
@@ -527,7 +527,7 @@ when the helper stops, or when its stdin pipe closes because the helper died.
 There is at most one, and a failed one is retried every 30 seconds. The helper
 logs each change once, and telemetry records carry `displayHeld`. An elevated
 `powercfg /requests` lists the child under `DISPLAY`. Display-only mode never
-connects to the lightshow, so it never holds the displays.
+connects to the Lightshow, so it never holds the displays.
 
 ```powershell
 cd tools/browser-visuals
@@ -541,13 +541,13 @@ node cli.js --browser-profile $profile --visualizer-url $url --curtain --fixture
 
 These defaults describe GamerTyc's curtain and SHD player. Supply the intended
 player URL, fixture and grid for another installation. Preview writes a local PPM
-image and never connects to the lightshow. `--fit contain` adds black margins;
+image and never connects to the Lightshow. `--fit contain` adds black margins;
 `--help` lists all options. The local browser helper uses the existing NodeCG
 `wash.on` control for visibility; intensity still applies to the legacy graphics.
 An unavailable control endpoint covers the display and releases pixel input.
 
 Curtain mode reads the existing Party Visuals lightshow URL and token-file
-reference only in its local process. The lightshow credential never reaches the
+reference only in its local process. The Lightshow credential never reaches the
 browser. Outputs must already be armed, with photosensitivity acknowledged.
 Ownership belongs to the authenticated socket; only one sender can claim a panel.
 Accepted frames renew its two-second timeout. Disconnect, disarm, missing frames
@@ -1198,7 +1198,7 @@ encoders configured to send relative steps. The actions remain the same.
 
 Use Companion 4.3+ and the module in `companion-module/`. Install its dependencies,
 then place or symlink the module inside the configured Developer modules folder.
-Add a Tyclab Lightshow connection with host, port and access token.
+Add a TycStation Lightshow connection with host, port and access token.
 
 The **Busk** page browses and randomises patterns and effects, toggles palettes
 over the running show, launches pads, follows or taps tempo, and stops live

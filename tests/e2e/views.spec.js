@@ -57,6 +57,8 @@ test('the Show switches fit on the first screen of a tablet', async ({ page }) =
   const room = await page.locator('.show-room').boundingBox();
   expect(room.y).toBeGreaterThanOrEqual(strip.y + strip.height);
   expect(room.y).toBeLessThan(768 / 2);
+  // Every switch and the master value stay on screen: the strip never scrolls sideways.
+  expect(await page.locator('.show-strip').evaluate((e) => e.scrollWidth - e.clientWidth)).toBeLessThanOrEqual(0);
 });
 
 test('the tab strip is one stop, and the arrow keys move along it', async ({ page }) => {

@@ -1,7 +1,7 @@
 {
 	"name": "companion-module-artnet-lightshow",
 	"version": "2.1.0",
-	"description": "Bitfocus Companion module for Tyclab Lightshow: busk a light show from a Stream Deck",
+	"description": "Bitfocus Companion module for TycStation Lightshow: busk a light show from a Stream Deck",
 	"main": "src/main.js",
 	"type": "module",
 	"scripts": {

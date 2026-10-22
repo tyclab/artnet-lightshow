@@ -31,6 +31,7 @@ import { PreflightView } from './components/setup/PreflightView.jsx';
 import { Wizard, useFirstRun } from './components/setup/Wizard.jsx';
 
 import { VIEWS, VIEW_IDS, viewShortcut, resolveRoute } from './views.js';
+import { pageTitle } from './brand.js';
 
 const viewOfHash = () => resolveRoute(window.location.hash)?.view;
 
@@ -163,6 +164,7 @@ function Root() {
   }, [mode]);
 
   useEffect(() => {
+    document.title = pageTitle(VIEWS.find((view) => view.id === mode)?.label);
     try { localStorage.setItem('lightshow.mode', mode); } catch { /* private mode */ }
     // A view with tabs of its own keeps its part of the hash (/#rig/outputs).
     const route = resolveRoute(window.location.hash);

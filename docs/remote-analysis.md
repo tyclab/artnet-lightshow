@@ -89,7 +89,7 @@ configuration in `~/.config/lightshow-remote-analyzer`.
 
    | Key | Default | Meaning |
    |-----|---------|---------|
-   | `server` | | The lightshow's URL, no credentials |
+   | `server` | | The Lightshow's URL, no credentials |
    | `tokenFile` | | The worker token's file, relative to the configuration |
    | `name` | host name | The worker's name in the server's log and status |
    | `dataDir` | `~/.local/share/lightshow-remote-analyzer` | Code, environments, Python, jobs |

@@ -2,23 +2,47 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Tyclab Lightshow Bridge Settings</title>
+  <title>Deezer bridge settings · TycStation Lightshow</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 16px; max-width: 380px; color: #1b1b1f; }
-    h1 { font-size: 15px; margin: 0 0 12px; }
+    :root {
+      color-scheme: dark;
+      --ground: #07070e; --panel-solid: #151724;
+      --edge: rgba(150, 165, 205, .55); --edge-strong: rgba(160, 175, 215, .75);
+      --blue: #5aa2ff; --ink: #eceef6; --dim: #9aa2b8; --faint: #939bb0;
+      --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        color-scheme: light;
+        --ground: #ffffff; --panel-solid: #f2f3f7;
+        --edge: rgba(16, 18, 24, .25); --edge-strong: rgba(16, 18, 24, .5);
+        --blue: #12356f; --ink: #101218; --dim: #33384a; --faint: #474d61;
+      }
+    }
+    body { font-family: var(--font-body); margin: 16px; max-width: 380px; color: var(--ink); background: var(--ground); }
+    h1 { font-family: var(--font-mono); font-size: 1.1rem; font-weight: 600; margin: 0 0 12px; }
     label { display: block; font-size: 12px; margin: 12px 0 4px; font-weight: 600; }
-    input { width: 100%; box-sizing: border-box; padding: 6px 8px; font-size: 13px; }
-    p.hint { font-size: 11px; color: #56565c; margin: 4px 0 0; }
-    button { margin-top: 14px; padding: 6px 14px; font-size: 13px; }
-    #status { font-size: 12px; margin-left: 8px; color: #1a7f37; }
+    input, button {
+      font: inherit; font-size: .9rem; color: var(--ink);
+      background: var(--panel-solid); border: .0625rem solid var(--edge-strong); border-radius: .5rem;
+      min-height: 2.75rem; padding: .5rem .75rem;
+    }
+    input { width: 100%; box-sizing: border-box; font-family: var(--font-mono); }
+    input::placeholder { color: var(--faint); }
+    input:hover, input:focus, button:hover { border-color: var(--blue); }
+    :focus-visible { outline: .125rem solid var(--blue); outline-offset: .1875rem; }
+    p.hint { font-size: 11px; color: var(--dim); margin: 4px 0 0; }
+    button { margin-top: 14px; cursor: pointer; }
+    #status { font-family: var(--font-mono); font-size: 12px; margin-left: 8px; color: var(--blue); }
   </style>
 </head>
 <body>
-  <h1>Tyclab Lightshow Deezer Bridge</h1>
+  <h1>TycStation Lightshow Deezer bridge</h1>
 
-  <label for="server">Tyclab Lightshow server</label>
+  <label for="server">TycStation Lightshow server</label>
   <input id="server" type="text" placeholder="http://localhost:3000" />
-  <p class="hint">Host and port the lightshow server is running on.</p>
+  <p class="hint">Host and port the Lightshow server is running on.</p>
 
   <label for="token">Access token</label>
   <input id="token" type="password" placeholder="(leave blank if none)" />

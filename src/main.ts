@@ -277,7 +277,7 @@ server.listen(PORT, HOST, () => {
   const shownHost = isLoopback(HOST) ? 'localhost' : HOST;
   const smtcEnabled = settings.get('sources.smtc');
 
-  console.log(`\n  Tyclab Lightshow  →  http://${shownHost}:${PORT}`);
+  console.log(`\n  TycStation Lightshow  →  http://${shownHost}:${PORT}`);
   console.log(`  Setup             →  http://${shownHost}:${PORT}/#rig  (the Rig, Sources and Settings views)`);
   console.log(`  Config file       →  ${CONFIG_FILE}`);
   if (process.env.LIGHTSHOW_DATA_DIR) console.log(`  Data folder       →  ${dataDir()}`);

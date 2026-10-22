@@ -3,21 +3,49 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Tyclab Lightshow</title>
-  <meta name="description" content="Tyclab Lightshow: music-driven control for Art-Net, sACN, WLED, OpenRGB and Philips Hue." />
-  <meta name="theme-color" content="#09090b" />
+  <title>TycStation Lightshow</title>
+  <meta name="description" content="TycStation Lightshow: music-driven control for Art-Net, sACN, WLED, OpenRGB and Philips Hue." />
+  <meta name="theme-color" content="#07070e" />
   <meta name="color-scheme" content="dark light" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Tyclab" />
+  <meta name="apple-mobile-web-app-title" content="TycStation" />
   <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
-  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
   <script src="/theme.js"></script>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
+  <svg class="svg-defs" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="poles" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#5aa2ff"/><stop offset="48%" stop-color="#8b6cf0"/><stop offset="100%" stop-color="#ff4a3d"/>
+      </linearGradient>
+      <symbol id="krake" viewBox="-125 -95 250 250">
+        <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="10">
+          <g>
+            <path d="M-40,22 C-70,24 -97,40 -105,64 C-111,83 -97,95 -85,87 C-76,81 -79,69 -88,69"/>
+            <path d="M-28,31 C-50,45 -69,64 -71,88 C-72,105 -59,114 -49,106 C-41,99 -45,88 -54,89"/>
+            <path d="M-15,36 C-26,60 -34,82 -30,103 C-27,118 -14,123 -8,113"/>
+            <path d="M-5,37 C-7,60 -10,79 -6,95"/>
+            <g transform="scale(-1,1)">
+              <path d="M-40,22 C-70,24 -97,40 -105,64 C-111,83 -97,95 -85,87 C-76,81 -79,69 -88,69"/>
+              <path d="M-28,31 C-50,45 -69,64 -71,88 C-72,105 -59,114 -49,106 C-41,99 -45,88 -54,89"/>
+              <path d="M-15,36 C-26,60 -34,82 -30,103 C-27,118 -14,123 -8,113"/>
+              <path d="M-5,37 C-7,60 -10,79 -6,95"/>
+            </g>
+          </g>
+          <path d="M-53,-2 C-53,-42 -30,-66 0,-66 C30,-66 53,-42 53,-2 C53,20 30,35 0,35 C-30,35 -53,20 -53,-2 Z" fill="#0b1018"/>
+          <g stroke="none" fill="#b48cf5">
+            <ellipse cx="-19" cy="-10" rx="7" ry="8.5"/><ellipse cx="19" cy="-10" rx="7" ry="8.5"/>
+          </g>
+          <path d="M-9,12 C-4,17 4,17 9,12" stroke-width="7"/>
+        </g>
+      </symbol>
+    </defs>
+  </svg>
   <div id="app"></div>
   <script src="/auth.js"></script>
   <script src="/toast.js"></script>

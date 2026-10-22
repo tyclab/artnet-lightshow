@@ -47,7 +47,7 @@ const DEFAULTS: Settings = {
     enabled: false,
     host: '',
     priority: 100,
-    sourceName: 'Tyclab Lightshow',
+    sourceName: 'TycStation Lightshow',
     universeOffset: 1,
     // Persist the CID so receivers do not see a new sACN source after every restart.
     cid: '',

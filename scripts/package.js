@@ -121,9 +121,9 @@ function brandWindowsExe(file) {
   info.setFileVersion(major, minor, patch, 0, lang.lang);
   info.setProductVersion(major, minor, patch, 0, lang.lang);
   info.setStringValues(lang, {
-    ProductName: 'Tyclab Lightshow',
-    FileDescription: 'Tyclab Lightshow',
-    InternalName: 'Tyclab Lightshow',
+    ProductName: 'TycStation Lightshow',
+    FileDescription: 'TycStation Lightshow',
+    InternalName: 'TycStation Lightshow',
     OriginalFilename: 'Tyclab Lightshow.exe',
     CompanyName: 'Tyclab',
     LegalCopyright: 'Copyright (c) 2026 Tom DARONDOVAS. MIT license.',
@@ -135,7 +135,7 @@ function brandWindowsExe(file) {
   fs.writeFileSync(file, Buffer.from(exe.generate()));
 }
 
-const README = `Tyclab Lightshow ${PKG.version}
+const README = `TycStation Lightshow ${PKG.version}
 
 Start it: ${windows ? 'double-click "Tyclab Lightshow.exe"' : 'run ./tyclab-lightshow'}. It opens the app in your
 browser (http://localhost:3000); closing its ${windows ? 'window' : 'terminal'} stops it, blacking the rig out first.
@@ -161,7 +161,7 @@ Based on LightD31's ArtNet Lightshow; upstream copyright and MIT license are in 
 async function main() {
   if (!UV_WHEELS[target]) throw new Error(`packaging is for Windows and Linux (x64, arm64); this is ${target}`);
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('package with Node 22 or newer (24 LTS is what it is made for)');
-  console.log(`Packaging Tyclab Lightshow ${PKG.version} for ${target}, with Node ${process.version}, into ${OUT}`);
+  console.log(`Packaging TycStation Lightshow ${PKG.version} for ${target}, with Node ${process.version}, into ${OUT}`);
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(APP, { recursive: true });
 

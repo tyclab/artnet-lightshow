@@ -1,8 +1,8 @@
-# Tyclab Lightshow Deezer Bridge (Firefox)
+# TycStation Lightshow Deezer bridge (Firefox)
 
 Feeds the **Deezer** auto-source. Deezer's JS SDK is dead (no obtainable
 `DEEZER_APP_ID`), so this extension reads the web player's page state and
-posts it to the lightshow server:
+posts it to the Lightshow server:
 
 - current track **with ISRC** → exact-audio download via Deezer ARL
 - **position + play/pause** → drives the auto-show timeline
@@ -23,7 +23,7 @@ flowchart LR
 
 ## Install (temporary, recommended for dev)
 
-1. Start the lightshow server (`npm start`, default port 3000).
+1. Start the Lightshow server (`npm start`, default port 3000).
 2. Open `about:debugging#/runtime/this-firefox`.
 3. **Load Temporary Add-on…** → pick `browser-extension/manifest.json`.
 4. Open <https://www.deezer.com> and play a track. The Auto Show panel should
@@ -42,7 +42,7 @@ via [AMO](https://addons.mozilla.org) or use Firefox Developer/ESR with
 Open the add-on's **Preferences** (about:addons → this extension → Preferences)
 to set:
 
-- **Tyclab Lightshow server** — host and port, if you don't run it on
+- **TycStation Lightshow server** — host and port, if you don't run it on
   `localhost:3000`. Pointing it at a non-loopback address asks for an extra host
   permission at save time; the manifest only grants loopback by default.
 - **Access token** — needed only when the server has one, which it must

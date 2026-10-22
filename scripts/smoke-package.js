@@ -66,7 +66,7 @@ function start(data, log) {
 async function main() {
   if (!check('the executable is there', fs.existsSync(EXE), EXE)) return;
   const said = spawnSync(EXE, ['--version'], { encoding: 'utf8', timeout: 30000 });
-  check('it says its version', (said.stdout || '').includes(`Tyclab Lightshow ${version}`), (said.stdout || said.stderr || '').trim());
+  check('it says its version', (said.stdout || '').includes(`TycStation Lightshow ${version}`), (said.stdout || said.stderr || '').trim());
 
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'lightshow-smoke-'));
   fs.mkdirSync(path.join(data, 'config'));

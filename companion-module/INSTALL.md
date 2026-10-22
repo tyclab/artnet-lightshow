@@ -4,7 +4,7 @@
 
 - Bitfocus Companion v4.3 or later (the module uses the v2 connection API)
 - Node.js 22+ (only needed to `npm install` / package the module)
-- The Tyclab Lightshow server running (`npm start` in the parent directory)
+- The TycStation Lightshow server running (`npm start` in the parent directory)
 
 ## Installation
 
@@ -38,8 +38,8 @@ Alternatively, build a distributable package with `npm run package` and use the 
 ### 3. Add the connection
 
 1. Go to **Connections** → **Add connection**
-2. Search for **"Tyclab Lightshow"**
-3. Set **Host** = IP of the machine running the lightshow server (e.g. `127.0.0.1`)
+2. Search for **"TycStation Lightshow"**
+3. Set **Host** = IP of the machine running the Lightshow server (e.g. `127.0.0.1`)
 4. Set **Port** = `3000` (or whatever `PORT` env var is set to)
 5. Click **Save**
 
@@ -49,7 +49,7 @@ The connection will show **OK** once it connects to the running server.
 
 1. Go to the **Buttons** page
 2. Click **Presets** in the right panel
-3. Find **"Tyclab Lightshow"** in the module list
+3. Find **"TycStation Lightshow"** in the module list
 4. Drag presets onto your Stream Deck buttons:
    - **Patterns** — all patterns with active feedback
    - **Colours** — palette slots A–D, button background matches the colour

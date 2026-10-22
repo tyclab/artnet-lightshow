@@ -1,13 +1,13 @@
-# Tyclab Lightshow
+# TycStation Lightshow
 
-Controls the [Tyclab Lightshow](https://github.com/tyclab/artnet-lightshow) server — a beat-synced light show for DMX fixtures, LED bars, WLED strips and panels and Philips Hue lamps — from a Stream Deck or any Companion surface. Built for busking: palettes, patterns and pixel effects a press away, effects that last as long as a button is held, cues, tempo and the auto show.
+Controls the [TycStation Lightshow](https://github.com/tyclab/artnet-lightshow) server — a beat-synced light show for DMX fixtures, LED bars, WLED strips and panels and Philips Hue lamps — from a Stream Deck or any Companion surface. Built for busking: palettes, patterns and pixel effects a press away, effects that last as long as a button is held, cues, tempo and the auto show.
 
 ## Configuration
 
 | Setting      | Description                                                                                 |
 | ------------ | ------------------------------------------------------------------------------------------- |
-| Host         | Hostname or IP of the machine running the lightshow server                                  |
-| Port         | Port of the lightshow server (default `3000`)                                               |
+| Host         | Hostname or IP of the machine running the Lightshow server                                  |
+| Port         | Port of the Lightshow server (default `3000`)                                               |
 | Access token | The server's access token, when it has one (it must whenever it is reachable from the network) |
 
 The connection shows **OK** once connected and reconnects on its own. It follows the server by its changes alone (protocol 2), so a big rig — a WLED panel of thousands of pixels — costs Companion nothing between changes.
@@ -95,8 +95,8 @@ The separate **Auto Show** page has start/stop, intensity (±10 and a display), 
 
 Besides **Busk**: every pattern (the whole-rig ones and the pixel effects apart), the bars' and the panels' own pictures and the pixel map; all four colour slots; transport (the outputs' arming switch, play/stop, blackout, tap tempo, BPM, beat divisions); **Sequence** transport and tempo; a blackout for each fixture in the patch; and latched energy effects.
 
-Load or edit the sequence in the lightshow's Sequence page first. **Sequence: Play / Resume** starts after a stop and resumes after a pause. Pause freezes the transport while its clips keep running; Stop holds the last picture. The optional stop-with-black action blacks only the sequence base, so live voices can still appear above it. These controls never arm outputs. Server refusals, including no loaded sequence or a missing photosensitivity acknowledgement, appear in the connection log.
+Load or edit the sequence in the Lightshow's Sequence page first. **Sequence: Play / Resume** starts after a stop and resumes after a pause. Pause freezes the transport while its clips keep running; Stop holds the last picture. The optional stop-with-black action blacks only the sequence base, so live voices can still appear above it. These controls never arm outputs. Server refusals, including no loaded sequence or a missing photosensitivity acknowledgement, appear in the connection log.
 
 The Sequence presets reuse the existing BPM display and ±5 actions. Set BPM and Adjust BPM change the shared tempo and end sequence tempo automation; later authored tempo commands can change it again. Pausing and resuming preserves the sequence position and does not reapply its initial tempo.
 
-Tyclab Lightshow builds on [LightD31’s ArtNet Lightshow](https://github.com/LightD31/artnet-lightshow) under the MIT license. The `artnet-lightshow` module ID and `lightshow` variable prefix stay compatible with existing Companion connections.
+TycStation Lightshow builds on [LightD31’s ArtNet Lightshow](https://github.com/LightD31/artnet-lightshow) under the MIT license. The `artnet-lightshow` module ID and `lightshow` variable prefix stay compatible with existing Companion connections.

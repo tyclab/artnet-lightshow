@@ -422,7 +422,7 @@ test('OpenRGB wire sessions enter Direct mode and follow arm changes', async () 
   try {
     const litFrame = (p) => p.device === 5 && p.count === 85 && p.rgb[0] === 200 && p.rgb[1] === 100 && p.rgb[2] === 50 && p.rgb[254] === 3;
     await until(() => server.log.leds.some(litFrame), { each: () => paint(true), what: 'a lit frame at the server' });
-    assert.deepStrictEqual(server.log.names, ['Tyclab Lightshow']);
+    assert.deepStrictEqual(server.log.names, ['TycStation Lightshow']);
     assert.deepStrictEqual(server.log.modes, [{ device: 5, mode: 0 }], 'the board was in Rainbow: put in Direct first');
     assert.strictEqual(server.log.connections, 1);
 

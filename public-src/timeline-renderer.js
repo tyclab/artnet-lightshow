@@ -5,12 +5,12 @@ function drawStatic(ctx, data, W, H, dpr = 1) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
 
-  ctx.fillStyle = '#0a0a0f';
+  ctx.fillStyle = '#07070e';
   ctx.fillRect(0, 0, W, H);
 
 
   if (!data || !data.duration) {
-    ctx.fillStyle = '#444';
+    ctx.fillStyle = '#939bb0';
     ctx.font = '11px monospace';
     ctx.textAlign = 'center';
     ctx.fillText('No analysis loaded', W / 2, H / 2);
@@ -70,8 +70,8 @@ function drawStatic(ctx, data, W, H, dpr = 1) {
     ctx.lineTo(xForSec(energyCurve[energyCurve.length - 1].t), ROW_CURVE.y + ROW_CURVE.h);
     ctx.closePath();
     const grad = ctx.createLinearGradient(0, ROW_CURVE.y, 0, ROW_CURVE.y + ROW_CURVE.h);
-    grad.addColorStop(0, 'rgba(59, 130, 246, .75)');
-    grad.addColorStop(1, 'rgba(59, 130, 246, .08)');
+    grad.addColorStop(0, 'rgba(90, 162, 255, .75)');
+    grad.addColorStop(1, 'rgba(90, 162, 255, .08)');
     ctx.fillStyle = grad;
     ctx.fill();
   }
@@ -209,15 +209,15 @@ function drawStatic(ctx, data, W, H, dpr = 1) {
     const x = xForMs(ev.timeMs);
     if (ev.action === 'patch') {
       if (ev.pattern) {
-        ctx.fillStyle = '#60a5fa';
+        ctx.fillStyle = '#8b6cf0';
         ctx.fillRect(x - 0.75, patchY - 5, 1.5, 10);
       } else if (ev.colorA != null) {
-        ctx.fillStyle = '#3b82f6';
+        ctx.fillStyle = '#5aa2ff';
         ctx.beginPath();
         ctx.arc(x, patchY, 2.2, 0, Math.PI * 2);
         ctx.fill();
       } else {
-        ctx.fillStyle = 'rgba(59, 130, 246, .28)';
+        ctx.fillStyle = 'rgba(90, 162, 255, .28)';
         ctx.fillRect(x, patchY - 1, 1, 2);
       }
     } else if (ev.action === 'energy') {
@@ -297,7 +297,7 @@ const beatX = (beat, fromBeat, toBeat, width) => ((beat - fromBeat) / (toBeat - 
 
 /** A tick on every beat, a taller one with its bar number (from 1) on each downbeat. */
 export function drawRuler(ctx, { fromBeat = 0, toBeat, beatsPerBar = 4, width, height }) {
-  ctx.fillStyle = '#15171d';
+  ctx.fillStyle = '#151724';
   ctx.fillRect(0, 0, width, height);
   ctx.font = '10px system-ui, sans-serif';
   ctx.textBaseline = 'top';
@@ -305,20 +305,20 @@ export function drawRuler(ctx, { fromBeat = 0, toBeat, beatsPerBar = 4, width, h
   for (let beat = Math.ceil(fromBeat); beat <= toBeat; beat++) {
     const x = Math.round(beatX(beat, fromBeat, toBeat, width)) + 0.5;
     const downbeat = beat % beatsPerBar === 0;
-    ctx.strokeStyle = downbeat ? '#9aa3b5' : '#4a5060';
+    ctx.strokeStyle = downbeat ? '#9aa2b8' : 'rgba(154, 162, 184, .45)';
     ctx.beginPath();
     ctx.moveTo(x, downbeat ? 0 : height * 0.6);
     ctx.lineTo(x, height);
     ctx.stroke();
     if (downbeat) {
-      ctx.fillStyle = '#c8cedb';
+      ctx.fillStyle = '#eceef6';
       ctx.fillText(String(beat / beatsPerBar + 1), x + 3, 2);
     }
   }
 }
 
 /** Each clip as a block in its lane's row; a muted clip is drawn faint. */
-export function drawClips(ctx, clips, { laneIds, fromBeat = 0, toBeat, width, rowHeight, top = 0, colourOf = () => '#4f7cff' }) {
+export function drawClips(ctx, clips, { laneIds, fromBeat = 0, toBeat, width, rowHeight, top = 0, colourOf = () => '#5aa2ff' }) {
   for (const clip of clips) {
     const row = laneIds.indexOf(clip.laneId);
     if (row < 0) continue;

@@ -5,7 +5,7 @@
 [project]
 name = "artnet-lightshow-analysis"
 version = "1.0.0"
-description = "Audio analysis and live input for Tyclab Lightshow."
+description = "Audio analysis and live input for TycStation Lightshow."
 requires-python = ">=3.10,<3.14"
 dependencies = [
     # Core analysis.
