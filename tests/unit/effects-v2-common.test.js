@@ -21,7 +21,8 @@ test('a soft crest is full at its centre, gone two widths out, and widened by a 
   assert.ok(soft(0.6, 0.3, 0) < 0.01);
   assert.ok(Math.abs(soft(0.15, 0.3, 0) - 0.5) < 1e-9, 'half height at half the width');
   assert.ok(soft(0.3, 0.1, 0.3) > soft(0.3, 0.1, 0));
-  assert.ok(soft(0, 0.1, 1) < soft(0, 0.1, 0), 'a big lamp averages a thin line down');
+  assert.equal(soft(0, 0.1, 1), 1, 'a big lamp still reaches full as a thin line crosses its centre');
+  assert.ok(soft(0.5, 0.1, 1) > 0 && soft(0.5, 0.1, 0) === 0, 'and fades across its whole extent');
   assert.equal(soft(-0.2, 0.3, 0), soft(0.2, 0.3, 0));
 });
 
