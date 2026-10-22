@@ -1,0 +1,43 @@
+{
+  "description": "A synthetic room for golden frames and the unit space: six pars, two Hue lamps, a pathed 30-cell strip and an unbound vertical 12 x 8 panel. Invented values; no installation data.",
+  "profiles": [
+    {"bar":{"id":"synthetic-strip-30","name":"Synthetic strip","cells":30,"firstChannel":1,"order":"RGB"}},
+    {"bar":{"id":"synthetic-panel-12x8","name":"Synthetic panel","cells":96,"firstChannel":1,"order":"RGB"},"grid":{"columns":12,"rows":8}}
+  ],
+  "fixtures": [
+    {"id":1,"label":"Par 1","address":1,"universe":0,"profileId":"cameo-root-par-6-12ch","position":{"x":37.5,"y":12.5,"height":38.5},"group":null,"geometry":null},
+    {"id":2,"label":"Par 2","address":13,"universe":0,"profileId":"cameo-root-par-6-12ch","position":{"x":87.5,"y":50,"height":100},"group":null,"geometry":null},
+    {"id":3,"label":"Par 3","address":25,"universe":0,"profileId":"cameo-root-par-6-12ch","position":{"x":12.5,"y":50,"height":0},"group":null,"geometry":null},
+    {"id":4,"label":"Par 4","address":37,"universe":0,"profileId":"cameo-root-par-6-12ch","position":{"x":50,"y":87.5,"height":50},"group":null,"geometry":null},
+    {"id":5,"label":"Par 5","address":49,"universe":0,"profileId":"cameo-root-par-6-12ch","position":{"x":87.5,"y":12.5,"height":38.5},"group":null,"geometry":null},
+    {"id":6,"label":"Par 6","address":61,"universe":0,"profileId":"cameo-root-par-6-12ch","position":{"x":50,"y":12.5,"height":69.2},"group":null,"geometry":null},
+    {"id":7,"label":"Lamp 7","address":73,"universe":0,"profileId":"generic-hue-lamp-7ch","hue":true,"position":{"x":5,"y":95,"height":15.4},"group":null,"geometry":null},
+    {"id":8,"label":"Lamp 8","address":80,"universe":0,"profileId":"generic-hue-lamp-7ch","hue":true,"position":{"x":95,"y":95,"height":76.9},"group":null,"geometry":null},
+    {"id":9,"label":"Strip","address":87,"universe":0,"profileId":"synthetic-strip-30","position":{"x":50,"y":1.3,"height":92.3},"group":null,"geometry":{"length":90,"angle":0}},
+    {"id":10,"label":"Panel","address":177,"universe":0,"profileId":"synthetic-panel-12x8","position":{"x":50,"y":30,"height":50},"group":null,"geometry":{"length":36,"angle":0,"points":[{"x":-16.5,"y":0,"height":17.5},{"x":-13.5,"y":0,"height":17.5},{"x":-10.5,"y":0,"height":17.5},{"x":-7.5,"y":0,"height":17.5},{"x":-4.5,"y":0,"height":17.5},{"x":-1.5,"y":0,"height":17.5},{"x":1.5,"y":0,"height":17.5},{"x":4.5,"y":0,"height":17.5},{"x":7.5,"y":0,"height":17.5},{"x":10.5,"y":0,"height":17.5},{"x":13.5,"y":0,"height":17.5},{"x":16.5,"y":0,"height":17.5},{"x":-16.5,"y":0,"height":12.5},{"x":-13.5,"y":0,"height":12.5},{"x":-10.5,"y":0,"height":12.5},{"x":-7.5,"y":0,"height":12.5},{"x":-4.5,"y":0,"height":12.5},{"x":-1.5,"y":0,"height":12.5},{"x":1.5,"y":0,"height":12.5},{"x":4.5,"y":0,"height":12.5},{"x":7.5,"y":0,"height":12.5},{"x":10.5,"y":0,"height":12.5},{"x":13.5,"y":0,"height":12.5},{"x":16.5,"y":0,"height":12.5},{"x":-16.5,"y":0,"height":7.5},{"x":-13.5,"y":0,"height":7.5},{"x":-10.5,"y":0,"height":7.5},{"x":-7.5,"y":0,"height":7.5},{"x":-4.5,"y":0,"height":7.5},{"x":-1.5,"y":0,"height":7.5},{"x":1.5,"y":0,"height":7.5},{"x":4.5,"y":0,"height":7.5},{"x":7.5,"y":0,"height":7.5},{"x":10.5,"y":0,"height":7.5},{"x":13.5,"y":0,"height":7.5},{"x":16.5,"y":0,"height":7.5},{"x":-16.5,"y":0,"height":2.5},{"x":-13.5,"y":0,"height":2.5},{"x":-10.5,"y":0,"height":2.5},{"x":-7.5,"y":0,"height":2.5},{"x":-4.5,"y":0,"height":2.5},{"x":-1.5,"y":0,"height":2.5},{"x":1.5,"y":0,"height":2.5},{"x":4.5,"y":0,"height":2.5},{"x":7.5,"y":0,"height":2.5},{"x":10.5,"y":0,"height":2.5},{"x":13.5,"y":0,"height":2.5},{"x":16.5,"y":0,"height":2.5},{"x":-16.5,"y":0,"height":-2.5},{"x":-13.5,"y":0,"height":-2.5},{"x":-10.5,"y":0,"height":-2.5},{"x":-7.5,"y":0,"height":-2.5},{"x":-4.5,"y":0,"height":-2.5},{"x":-1.5,"y":0,"height":-2.5},{"x":1.5,"y":0,"height":-2.5},{"x":4.5,"y":0,"height":-2.5},{"x":7.5,"y":0,"height":-2.5},{"x":10.5,"y":0,"height":-2.5},{"x":13.5,"y":0,"height":-2.5},{"x":16.5,"y":0,"height":-2.5},{"x":-16.5,"y":0,"height":-7.5},{"x":-13.5,"y":0,"height":-7.5},{"x":-10.5,"y":0,"height":-7.5},{"x":-7.5,"y":0,"height":-7.5},{"x":-4.5,"y":0,"height":-7.5},{"x":-1.5,"y":0,"height":-7.5},{"x":1.5,"y":0,"height":-7.5},{"x":4.5,"y":0,"height":-7.5},{"x":7.5,"y":0,"height":-7.5},{"x":10.5,"y":0,"height":-7.5},{"x":13.5,"y":0,"height":-7.5},{"x":16.5,"y":0,"height":-7.5},{"x":-16.5,"y":0,"height":-12.5},{"x":-13.5,"y":0,"height":-12.5},{"x":-10.5,"y":0,"height":-12.5},{"x":-7.5,"y":0,"height":-12.5},{"x":-4.5,"y":0,"height":-12.5},{"x":-1.5,"y":0,"height":-12.5},{"x":1.5,"y":0,"height":-12.5},{"x":4.5,"y":0,"height":-12.5},{"x":7.5,"y":0,"height":-12.5},{"x":10.5,"y":0,"height":-12.5},{"x":13.5,"y":0,"height":-12.5},{"x":16.5,"y":0,"height":-12.5},{"x":-16.5,"y":0,"height":-17.5},{"x":-13.5,"y":0,"height":-17.5},{"x":-10.5,"y":0,"height":-17.5},{"x":-7.5,"y":0,"height":-17.5},{"x":-4.5,"y":0,"height":-17.5},{"x":-1.5,"y":0,"height":-17.5},{"x":1.5,"y":0,"height":-17.5},{"x":4.5,"y":0,"height":-17.5},{"x":7.5,"y":0,"height":-17.5},{"x":10.5,"y":0,"height":-17.5},{"x":13.5,"y":0,"height":-17.5},{"x":16.5,"y":0,"height":-17.5}]}}
+  ],
+  "room": {
+    "version": 1, "name": "Synthetic room", "bounds": {"width":4,"depth":4,"height":2.6},
+    "rooms": [{"id":"main","label":"Main","polygon":[[-2,-2],[2,-2],[2,2],[-2,2]]}],
+    "objects": [],
+    "bindings": [
+      {"id":"par-1","fixtureId":1,"unit":0,"position":{"x":-0.5,"y":1,"z":-1.5},"confidence":"measured"},
+      {"id":"par-2","fixtureId":2,"unit":0,"position":{"x":1.5,"y":2.6,"z":0},"confidence":"measured"},
+      {"id":"par-3","fixtureId":3,"unit":0,"position":{"x":-1.5,"y":0,"z":0},"confidence":"measured"},
+      {"id":"par-4","fixtureId":4,"unit":0,"position":{"x":0,"y":1.3,"z":1.5},"confidence":"measured"},
+      {"id":"par-5","fixtureId":5,"unit":0,"position":{"x":1.5,"y":1,"z":-1.5},"confidence":"measured"},
+      {"id":"par-6","fixtureId":6,"unit":0,"position":{"x":0,"y":1.8,"z":-1.5},"confidence":"measured"},
+      {"id":"lamp-7","fixtureId":7,"unit":0,"position":{"x":-1.8,"y":0.4,"z":1.8},"confidence":"estimated"},
+      {"id":"lamp-8","aggregation":"weightedMean","sources":[{"fixtureId":8,"unit":0,"weight":1}],"position":{"x":1.8,"y":2,"z":1.8},"confidence":"estimated"},
+      {"id":"strip","fixtureId":9,"unit":0,"position":{"x":0,"y":2.4,"z":-1.95},"path":[{"x":-1.8,"y":2.4,"z":-1.95},{"x":1.8,"y":2.4,"z":-1.95}],"confidence":"measured"}
+    ],
+    "anchors": [
+      {"id":"speakerLeft","label":"Left speaker","position":{"x":-1.5,"y":1,"z":-1.5}},
+      {"id":"speakerRight","label":"Right speaker","position":{"x":1.5,"y":1,"z":-1.5}}
+    ],
+    "listeners": [
+      {"id":"desk","label":"Desk","position":{"x":0,"y":1.15,"z":0},"facingDeg":0},
+      {"id":"couch","label":"Couch","position":{"x":0,"y":0.9,"z":1.5},"facingDeg":0}
+    ]
+  }
+}

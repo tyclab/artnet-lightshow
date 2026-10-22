@@ -9,6 +9,7 @@ import * as universes from './universes.ts';
 import { guarded, report } from './guard.ts';
 import { conductor } from './conductor.ts';
 import { invalidateRig } from './rig.ts';
+import { currentSpace } from './unit-space.ts';
 import { baseIntentOf, createRenderer } from './renderer.ts';
 import { createTicker, hrtimeMs, FRAME_MS } from './frame-clock.ts';
 import { messageOf } from '../errors.ts';
@@ -296,12 +297,18 @@ function transmitFrame(): void {
 
 let mainGridOrigin: number | undefined;
 let mainSequence: number | null | undefined;
+let mainSpace: ReturnType<typeof currentSpace> | undefined;
 
 function renderDmx(): void {
   const now = clock();
   runFrameHook();
   const reading = conductor.now();
   runSequenceSource(reading);
+  const space = currentSpace();
+  if (space !== mainSpace) {
+    renderer.setSpace(space);
+    mainSpace = space;
+  }
   if (revisionOf(sequenceNow) !== mainSequence) {
     renderer.setSequence(sequenceNow.table);
     mainSequence = revisionOf(sequenceNow);
@@ -323,6 +330,7 @@ let fellBack: string | null = null;             // why the engine is here and no
 let crashes: number[] = [];
 let postedRevision = -1;
 let postedSequence: number | null | undefined;
+let postedSpace: ReturnType<typeof currentSpace> | undefined;
 let stopping: (() => void) | null = null;       // resolves when the worker has blacked out
 let restartTimer: ReturnType<typeof setTimeout> | null = null;
 let workerFile = path.join(import.meta.dirname, 'engine-worker.ts');
@@ -392,6 +400,7 @@ function startMainDriver(): void {
   const epochMs = hrtimeMs();
   mainGridOrigin = clock();
   mainSequence = undefined;
+  mainSpace = undefined;
   ticker = createTicker({ onTick: safeRender, periodMs: FRAME_MS, epochMs });
   ticker.start();
 }
@@ -411,6 +420,12 @@ function controlTick(): void {
   if (revision !== postedRevision) {
     post(worker, { type: 'profiles', profiles: importedProfiles() });
     postedRevision = revision;
+  }
+  // Before the snapshot, so the worker never pairs new fixtures with the previous patch's space.
+  const space = currentSpace();
+  if (space !== postedSpace) {
+    post(worker, { type: 'space', space });
+    postedSpace = space;
   }
   postSequence(worker);
   post(worker, {
@@ -451,6 +466,7 @@ function spawnWorker(epochMs: number): void {
   worker = w;
   postedRevision = -1;
   postedSequence = undefined;
+  postedSpace = undefined;
   w.on('message', (msg: FromWorker | null) => {
     if (msg && msg.type === 'ready') ready = true;
     if (msg && msg.type === 'commands' && worker !== w) return;

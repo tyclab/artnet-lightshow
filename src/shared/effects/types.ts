@@ -5,6 +5,7 @@ import type { LampRoom, Room } from '../room.ts';
 import type { AudioFrame } from './audio-frame.ts';
 import type { PaletteAccess } from './palette.ts';
 import type { GradientSettings, ResolvedGradient } from '../palette-model.ts';
+import type { UnitSpace } from '../space.ts';
 export type { PaletteEntry } from '../palette-model.ts';
 import type { PaletteEntry } from '../palette-model.ts';
 
@@ -79,6 +80,8 @@ export interface EffectFrame {
   manualStrobeActive?: boolean;
   expressionLevel?: number;
   instanceId?: string;
+  // The rig-order unit space the effect rooms are built with; kinds read room.space instead.
+  unitSpace?: UnitSpace | null;
 }
 export type FrameBase = Omit<EffectFrame, 'spec' | 'palette' | 'roll' | 'gradient'>;
 

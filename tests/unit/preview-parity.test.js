@@ -343,3 +343,24 @@ test('the expressive patterns rehearse without a show as the rig plays them', ()
     }
   }
 });
+
+// The unit space (room metres) reaches both paths; a look that does not read it is unchanged by it.
+test('solid previews as the rig drives it, with and without a unit space', async () => {
+  const { createRenderer } = await import('../../src/server/renderer.ts');
+  const { profilesRevision } = await import('../../src/server/profiles.ts');
+  const { buildRig } = await import('../../src/shared/rig.ts');
+  const { buildUnitSpace } = await import('../../src/shared/space.ts');
+  const { lookInput } = await import('../../scripts/golden-party-looks.js');
+  const { syntheticRig } = await import('../../scripts/golden-frames.js');
+  const pars = syntheticRig().fixtures.slice(0, 6);
+  const rig = buildRig(pars, getProfile);
+  const red = getProfile(pars[0]).channelMap.red;
+  for (const space of [null, buildUnitSpace(rig, syntheticRig().room)]) {
+    const renderer = createRenderer({ profileOf: getProfile, profilesRevision, now: 0 });
+    renderer.setSpace(space);
+    const store = universes.createUniverseStore(universes.allocateShared());
+    renderer.frame(lookInput('solid', pars), { beatPos: 0, bpm: 120, epoch: 0 }, 0, store);
+    const preview = createPreviewSampler([{ timeMs: 0, action: 'patch', data: { pattern: 'solid', colorA: 0, bpm: 120 } }], null, { space })(0, pars, COLOR_PRESETS, rig);
+    assert.deepStrictEqual(preview.map((c) => c.r), pars.map((f) => store.getBuffer(0)[f.address - 1 + red]));
+  }
+});

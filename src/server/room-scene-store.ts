@@ -24,6 +24,11 @@ export class RoomSceneStore extends JsonStore {
     return this;
   }
 
+  /** The loaded room without a copy, for readers that never change it. */
+  peek(): { room: RoomScene | null; revision: string } {
+    return { room: this._room, revision: this._revision };
+  }
+
   snapshot(): { room: RoomScene | null; revision: string } {
     return { room: structuredClone(this._room), revision: this._revision };
   }
@@ -38,4 +43,11 @@ export class RoomSceneStore extends JsonStore {
     this._room = room;
     this._revision = room === null ? 'empty' : createHash('sha256').update(JSON.stringify(room)).digest('hex');
   }
+}
+
+let shared: RoomSceneStore | null = null;
+
+/** The one room store the routes and the engine share, loaded on first use. */
+export function sharedRoomScene(): RoomSceneStore {
+  return (shared ??= new RoomSceneStore().load());
 }

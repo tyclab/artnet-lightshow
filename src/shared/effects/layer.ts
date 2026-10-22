@@ -1,5 +1,7 @@
 import { renderEffect } from './render.ts';
 import { roomOf } from '../room.ts';
+import { roomSpaceOf } from '../space.ts';
+import type { UnitSpace } from '../space.ts';
 import type { Colour } from '../../types/rig.ts';
 import type { Layout, Rig } from '../rig.ts';
 import type { Room } from '../room.ts';
@@ -103,8 +105,9 @@ export function hdGuarded(kind: string | null | undefined): boolean {
 }
 
 const effectRooms = new WeakMap<Layout['units'], Room>();
+const spacedRooms = new WeakMap<Layout['units'], { revision: string; room: Room }>();
 
-export function effectRoom(layout: Layout): Room {
+function planRoom(layout: Layout): Room {
   const { list, xs, ys, plan, noFlash } = layout.units;
   const cells = roomOf({ fixtureCount: list.length, xs, ys, plan, noFlash });
   if (!layout.lamps) return cells;
@@ -117,6 +120,22 @@ export function effectRoom(layout: Layout): Room {
     cells, slots: lamps.slots, lampOf: lamps.lampOf, cellAlong: lamps.cellAlong,
   } };
   effectRooms.set(layout.units, room);
+  return room;
+}
+
+/** The effect room of a layout; with a unit space for this rig, `room.space` (and `room.lamps.space`) in room order. */
+export function effectRoom(layout: Layout, space?: UnitSpace | null): Room {
+  const plain = planRoom(layout);
+  if (!space) return plain;
+  const remembered = spacedRooms.get(layout.units);
+  if (remembered && remembered.revision === space.revision) return remembered.room;
+  const { list } = layout.units;
+  if (!list.every((u) => u < space.n)) return plain;
+  const cells: Room = { ...(plain.lamps?.cells ?? plain), space: roomSpaceOf(list, space) };
+  const room: Room = plain.lamps
+    ? { ...cells, lamps: { ...plain.lamps, cells, space: roomSpaceOf(list, space, null, plain.lamps.slots) } }
+    : cells;
+  spacedRooms.set(layout.units, { revision: space.revision, room });
   return room;
 }
 
@@ -134,7 +153,7 @@ export function renderEffectLayer(rig: Rig, layout: Layout, frame: FrameBase, in
   set: EffectLayerSet, prepare?: (state: unknown) => void): void {
   const { list } = layout.units;
   if (!list.length) return;
-  const room = effectRoom(layout);
+  const room = effectRoom(layout, frame.unitSpace);
   const out = unwritten(room.n);
   renderEffect(instance, frame, room, stepper, out, prepare);
   for (let k = 0; k < list.length; k++) {
@@ -164,7 +183,7 @@ export function renderVoices(rig: Rig, layout: Layout, frame: FrameBase, voices:
   const n = layout.units.list.length;
   const winners: (EffectSlot | null)[] = new Array(n).fill(null);
   if (!n || !voices.length) return winners;
-  const room = effectRoom(layout);
+  const room = effectRoom(layout, frame.unitSpace);
   const ordered = [...voices].sort(voiceOrder);
   const strobeHeld = new Array<boolean>(n).fill(false);
   for (const voice of ordered) {

@@ -7,6 +7,7 @@ import { hueLightMeasure } from './hue-light.ts';
 import { HardwareGuard } from './hardware-guard.ts';
 import { hardwareStrobe } from './hardware-strobe.ts';
 import { hardwareOf } from './hardware.ts';
+import type { UnitSpace } from './space.ts';
 import type { HardwareCaps, HardwareSettings } from './hardware.ts';
 import type { Profile } from '../types/rig.ts';
 import { fixedColours, colourSlots, resolveGradient } from './palette-model.ts';
@@ -118,6 +119,8 @@ export interface PreviewOptions {
   paletteOverride?: readonly string[] | null;
   basePalette?: PaletteBody | null;
   overridePalette?: PaletteBody | null;
+  /** Room metres per unit of the rig being sampled, as the renderer's setSpace; absent is plan-only. */
+  space?: UnitSpace | null;
 }
 
 /** The override's colours, parsed once; anything that is not a list of hex colours is none. */
@@ -733,6 +736,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
         lookGradient: s.basePalette, overrideGradient: options.overridePalette,
         audio: null, audioMode: 'tempo', master: { ...HD_MASTER_DEFAULTS }, seed: [0, 0, 0, 0], acknowledged, hueStrobe,
         manualStrobeActive, expressionLevel: w.expression.level,
+        unitSpace: options.space && options.space.n === n ? options.space : null,
       };
     }
 

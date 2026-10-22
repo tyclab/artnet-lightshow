@@ -1,6 +1,7 @@
 import { emissionOf, beamDirection } from '../../src/shared/emission.ts';
 import { stagePositions } from '../../src/shared/stage.ts';
 import { lineOf } from '../../src/shared/rig.ts';
+import { bindingSources, resolveBindings } from '../../src/shared/space.ts';
 
 
 export const STAGE_W = 12;
@@ -123,10 +124,9 @@ export function placeRig(fixtures, profiles, rig) {
   return { lamps, cells: stripCells, trusses: trussesFor(hung) };
 }
 
-export const bindingSources = (binding) => binding.sources || [{ fixtureId: binding.fixtureId, unit: binding.unit ?? 0, weight: 1 }];
+export { bindingSources };
 
 export function roomRig(fixtures, rig, model) {
-  const indices = new Map(fixtures.map((fixture, index) => [fixture.id, index]));
   const lamps = [];
   const cells = [];
   const unresolved = [];
@@ -138,21 +138,10 @@ export function roomRig(fixtures, rig, model) {
     if (!lightObjects.has(object.lightBindingId)) lightObjects.set(object.lightBindingId, []);
     lightObjects.get(object.lightBindingId).push(object.id);
   }
-  const outputs = new Map();
-  const mapped = new Map();
+  const indices = new Map(fixtures.map((fixture, index) => [fixture.id, index]));
+  const { resolved, mapped, outputs } = resolveBindings(fixtures, rig, model.bindings);
   let estimated = 0;
-  for (const binding of model.bindings) {
-    const sources = bindingSources(binding).map((source) => {
-      const index = indices.get(source.fixtureId), local = source.unit ?? 0;
-      if (index === undefined || !Number.isInteger(local) || local < 0 || local >= rig.ranges[index].count) return { ...source, unit: null };
-      if (!mapped.has(source.fixtureId)) mapped.set(source.fixtureId, new Set());
-      mapped.get(source.fixtureId).add(local);
-      const key = `${source.fixtureId}:${local}`;
-      if (!outputs.has(key)) outputs.set(key, { fixtureId: source.fixtureId, unit: local, bindings: [] });
-      outputs.get(key).bindings.push(binding.label || binding.id);
-      return { unit: rig.ranges[index].start + local, weight: source.weight };
-    });
-    const missingSources = sources.filter((source) => source.unit === null).length;
+  for (const { binding, sources, missingSources } of resolved) {
     if (missingSources === sources.length) { unresolved.push(binding); continue; }
     if (missingSources) incomplete.push({ binding, missingSources });
     if (binding.confidence !== 'measured') estimated++;
