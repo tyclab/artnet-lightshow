@@ -96,10 +96,11 @@ export function voiceOrder(a: VoiceRank, b: VoiceRank): number {
     || Number(b.targets !== null) - Number(a.targets !== null) || b.startedAtMs - a.startedAtMs;
 }
 
-// Disco paces its own strobes, so the hd.* Party guard excludes it. A rapid v2 Scatter Strobe
-// reports its own slot kind (v2/scatter.ts) and takes the same per-lamp permit.
+// Disco paces its own strobes, so the hd.* Party guard excludes it. Every v2 generator takes the
+// same per-lamp permit: none can raise a light faster than the flash interval allows.
 const HD_GUARDED = new Set(['hd.simpleAdsr', 'hd.positionChase', 'hd.radialPulse', 'hd.spatialWash', 'hd.bouncingScan',
-  'hd.streak', 'hd.twinkle', 'hd.breathingFade', 'hd.volumeGateWash', 'hd.frequencyBurst', 'v2.scatter.flash']);
+  'hd.streak', 'hd.twinkle', 'hd.breathingFade', 'hd.volumeGateWash', 'hd.frequencyBurst',
+  'v2.sweep', 'v2.shell', 'v2.orbit', 'v2.scatter', 'v2.neural']);
 
 export function hdGuarded(kind: string | null | undefined): boolean {
   return !!kind && HD_GUARDED.has(kind);

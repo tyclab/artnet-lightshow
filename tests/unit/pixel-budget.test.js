@@ -160,7 +160,12 @@ test('three thousand lights in a room play every Spatial preset inside a frame',
   const slowdown = Math.max(1, calibration / QUIET_CALIBRATION_MS);
   const budget = FRAME_BUDGET_MS * slowdown;
   const timings = [];
-  for (const preset of V2_PRESETS) {
+  // Beside the presets, the costliest Shell a spec allows: slow rings launched every sixteenth live long.
+  const { validateSpec } = await import('../../src/shared/effects/registry.ts');
+  const slowShell = (space, origin) => ({ id: `slow shell ${space} ${origin}`, spec: validateSpec({ kind: 'v2.shell',
+    params: { space, origin, speed: 0.05, width: 0.3, trigger: { mode: 'timeline', band: 'full', beatInterval: 1 / 16, threshold: 0.15, reactiveDepth: 1 } } }) });
+  const rows = [...V2_PRESETS, slowShell('room', 'anchor'), slowShell('plan', 'anchor'), slowShell('room', 'random')];
+  for (const preset of rows) {
     const renderer = createRenderer({ profileOf, now: 0 });
     renderer.setSpace(space);
     const store = universes.createUniverseStore(universes.allocateShared());

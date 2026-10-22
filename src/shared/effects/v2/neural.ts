@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { neuralReading } from '../disco.ts';
 import type { NeuralReading } from '../disco.ts';
 import { registerKind } from '../registry.ts';
-import { azimuthAround, centreOf, distanceTo, farthestCorner, paint, pointIn, positionsOf, triggerLevel, v2CommonSchema } from './common.ts';
+import { accentStrobes, azimuthAround, centreOf, distanceTo, farthestCorner, paint, pointIn, positionsOf, triggerLevel, v2CommonSchema } from './common.ts';
 import type { Point, Positions } from './common.ts';
 import type { EffectFrame, EffectSlot } from '../types.ts';
 import type { Room } from '../../room.ts';
@@ -73,13 +73,14 @@ function renderNeural(p: NeuralParams, s: NeuralState, room: Room, f: EffectFram
       for (let k = 0; k < 3; k++) if (given[k] > level) { level = given[k]; band = k; }
     }
     const colour = p.pitchColour && reading ? reading.frequency : BAND_COLOUR[band];
-    paint(p, f, colour, Math.max(p.idle, level * trigger), out[i]);
+    paint(p, f, colour, Math.max(p.idle, level) * trigger, out[i]);
   }
 }
 
 registerKind<NeuralParams, NeuralState>({
   kind: 'v2.neural', app: 'own', level: 'cell', schema: neuralSchema,
   defaults: { params: neuralSchema.parse({}), brightness: 1 }, stateful: true,
+  rapidFlashWhen: accentStrobes,
   init: () => ({ bands: null, reading: null }),
   render: (params, state, room, frame, out) => renderNeural(params, state, room, frame, out),
 });

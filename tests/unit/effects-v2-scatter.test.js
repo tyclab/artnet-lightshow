@@ -99,8 +99,7 @@ test('before the photosensitivity acknowledgement a Scatter Strobe never flashes
 });
 
 test('a rapid Scatter Strobe takes the per-lamp flash permit', () => {
-  assert.equal(hdGuarded('v2.scatter.flash'), true);
-  assert.equal(hdGuarded('v2.scatter'), false);
+  assert.equal(hdGuarded('v2.scatter'), true);
   const pars = syntheticRig().fixtures.slice(0, 1);
   const red = getProfile(pars[0]).channelMap.red;
   const frames = trace(pars, scatter({ density: 1, stepBeats: 0.25, envelope: FLASH }));

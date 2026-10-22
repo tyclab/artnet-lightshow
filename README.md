@@ -306,9 +306,12 @@ an Orbit turns round the centre facing the top of the plot. `GET /api/stage/room
 lists the lights without a binding, the ones several bindings share, and the bound
 ones more than a metre from their plot position.
 
-Scatter Strobe and Frequency Burst are rapid flashes: they play only after the
-photosensitivity acknowledgement, every light takes the per-lamp flash permit, and a
-Hue lamp never flashes faster than its hardware cap.
+Every Spatial light takes the per-lamp flash permit, so no generator raises a light
+faster than the flash interval allows, and a Hue lamp never flashes faster than its
+hardware cap. A beat accent every quarter beat or faster with a flash envelope, a Scatter
+stepping that fast with one, or a Shell launching rings that fast asks for the
+photosensitivity acknowledgement first; Scatter Strobe and Frequency Burst are such rapid
+flashes.
 
 ## Configuration
 

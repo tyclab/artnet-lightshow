@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { activeEvents, sampleEnvelope } from '../envelope.ts';
 import { hash01 } from '../hash.ts';
 import { registerKind } from '../registry.ts';
-import { accentPeak, azimuthAround, centreOf, distanceTo, farthestCorner, lengthIn, paint, pointIn, positionsOf, soft, triggerLevel, v2CommonSchema } from './common.ts';
+import { accentPeak, accentStrobes, azimuthAround, isFlashEnvelope, centreOf, distanceTo, farthestCorner, lengthIn, paint, pointIn, positionsOf, soft, triggerLevel, v2CommonSchema } from './common.ts';
 import type { Point, Positions } from './common.ts';
 import type { EffectFrame, EffectSlot } from '../types.ts';
 import type { Room } from '../../room.ts';
@@ -22,10 +22,20 @@ export const shellSchema = v2CommonSchema.extend({
 });
 export type ShellParams = z.output<typeof shellSchema>;
 
+/** Rings every quarter beat or faster that pass a light in a fifth of a beat (or a flash fill) strobe it. */
+export function shellStrobes(p: ShellParams): boolean {
+  if (accentStrobes(p)) return true;
+  if (p.trigger.beatInterval > 0.25) return false;
+  if (p.profile === 'fill') return isFlashEnvelope(p.envelope);
+  return ((p.profile === 'ramp' ? 1 + RAMP_TAIL : 2) * p.width) / p.speed <= 0.2;
+}
+
 // A beat accent keeps the band's strength from the moment its ring launched.
 interface ShellState { launched: Map<number, number> }
 
 const RAMP_TAIL = 4;
+const MAX_RINGS = 32;
+const FADE_RINGS = 8;
 const KEEP_LAUNCHES = 64;
 
 function originsOf(p: ShellParams, room: Room, pos: Positions, event: number, seed: EffectFrame['seed']): Point[] {
@@ -58,28 +68,54 @@ function launchStrength(p: ShellParams, s: ShellState, f: EffectFrame, event: nu
   return strength;
 }
 
+// Each light's distance from an origin, with the spiral's lag added, worked out once per origin.
+const distanceMemo = new WeakMap<Positions, Map<string, Float64Array>>();
+const KEEP_DISTANCES = 64;
+function distancesFrom(pos: Positions, n: number, origin: Point, twistDeg: number): Float64Array {
+  let memo = distanceMemo.get(pos);
+  if (!memo) { memo = new Map(); distanceMemo.set(pos, memo); }
+  const key = `${origin.x},${origin.y},${origin.z}|${twistDeg}`;
+  let d = memo.get(key);
+  if (!d) {
+    d = new Float64Array(n);
+    const twist = twistDeg === 0 ? 0 : 1 / Math.abs(twistDeg);
+    for (let i = 0; i < n; i++) {
+      const turn = twist ? azimuthAround(pos, i, origin) : 0;
+      d[i] = distanceTo(pos, i, origin) + (twist ? (twistDeg > 0 ? turn : 360 - turn) * twist : 0);
+    }
+    memo.set(key, d);
+    if (memo.size > KEEP_DISTANCES) memo.delete(memo.keys().next().value!);
+  }
+  return d;
+}
+
 function renderShell(p: ShellParams, s: ShellState, room: Room, f: EffectFrame, out: EffectSlot[]): void {
   const pos = positionsOf(room, p.space);
   const space = pos.plan ? 'plan' : 'room';
   const width = lengthIn(space, p.width), speed = lengthIn(space, p.speed);
-  const twist = p.twistDeg === 0 ? 0 : 1 / Math.abs(p.twistDeg);
-  const spiral = twist * 360;
-  const reach = Math.max(...originsOf(p, room, pos, 0, f.seed).map((o) => farthestCorner(pos, o)), farthestCorner(pos, centreOf(pos)));
+  const spiral = p.twistDeg === 0 ? 0 : 360 / Math.abs(p.twistDeg);
+  // A random origin may be any light: its ring must be able to cross the whole room.
+  const reach = p.origin === 'random'
+    ? (pos.plan ? Math.SQRT2 : Math.hypot(pos.bounds.width, pos.bounds.depth, pos.bounds.height))
+    : Math.max(...originsOf(p, room, pos, 0, f.seed).map((o) => farthestCorner(pos, o)), farthestCorner(pos, centreOf(pos)));
   const life = (reach + spiral + 2 * width) / speed + (p.profile === 'fill' ? p.envelope.attack + p.envelope.hold + p.envelope.release : 0);
   const t = f.beatPos - f.anchorBeat;
-  const events = activeEvents(Number.isFinite(t) ? t : 0, p.trigger.beatInterval, life, 0).filter((e) => e.age >= 0);
+  // Newest first; at most MAX_RINGS live, the oldest few fading out, so a slow frequent shell stays inside a frame.
+  const events = activeEvents(Number.isFinite(t) ? t : 0, p.trigger.beatInterval, life, 0).filter((e) => e.age >= 0).slice(0, MAX_RINGS);
   const levels = new Float64Array(room.n), along = new Float64Array(room.n);
-  for (const event of events) {
-    const strength = launchStrength(p, s, f, event.index);
-    if (!(strength > 0)) continue;
+  const reachBehind = p.profile === 'ramp' ? RAMP_TAIL * width : p.profile === 'fill' ? Infinity : width;
+  events.forEach((event, rank) => {
+    const strength = launchStrength(p, s, f, event.index) * Math.min(1, (MAX_RINGS - rank) / (FADE_RINGS + 1));
+    if (!(strength > 0)) return;
     for (const origin of originsOf(p, room, pos, event.index, f.seed)) {
       const far = farthestCorner(pos, origin);
       const front = p.direction === 'out' ? speed * event.age : far + width - speed * event.age;
+      const distances = distancesFrom(pos, room.n, origin, p.twistDeg);
       for (let i = 0; i < room.n; i++) {
-        const turn = twist ? azimuthAround(pos, i, origin) : 0;
-        const d = distanceTo(pos, i, origin) + (twist ? (p.twistDeg > 0 ? turn : 360 - turn) * twist : 0);
+        const d = distances[i];
         // Positive behind the front: the side the ring has already passed.
         const behind = p.direction === 'out' ? front - d : d - front;
+        if (behind <= -(width + pos.size[i]) || behind >= reachBehind + pos.size[i]) continue;
         let lit = soft(behind, width, pos.size[i]);
         if (p.profile === 'ramp' && behind > 0) lit = Math.max(lit, 1 - behind / (RAMP_TAIL * width));
         if (p.profile === 'fill' && behind > 0) lit = Math.max(lit, sampleEnvelope(behind / speed, p.envelope));
@@ -87,13 +123,13 @@ function renderShell(p: ShellParams, s: ShellState, room: Room, f: EffectFrame, 
         if (lit > levels[i]) { levels[i] = lit; along[i] = d / Math.max(1e-6, far); }
       }
     }
-  }
+  });
   for (let i = 0; i < room.n; i++) paint(p, f, along[i], levels[i], out[i]);
 }
 
 registerKind<ShellParams, ShellState>({
   kind: 'v2.shell', app: 'own', level: 'cell', schema: shellSchema,
-  defaults: { params: shellSchema.parse({}), brightness: 1 }, stateful: true,
+  defaults: { params: shellSchema.parse({}), brightness: 1 }, stateful: true, rapidFlashWhen: shellStrobes,
   init: () => ({ launched: new Map() }),
   render: (params, state, room, frame, out) => renderShell(params, state, room, frame, out),
 });

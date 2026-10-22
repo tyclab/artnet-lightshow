@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { registerKind } from '../registry.ts';
-import { azimuthAround, centreOf, paint, positionsOf, soft, triggerLevel, v2CommonSchema } from './common.ts';
+import { accentStrobes, azimuthAround, centreOf, paint, positionsOf, soft, triggerLevel, v2CommonSchema } from './common.ts';
 import type { EffectFrame, EffectSlot } from '../types.ts';
 import type { Room } from '../../room.ts';
 
@@ -50,6 +50,7 @@ function renderOrbit(p: OrbitParams, room: Room, f: EffectFrame, out: EffectSlot
 registerKind<OrbitParams, Record<string, never>>({
   kind: 'v2.orbit', app: 'own', level: 'cell', schema: orbitSchema,
   defaults: { params: orbitSchema.parse({}), brightness: 1 },
+  rapidFlashWhen: accentStrobes,
   init: () => ({}),
   render: (params, _state, room, frame, out) => renderOrbit(params, room, frame, out),
 });

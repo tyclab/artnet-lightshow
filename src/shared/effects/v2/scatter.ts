@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { sampleEnvelope } from '../envelope.ts';
 import { hash01 } from '../hash.ts';
 import { registerKind } from '../registry.ts';
-import { bandSchema, paint, positionsOf, triggerLevel, v2CommonSchema } from './common.ts';
-import type { Positions, V2Common } from './common.ts';
+import { accentStrobes, bandSchema, isFlashEnvelope, paint, positionsOf, triggerLevel, v2CommonSchema } from './common.ts';
+import type { Positions } from './common.ts';
 import type { EffectFrame, EffectSlot } from '../types.ts';
 import type { Room } from '../../room.ts';
 
@@ -18,18 +18,11 @@ export const scatterSchema = v2CommonSchema.extend({
 });
 export type ScatterParams = z.output<typeof scatterSchema>;
 
-// The slot kind a rapid Scatter Strobe reports, so the per-lamp flash permit (layer.ts) covers it.
-export const SCATTER_FLASH_KIND = 'v2.scatter.flash';
 const KEEP_STEPS = 64;
 const MAX_BACK_STEPS = 64;
 
-/** A flash envelope: no attack and gone within a fifth of a beat. */
-export function isFlashEnvelope(envelope: V2Common['envelope']): boolean {
-  return envelope.attack <= 0.02 && envelope.hold + envelope.release <= 0.2;
-}
-
-export function scatterRapidFlash(p: Pick<ScatterParams, 'stepBeats' | 'envelope'>): boolean {
-  return p.stepBeats <= 0.25 && isFlashEnvelope(p.envelope);
+export function scatterRapidFlash(p: Pick<ScatterParams, 'stepBeats' | 'envelope' | 'trigger'>): boolean {
+  return (p.stepBeats <= 0.25 && isFlashEnvelope(p.envelope)) || accentStrobes(p);
 }
 
 interface ScatterState { fired: Map<number, boolean> }
@@ -146,11 +139,7 @@ function renderScatter(p: ScatterParams, s: ScatterState, room: Room, f: EffectF
     }
   }
   const trigger = triggerLevel(p, f);
-  const kind = scatterRapidFlash(p) ? SCATTER_FLASH_KIND : undefined;
-  for (let i = 0; i < n; i++) {
-    paint(p, f, along[i], levels[i] * trigger, out[i]);
-    if (kind && out[i].strength > 0) out[i].kind = kind;
-  }
+  for (let i = 0; i < n; i++) paint(p, f, along[i], levels[i] * trigger, out[i]);
 }
 
 registerKind<ScatterParams, ScatterState>({
