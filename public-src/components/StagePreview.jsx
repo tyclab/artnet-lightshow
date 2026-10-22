@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { stateSig, dmxSig, connectedSig, emitFixture, stagePreviewSig } from '../state.js';
-import { colorToCss, fixtureOutputColor, fixtureCellColors, meanLight, fmtTime, patchedAt } from '../utils.js';
+import { colorToCss, fixtureOutputColor, fixtureCellColors, meanLight, fmtTime, patchedAt, stageMode } from '../utils.js';
 import { useDmxFeed } from '../use-dmx.js';
 import { useRehearsalTrack, useRehearsalSampler } from '../rehearsal.js';
 import { NowPlaying } from './NowPlaying.jsx';
@@ -14,7 +14,7 @@ export function StagePreview() {
   const fixtures = s.fixtures || [];
   const connected = connectedSig.value;
   const { data } = useTimeline();
-  const { edit, playing, position } = stagePreviewSig.value;
+  const { edit, playing, position, preview: previewLook } = stagePreviewSig.value;
   const setUi = (patch) => { stagePreviewSig.value = { ...stagePreviewSig.value, ...patch }; };
   const [draft, setDraft] = useState(null);
   const drag = useRef(null);
@@ -34,6 +34,9 @@ export function StagePreview() {
   // flag in an effect keeps the panel honest the moment the analysis goes away,
   // and means losing it does not cost the operator their scrub position.
   const rehearsal = stagePreviewSig.value.rehearsal && !!data;
+  const mode = stageMode({ rehearsing: rehearsal, connected, armed: s.armed, preview: previewLook });
+  // Disarmed and not previewing, the lights draw as the blackout draws them: off.
+  const shown = mode.lit ? s : { ...s, masterBlackout: true };
   // The timeline data carries the analysed beats, so the chase steps here on
   // the same beats the rig will step on.
   const sample = useRehearsalSampler(data);
@@ -109,7 +112,9 @@ export function StagePreview() {
   return <section class="panel stage-panel">
     <header class="panel-head">
       <h2 class="panel-title">Stage preview</h2>
-      <span class="panel-tag">{rehearsal ? 'Rehearsal' : connected ? s.armed ? 'Live output' : 'Preview (disarmed)' : 'Offline'}</span>
+      <span class="panel-tag">{mode.tag}</span>
+      {connected && !s.armed && !rehearsal && <button class={`btn sm ${previewLook ? 'active' : ''}`} aria-pressed={!!previewLook}
+        title="Draw what arming would send; nothing goes out" onClick={() => setUi({ preview: !previewLook })}>Preview look</button>}
       <button class={`btn sm ${edit ? 'active' : ''}`} disabled={!connected} aria-pressed={edit}
         onClick={() => { setUi({ edit: !edit }); drag.current = null; setDraft(null); }}> {edit ? 'Done positioning' : 'Position fixtures'}</button>
     </header>
@@ -123,7 +128,7 @@ export function StagePreview() {
         const { start, count } = rig.ranges[i];
         const colours = preview
           ? preview.slice(start, start + count).map(colorToCss)
-          : connected ? (fixtureCellColors(fix, s, dmx) || []) : [];
+          : connected ? (fixtureCellColors(fix, shown, dmx) || []) : [];
         return <span key={`cells-${fix.id}`} class="stage-cells" aria-hidden="true">
           {rig.points.slice(start, start + count).map((point, c) => (
             <i key={c} class="stage-cell" style={{ ...placeAt(point), '--light': colours[c] || '#222' }} />
@@ -136,7 +141,7 @@ export function StagePreview() {
         const bar = !!rig.cellMaps[i];
         const color = preview
           ? colorToCss(bar ? meanLight(preview.slice(start, start + count)) : preview[start])
-          : connected ? fixtureOutputColor(fix, s, dmx) : '#222';
+          : connected ? fixtureOutputColor(fix, shown, dmx) : '#222';
         // A panel's line is its top edge, as wide as its columns (shared/rig.js).
         const grid = rig.grids[i];
         const line = bar ? lineOf(fix, grid ? grid.columns : count, fix.position ? 0 : unplaced) : null;

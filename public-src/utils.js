@@ -157,6 +157,15 @@ export function fixtureOutputColor(fix, state, dmxSnapshot) {
   return light ? colorToCss(light) : '#111';
 }
 
+/** What a stage drawing shows. Disarmed, nothing reaches the rig, so its lights draw off;
+ * the engine's idle look appears only when the operator asks to preview it. */
+export function stageMode({ rehearsing, connected, armed, preview }) {
+  if (rehearsing) return { tag: 'Rehearsal', lit: true };
+  if (!connected) return { tag: 'Offline', lit: true };
+  if (armed) return { tag: 'Live output', lit: true };
+  return preview ? { tag: 'Preview (disarmed)', lit: true } : { tag: 'Outputs off', lit: false };
+}
+
 export function rigLights(fixtures, state, dmxSnapshot, rig) {
   const out = new Array(rig.units.length).fill(BLACK);
   fixtures.forEach((fix, i) => {

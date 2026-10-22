@@ -2,7 +2,7 @@
 // rehearsed, and the rig drawn in 3D — live from the DMX feed, or rehearsing.
 
 import { test, expect } from '@playwright/test';
-import { open, reset, set, state, loadTrack, unloadTrack } from './helpers.js';
+import { open, previewLook, reset, set, state, loadTrack, unloadTrack } from './helpers.js';
 import { stageImage } from './stage-image.js';
 
 test.beforeEach(async ({ request }) => {
@@ -20,10 +20,15 @@ async function litShare(page) {
   return (await stageImage(page)).litShare;
 }
 
-test('the Stage view previews the rendered output, and goes dark with the blackout', async ({ page, request }) => {
+test('disarmed, the Stage view draws the lights off until the look is previewed, and the blackout darkens the preview', async ({ page, request }) => {
   await set(request, { pattern: 'solid' });
   await open(page, 'stage');
   const stage = page.getByRole('img', { name: /The rig in 3D/ });
+  await expect(stage).toHaveAttribute('aria-label', /4 fixtures, 4 lights, outputs disarmed, lights drawn off/);
+  await expect(page.locator('.stage3d-tools .panel-tag')).toHaveText('Outputs off');
+  await expect.poll(() => litShare(page), { message: 'nothing goes out, so nothing is lit' }).toBeLessThan(0.001);
+
+  await previewLook(page);
   await expect(stage).toHaveAttribute('aria-label', /4 fixtures, 4 lights, previewing with outputs disarmed/);
   await expect(page.locator('.stage3d-tools .panel-tag')).toHaveText('Preview (disarmed)');
   await expect.poll(() => litShare(page), { message: 'the pars light the haze' }).toBeGreaterThan(0.01);
@@ -59,7 +64,7 @@ test('rehearsing on the Stage view: the planned show at any moment, whatever the
   await expect(page.locator('.stage3d-time')).not.toHaveText('1:00 / 4:07');
   await page.getByRole('button', { name: 'Pause' }).click();
   await page.getByRole('button', { name: 'Back to live' }).click();
-  await expect(page.locator('.stage3d-tools .panel-tag')).toHaveText('Preview (disarmed)');
+  await expect(page.locator('.stage3d-tools .panel-tag')).toHaveText('Outputs off');
   await expect.poll(() => litShare(page), { message: 'live, the blackout holds' }).toBeLessThan(0.001);
 });
 
@@ -151,7 +156,7 @@ test('Stage and the fixture plot distinguish disarmed preview from armed output'
     await open(page, 'stage');
     const label = page.locator('.stage3d-tools .panel-tag');
     const stage = page.getByRole('img', { name: /The rig in 3D/ });
-    await expect(label).toHaveText('Preview (disarmed)');
+    await expect(label).toHaveText('Outputs off');
     await expect(stage).toHaveAttribute('aria-label', /nothing is transmitted/);
     await expect(page.locator('.look-note')).toContainText('nothing is transmitted to the rig');
     await request.post('/api/outputs/arm');
@@ -162,6 +167,8 @@ test('Stage and the fixture plot distinguish disarmed preview from armed output'
     const plot = page.locator('.stage-panel .panel-tag');
     await expect(plot).toHaveText('Live output');
     await request.post('/api/outputs/disarm');
+    await expect(plot).toHaveText('Outputs off');
+    await previewLook(page);
     await expect(plot).toHaveText('Preview (disarmed)');
   } finally {
     await request.post('/api/outputs/disarm');

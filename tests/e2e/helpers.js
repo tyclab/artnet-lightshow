@@ -1,3 +1,4 @@
+import { expect } from '@playwright/test';
 // Shared by the end-to-end specs: read and set the server's state over REST,
 // and open the page on a view with a clean look.
 
@@ -31,6 +32,13 @@ export async function open(page, view = 'effects', { theme = 'dark' } = {}) {
   await page.locator('.offline-veil').waitFor({ state: 'detached' });
   // A view with tabs of its own is named with them: rig/outputs.
   await page.locator(`#panel-${resolveRoute(view).view}`).waitFor();
+}
+
+/** Disarmed, a stage draws its lights off; this asks it to draw the look that arming would send. */
+export async function previewLook(page) {
+  const button = page.getByRole('button', { name: 'Preview look' }).first();
+  await button.click();
+  await expect(button).toHaveAttribute('aria-pressed', 'true');
 }
 
 /** Poll the server until `check(state)` holds, or fail with the last state. */
