@@ -488,13 +488,23 @@ function peak(c: Context, heard: AudioFrame | null): void {
   if (process(c, 3, hit, flash) && flash) c.s.lastFlash = c.now;
 }
 
+export interface NeuralReading { frequency: number; amplitude: number }
+
+/** The analyser's running pitch and level, each 0..1 in single precision; with `state`, the last reading holds between hops. */
+export function neuralReading(heard: AudioFrame | null, state?: { reading?: NeuralReading | null }): NeuralReading | null {
+  if (!heard) return state?.reading ?? null;
+  const reading = { frequency: f32(unit(heard.disco?.neural?.mainFrequency)), amplitude: f32(unit(heard.disco?.neural?.amplitude)) };
+  if (state) state.reading = reading;
+  return reading;
+}
+
 // Every fresh reading sets every lamp at once; between readings they hold.
 // The arithmetic is 32-bit float, which moves some hues a degree.
 function neural(c: Context, heard: AudioFrame | null): void {
   const cfg = c.p.channels[4], group = c.s.layout.groups[4];
   if (!cfg.enabled || !group.length) return;
   if (!heard) { idleIfDue(c, 4); return; }
-  const frequency = f32(unit(heard.disco?.neural?.mainFrequency)), amplitude = f32(unit(heard.disco?.neural?.amplitude));
+  const { frequency, amplitude } = neuralReading(heard)!;
   const bri = Math.trunc(f32(FULL * amplitude));
   const index = (n: number) => Math.trunc(f32(f32(n - 1) * frequency));
   let colour: Colour;
