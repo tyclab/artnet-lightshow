@@ -99,7 +99,8 @@ function renderScatter(p: ScatterParams, s: ScatterState, room: Room, f: EffectF
   const now = Math.floor((Number.isFinite(t) ? t : 0) / p.stepBeats);
   const length = p.envelope.attack + p.envelope.hold + p.envelope.release;
   const back = Math.min(MAX_BACK_STEPS, Math.ceil(length / p.stepBeats));
-  const count = Math.min(n, Math.round(p.density * n));
+  // At least one pick a step, so a sparse density still plays on a small rig.
+  const count = p.density > 0 ? Math.min(n, Math.max(1, Math.round(p.density * n))) : 0;
   const cluster = p.clusterM > 0 && !pos.plan ? p.clusterM : 0;
   const cubes = cluster ? neighbourhood(pos, n, cluster) : null;
   const light = (i: number, level: number, colour: number) => { if (level > levels[i]) { levels[i] = level; along[i] = colour; } };

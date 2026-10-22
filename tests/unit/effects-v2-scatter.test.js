@@ -152,3 +152,9 @@ test('the renderer and the preview pick the same units', () => {
     assert.deepEqual(units.map(({ u }) => preview[u].r), red, `frame at ${t} ms`);
   }
 });
+
+test('a small rig still lights one unit on every step', () => {
+  const four = buildRoom(4, (i) => i / 3, () => 0.5, () => 0.5, null);
+  for (const step of [0, 1, 2]) assert.equal(lit(renderKind(scatter({ density: 0.08, stepBeats: 0.25, envelope: FLASH }), four, frameAt(step * 0.25 + 0.01)).out), 1);
+  assert.equal(lit(renderKind(scatter({ density: 0, stepBeats: 0.25, envelope: FLASH }), four, frameAt(0.01)).out), 0);
+});
