@@ -243,9 +243,9 @@ function ico(images) {
 }
 
 const TILED = { corners: true, inset: 1 };
-// A full-bleed square: the platform rounds or crops it, so the mark keeps
-// to the inner 80 % where it may be cut to a circle.
+// A full-bleed square: the platform rounds or crops it.
 const SQUARE = { corners: false, inset: 1 };
+// Maskable: the mark keeps to the inner 80 % where it may be cut to a circle.
 const MASKABLE = { corners: false, inset: 0.78 };
 
 fs.mkdirSync(OUT, { recursive: true });
