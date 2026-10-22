@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { SettingsStore, DEFAULTS, LEGACY_HUE_BRIDGE_ID, migrateLegacyHue, warnAboutLegacyEnv } from '../../src/server/settings.ts';
+import { SettingsStore, DEFAULTS, LEGACY_HUE_BRIDGE_ID, migrateLegacyHue, retireOldSourceName, warnAboutLegacyEnv } from '../../src/server/settings.ts';
 import { schema, patchSchema } from '../../src/server/settings.ts';
 
 let counter = 0;
@@ -405,4 +405,19 @@ test('hardware products persist and can be removed without stale entries', () =>
   s.update({ hardware: { products: {} } });
   assert.deepEqual(new SettingsStore(s.file).load().group('hardware').products, {});
   assert.throws(() => s.update({ hardware: { technologies: { hue: { maxFlashHz: -1 } } } }));
+});
+
+test('a stored sACN source name at the former default loads as the current one; a chosen name is kept', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lightshow-sacn-name-'));
+  const load = (sourceName, name) => {
+    const file = path.join(dir, `${name}.json`);
+    fs.writeFileSync(file, JSON.stringify({ sacn: { sourceName } }));
+    return new SettingsStore(file).load().get('sacn.sourceName');
+  };
+  assert.strictEqual(load('Tyclab Lightshow', 'former'), DEFAULTS.sacn.sourceName);
+  assert.strictEqual(DEFAULTS.sacn.sourceName, 'TycStation Lightshow');
+  assert.strictEqual(load('Bar rig', 'chosen'), 'Bar rig');
+  assert.strictEqual(load('tyclab lightshow', 'other-case'), 'tyclab lightshow');
+  assert.strictEqual(retireOldSourceName({ artnet: {} }), false);
+  assert.strictEqual(retireOldSourceName(null), false);
 });

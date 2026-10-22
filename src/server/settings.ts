@@ -381,6 +381,16 @@ function retireGuessedGrade(parsed: unknown): boolean {
   return true;
 }
 
+// save() writes every value, so the product's former default name was stored, not chosen.
+const RETIRED_SOURCE_NAME = 'Tyclab Lightshow';
+function retireOldSourceName(parsed: unknown): boolean {
+  const sacn = parsed && typeof parsed === 'object' ? (parsed as { sacn?: Record<string, unknown> }).sacn : null;
+  if (!sacn || typeof sacn !== 'object' || sacn.sourceName !== RETIRED_SOURCE_NAME) return false;
+  sacn.sourceName = DEFAULTS.sacn.sourceName;
+  console.warn(`[settings] sacn.sourceName held the former default, now ${DEFAULTS.sacn.sourceName}`);
+  return true;
+}
+
 function isLegacyHue(hue: unknown): hue is Record<string, unknown> {
   return !!hue && typeof hue === 'object' && !Array.isArray(hue)
     && !('bridges' in hue) && LEGACY_HUE_KEYS.some((key) => key in hue);
@@ -433,6 +443,7 @@ class SettingsStore extends JsonStore {
       // Clear newly invalid fields individually so one new rule cannot discard saved credentials.
       clearNewlyInvalidFields(parsed);
       retireGuessedGrade(parsed);
+      retireOldSourceName(parsed);
       migrateLegacyHue(parsed);
       // Merge defaults before validation so older files with missing settings still load.
       return merge(DEFAULTS, parsed);
@@ -574,5 +585,6 @@ export {
   defaultHueBridgeId,
   migrateLegacyHue,
   retireGuessedGrade,
+  retireOldSourceName,
   warnAboutLegacyEnv,
 };
