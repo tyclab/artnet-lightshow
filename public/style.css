@@ -56,7 +56,7 @@
   --accent-fill:    var(--blue);
   --accent-hover:   var(--violet);
   --text-on-accent: var(--ground);
-  --accent-2:       var(--blue);
+  --accent-2:       var(--violet);
   --accent-3:       var(--led-amber);
   --accent-4:       var(--red);
 
@@ -1216,7 +1216,7 @@ input[type=range]::-moz-range-thumb {
   border: none;
 }
 
-/* override-row uses the secondary (emerald) accent */
+/* override-row uses the secondary accent */
 .override-row input[type=range]::-webkit-slider-thumb {
   background: var(--accent-2);
 }
@@ -1832,7 +1832,7 @@ input[type=range]::-moz-range-thumb {
 /* A trimmed fixture is not doing what the rest of the rig is doing, and that is
    worth seeing from across the room rather than by reading a number. */
 .fixture-max.trimmed label,
-.fixture-max.trimmed .val { color: var(--amber); }
+.fixture-max.trimmed .val { color: var(--text-amber); }
 
 .override-section { display: flex; flex-direction: column; gap: 8px; }
 .override-section .override-header {
@@ -2309,7 +2309,7 @@ input[type=range]::-moz-range-thumb {
   color: var(--muted);
   font-family: var(--mono);
 }
-.warm-failed { color: var(--accent-4); }
+.warm-failed { color: var(--text-red); }
 .warm-current { color: var(--dim); }
 
 /* Spotify playlist source: pick one of the account's own, or paste a link. */
@@ -2387,7 +2387,7 @@ input[type=range]::-moz-range-thumb {
 .warm-row.ready .warm-row-status,
 .warm-row.cached .warm-row-status { color: var(--text-green); }
 .warm-row.warming .warm-row-status { color: var(--accent); }
-.warm-row.error .warm-row-status { color: var(--accent-4); }
+.warm-row.error .warm-row-status { color: var(--text-red); }
 
 /* The `hidden` attribute must win over any display rule a component sets on
    itself. Without this, `.midi-learn-banner { display: flex }` beat the UA's
@@ -2501,7 +2501,7 @@ input[type=range]::-moz-range-thumb {
   color: var(--text);
   font-size: 13px;
 }
-.auto-error strong { color: var(--red); margin-right: 4px; }
+.auto-error strong { color: var(--text-red); margin-right: 4px; }
 
 .transport-spacer { flex: 1; }
 .transport-source { display: inline-flex; align-items: center; gap: 8px; }
@@ -3891,14 +3891,14 @@ input[type=range]::-moz-range-thumb {
 .seq-beat { color: var(--muted); font-variant-numeric: tabular-nums; }
 .seq-transport { display: flex; gap: 8px; }
 .seq-big { min-width: 56px; min-height: 56px; font-size: 20px; border-radius: var(--radius); }
-.seq-rec { color: var(--accent-4); }
+.seq-rec { color: var(--text-amber); }
 .seq-edit-toggle, .seq-mini { min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border-hi); background: var(--surface); color: var(--text); }
 .seq-edit-toggle.active, .seq-mini.active, .seq-mini[aria-checked="true"] { background: var(--accent-fill); border-color: var(--accent); }
 .seq-shelf, .seq-patterns, .seq-record, .seq-toolbar, .seq-capture { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .seq-shelf-item, .seq-pattern { min-height: 48px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--border-hi); background: var(--card); color: var(--text); font-size: 15px; }
 .seq-shelf-item.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .seq-record select, .seq-toolbar select, .seq-toolbar button, .seq-capture input, .seq-capture button { min-height: 44px; }
-.seq-danger { color: var(--accent-4); }
+.seq-danger { color: var(--text-red); }
 .seq-confirm { color: var(--text); }
 .seq-note { margin: 0; color: var(--muted); font-size: 13px; }
 .seq-arrangement { display: grid; grid-template-columns: minmax(90px, 160px) 1fr; gap: 0 8px; min-width: 0; }

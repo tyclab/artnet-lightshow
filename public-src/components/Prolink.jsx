@@ -59,7 +59,7 @@ export function Prolink() {
                 title={artist ? `${artist} — ${title}` : title}
                 style={{
                   fontSize: '11px',
-                  color: isFollowed ? 'var(--accent-3)' : 'var(--muted)',
+                  color: isFollowed ? 'var(--text-amber)' : 'var(--muted)',
                   lineHeight: 1.4,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',

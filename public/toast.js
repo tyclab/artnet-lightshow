@@ -47,8 +47,7 @@
       dismissed = true;
       clearTimeout(timer);
       node.classList.add('leaving');
-      // Let the transition finish, but never leave the node behind if the
-      // browser skips it (reduced motion, background tab).
+      // The node goes after 200 ms; .leaving hides it at once (no chrome motion).
       setTimeout(() => node.remove(), 200);
     };
 
