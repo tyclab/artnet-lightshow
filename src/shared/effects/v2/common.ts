@@ -149,7 +149,8 @@ export function paint(common: V2Common, frame: EffectFrame, position01: number, 
   if (!(lit > 0)) {
     out.colour = { r: 0, g: 0, b: 0, w: 0, a: 0, uv: 0 };
     out.level = 0;
-    out.strength = 0;
+    // A generator owns its dark rests; transparency would reveal the base look beneath a voice.
+    out.strength = 1;
     return;
   }
   const colour = frame.gradient?.sample(pos) ?? samplePalette(frame.palette, pos);

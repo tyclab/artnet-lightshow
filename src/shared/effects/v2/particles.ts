@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { registerKind } from '../registry.ts';
 import { accentStrobes, centreOf, lengthIn, paint, pointIn, positionsOf, soft, triggerLevel, v2CommonSchema } from './common.ts';
 import { pathEndpoints } from './path.ts';
+import { DEFAULT_BOUNDS } from '../../space.ts';
 import type { Point } from './common.ts';
 import type { Room } from '../../room.ts';
 import type { EffectFrame } from '../types.ts';
@@ -24,7 +25,8 @@ export const particlesSchema = v2CommonSchema.extend({
 });
 export type ParticlesParams = z.output<typeof particlesSchema>;
 export interface LightParticle extends Point { radius: number; level: number; colour: number }
-interface ParticleState { cells: Map<string, number[]>; cellSize: number; levels: Float32Array; colours: Float32Array }
+interface SoftProfile { width: number; frequency: number; spread: Float64Array; denominator: Float64Array }
+interface ParticleState { cells: Map<string, number[]>; cellSize: number; levels: Float32Array; colours: Float32Array; winners: Int32Array; roundedDown: Uint8Array; profiles: Map<number, SoftProfile> }
 const TAU = Math.PI * 2;
 const frac = (x: number) => x - Math.floor(x);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -76,11 +78,16 @@ export function particleObjects(p: ParticlesParams, room: Room, f: EffectFrame):
   }
   if (p.mode === 'fireworks') {
     const age = t % p.cycleBeats, seed = f.seed[0] ^ Math.floor(t / p.cycleBeats);
-    const origin = from ?? pointIn(room, pos, room.space?.anchors.speakerLeft) ?? { ...centre, y: 0, z: pos.plan ? 1 : centre.z };
+    const explicitLaunch = pos.plan && p.fromPoint ? { x: 0.5 + p.fromPoint.x / (room.space?.bounds.width ?? DEFAULT_BOUNDS.width), y: 0,
+      z: 1 - p.fromPoint.y / (room.space?.bounds.height ?? DEFAULT_BOUNDS.height) } : null;
+    const origin = explicitLaunch ?? from ?? pointIn(room, pos, room.space?.anchors.speakerLeft) ?? { ...centre, y: 0, z: pos.plan ? 1 : centre.z };
     const originHeight = pos.plan ? 1 - origin.z : origin.y;
-    const launch = Math.min(p.cycleBeats * 0.3, Math.sqrt(2 * height * 0.7 / gravity));
+    let launch = Math.min(p.cycleBeats * 0.3, Math.sqrt(2 * height * 0.7 / gravity));
     const velocity = Math.max(p.speed * scale, height * 0.7 / launch + gravity * launch / 2);
-    const apex = Math.min(height, originHeight + velocity * launch - gravity * launch * launch / 2);
+    const remaining = height - originHeight, discriminant = velocity * velocity - 2 * gravity * remaining;
+    // Burst at the first ceiling crossing; clamping only the burst position teleports a high launch back down.
+    if (remaining >= 0 && discriminant >= 0) launch = Math.min(launch, 2 * remaining / (velocity + Math.sqrt(discriminant)));
+    const apex = originHeight + velocity * launch - gravity * launch * launch / 2;
     if (age < launch) {
       for (let tail = 0; tail <= p.trail; tail++) {
         const a = Math.max(0, age - tail * 0.08);
@@ -129,7 +136,117 @@ function spatialIndex(p: ParticlesParams, room: Room): ParticleState {
     const bucket = cells.get(key);
     if (bucket) bucket.push(i); else cells.set(key, [i]);
   }
-  return { cells, cellSize, levels: new Float32Array(room.n), colours: new Float32Array(room.n) };
+  return { cells, cellSize, levels: new Float32Array(room.n), colours: new Float32Array(room.n),
+    winners: new Int32Array(room.n), roundedDown: new Uint8Array(room.n), profiles: new Map() };
+}
+
+function profileFor(radius: number, sizes: ArrayLike<number>, state: ParticleState): SoftProfile {
+  let profile = state.profiles.get(radius);
+  if (profile) return profile;
+  const width = Math.max(0.001, radius), frequency = Math.PI / width;
+  const spread = Float64Array.from({ length: sizes.length }, (_, i) => width / Math.PI * Math.sin(frequency * Math.min(width, sizes[i])));
+  profile = { width, frequency, spread, denominator: Float64Array.from(spread, (value, i) => Math.min(width, sizes[i]) + value) };
+  state.profiles.set(radius, profile);
+  return profile;
+}
+
+function particleLevel(distance: number, size: number, profile: SoftProfile, i: number): number {
+  if (size <= 1e-6 || distance + size >= profile.width) return soft(distance, profile.width, size);
+  // The symmetric footprint integral simplifies to one cosine; its size-dependent terms are immutable.
+  return (size + profile.spread[i] * Math.cos(profile.frequency * distance)) / profile.denominator[i];
+}
+
+function retainLevel(state: ParticleState, i: number, level: number, colour: number, index: number): void {
+  const rounded = Math.fround(level), down = level > rounded;
+  // Preserve the original Float32 accumulation tie order, independent of evaluation order.
+  const wins = rounded > state.levels[i] || (level > 0 && rounded === state.levels[i]
+    && (down ? !state.roundedDown[i] || index > state.winners[i] : !state.roundedDown[i] && index < state.winners[i]));
+  if (wins) { state.levels[i] = rounded; state.colours[i] = colour; state.winners[i] = index; state.roundedDown[i] = Number(down); }
+}
+
+const roundedBuffer = new ArrayBuffer(4), roundedFloat = new Float32Array(roundedBuffer), roundedBits = new Uint32Array(roundedBuffer);
+function lowerRoundingBoundary(value: number): number {
+  if (!(value > 0)) return 0;
+  roundedFloat[0] = value; roundedBits[0]--;
+  return (value + roundedFloat[0]) / 2;
+}
+
+interface ParticleTree { particle: LightParticle; index: number; axis: 'x' | 'y' | 'z'; left: ParticleTree | null; right: ParticleTree | null; minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number }
+function particleTree(indices: number[], particles: LightParticle[], plan: boolean, depth = 0): ParticleTree | null {
+  if (!indices.length) return null;
+  const axis = (plan ? ['x', 'z'] : ['x', 'y', 'z'])[depth % (plan ? 2 : 3)] as ParticleTree['axis'];
+  indices.sort((a, b) => particles[a][axis] - particles[b][axis]);
+  const middle = indices.length >> 1, index = indices[middle], particle = particles[index];
+  const left = particleTree(indices.slice(0, middle), particles, plan, depth + 1);
+  const right = particleTree(indices.slice(middle + 1), particles, plan, depth + 1);
+  return { particle, index, axis, left, right,
+    minX: Math.min(particle.x, left?.minX ?? Infinity, right?.minX ?? Infinity),
+    maxX: Math.max(particle.x, left?.maxX ?? -Infinity, right?.maxX ?? -Infinity),
+    minY: Math.min(particle.y, left?.minY ?? Infinity, right?.minY ?? Infinity),
+    maxY: Math.max(particle.y, left?.maxY ?? -Infinity, right?.maxY ?? -Infinity),
+    minZ: Math.min(particle.z, left?.minZ ?? Infinity, right?.minZ ?? Infinity),
+    maxZ: Math.max(particle.z, left?.maxZ ?? -Infinity, right?.maxZ ?? -Infinity) };
+}
+function outsideTree(node: ParticleTree, x: number, y: number, z: number, reach: number): boolean {
+  const dx = Math.max(0, node.minX - x, x - node.maxX);
+  const dy = Math.max(0, node.minY - y, y - node.maxY);
+  const dz = Math.max(0, node.minZ - z, z - node.maxZ);
+  return dx * dx + dy * dy + dz * dz > reach;
+}
+function nearestSquared(node: ParticleTree | null, x: number, y: number, z: number, best: number): number {
+  if (!node || outsideTree(node, x, y, z, best)) return best;
+  const dx = x - node.particle.x, dy = y - node.particle.y, dz = z - node.particle.z;
+  best = Math.min(best, dx * dx + dy * dy + dz * dz);
+  const delta = node.axis === 'x' ? dx : node.axis === 'y' ? dy : dz;
+  best = nearestSquared(delta < 0 ? node.left : node.right, x, y, z, best);
+  if (delta * delta <= best) best = nearestSquared(delta < 0 ? node.right : node.left, x, y, z, best);
+  return best;
+}
+function retainNearby(node: ParticleTree | null, x: number, y: number, z: number, reach: number, size: number,
+  profile: SoftProfile, state: ParticleState, unit: number): void {
+  if (!node || outsideTree(node, x, y, z, reach)) return;
+  const dx = x - node.particle.x, dy = y - node.particle.y, dz = z - node.particle.z;
+  const squared = dx * dx + dy * dy + dz * dz;
+  if (squared <= reach) retainLevel(state, unit, particleLevel(Math.sqrt(squared), size, profile, unit) * node.particle.level,
+    node.particle.colour, node.index);
+  const delta = node.axis === 'x' ? dx : node.axis === 'y' ? dy : dz;
+  retainNearby(delta < 0 ? node.left : node.right, x, y, z, reach, size, profile, state, unit);
+  if (delta * delta <= reach) retainNearby(delta < 0 ? node.right : node.left, x, y, z, reach, size, profile, state, unit);
+}
+
+function renderGroupedParticles(particles: LightParticle[], room: Room, p: ParticlesParams, state: ParticleState): number[] {
+  const pos = positionsOf(room, p.space);
+  const groups = new Map<string, { indices: number[]; profile: SoftProfile; level: number }>();
+  for (let i = 0; i < particles.length; i++) {
+    const particle = particles[i], key = `${particle.radius}/${particle.level}`;
+    let group = groups.get(key);
+    if (!group) { group = { indices: [], profile: profileFor(particle.radius, pos.size, state), level: particle.level }; groups.set(key, group); }
+    group.indices.push(i);
+  }
+  const minimum = p.mode === 'rain' ? 24 : 8;
+  const ungrouped = [...groups.values()].filter((group) => group.indices.length < minimum).flatMap((group) => group.indices);
+  const sorted = [...groups.values()].filter((group) => group.indices.length >= minimum).sort((a, b) => b.level - a.level)
+    .map((group) => ({ ...group, tree: particleTree(group.indices, particles, !!pos.plan) }));
+  for (let i = 0; i < room.n; i++) for (const group of sorted) {
+    if (Math.fround(group.level) < state.levels[i]) continue;
+    const size = pos.size[i], profile = group.profile, support = profile.width + size;
+    const x = pos.x[i], y = pos.plan ? 0 : pos.y[i], z = pos.z[i];
+    const nearest = nearestSquared(group.tree, x, y, z, support * support);
+    if (nearest >= support * support) continue;
+    const maximum = particleLevel(Math.sqrt(nearest), size, profile, i) * group.level;
+    const rounded = Math.fround(maximum);
+    if (rounded < state.levels[i]) continue;
+    const minimum = lowerRoundingBoundary(rounded) / group.level;
+    let reach = support;
+    const cosine = (minimum * profile.denominator[i] - size) / profile.spread[i];
+    if (size > 1e-6 && cosine >= -1 && cosine <= 1) {
+      const interior = Math.acos(cosine) / profile.frequency;
+      if (interior + size < profile.width) reach = interior + 1e-9;
+    }
+    // Equal radius/level particles share a monotone profile: only the nearest Float32 bin can win.
+    retainNearby(group.tree, x, y, z, reach * reach, size, profile, state, i);
+  }
+  return ungrouped;
 }
 
 registerKind<ParticlesParams, ParticleState>({
@@ -138,17 +255,25 @@ registerKind<ParticlesParams, ParticleState>({
   init: spatialIndex,
   render(p, s, room, f, out) {
     const pos = positionsOf(room, p.space), trigger = triggerLevel(p, f), cell = s.cellSize;
-    s.levels.fill(0); s.colours.fill(0);
-    for (const particle of particleObjects(p, room, f)) {
+    s.levels.fill(0); s.colours.fill(0); s.winners.fill(2147483647); s.roundedDown.fill(0);
+    const particles = particleObjects(p, room, f);
+    const order = p.count >= 8 ? renderGroupedParticles(particles, room, p, s) : particles.map((_, i) => i);
+    order.sort((a, b) => particles[b].level - particles[a].level);
+    for (const index of order) {
+      const particle = particles[index];
+      const profile = profileFor(particle.radius, pos.size, s);
       const reach = particle.radius + cell;
       const loX = Math.floor((particle.x - reach) / cell), hiX = Math.floor((particle.x + reach) / cell);
       const loY = pos.plan ? 0 : Math.floor((particle.y - reach) / cell), hiY = pos.plan ? 0 : Math.floor((particle.y + reach) / cell);
       const loZ = Math.floor((particle.z - reach) / cell), hiZ = Math.floor((particle.z + reach) / cell);
       for (let x = loX; x <= hiX; x++) for (let y = loY; y <= hiY; y++) for (let z = loZ; z <= hiZ; z++) {
         for (const i of s.cells.get(`${x},${y},${z}`) ?? []) {
-          const d = Math.hypot(pos.x[i] - particle.x, pos.plan ? 0 : pos.y[i] - particle.y, pos.z[i] - particle.z);
-          const level = soft(d, particle.radius, pos.size[i]) * particle.level;
-          if (level > s.levels[i]) { s.levels[i] = level; s.colours[i] = particle.colour; }
+          if (s.levels[i] > Math.fround(particle.level)) continue;
+          const dx = pos.x[i] - particle.x, dy = pos.plan ? 0 : pos.y[i] - particle.y, dz = pos.z[i] - particle.z;
+          const squared = dx * dx + dy * dy + dz * dz, support = particle.radius + pos.size[i];
+          if (squared >= support * support) continue;
+          const level = particleLevel(Math.sqrt(squared), pos.size[i], profile, i) * particle.level;
+          retainLevel(s, i, level, particle.colour, index);
         }
       }
     }

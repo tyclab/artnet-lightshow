@@ -63,8 +63,8 @@ export function StageView({ compact = false } = {}) {
   const rig = useMemo(() => buildRig(fixtures, (f) => profiles[f.profileId] || null), [signature, profiles]);
   const placed = useMemo(() => room ? roomRig(fixtures, rig, room) : placeRig(fixtures, profiles, rig), [rig, room, fixtures, profiles]);
   const space = useUnitSpace(rig, [rig], room);
-  const sample = useRehearsalSampler(data, space);
-  const auditionSample = useAuditionSampler(space);
+  const sample = useRehearsalSampler(data, space, rehearsing && format === '3d');
+  const auditionSample = useAuditionSampler(space, auditioning && format === '3d');
 
   // What the frame loop reads, without restarting it for every change.
   const live = useRef({});

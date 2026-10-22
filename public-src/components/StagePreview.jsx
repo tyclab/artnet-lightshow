@@ -44,9 +44,9 @@ export function StagePreview({ controls = true } = {}) {
   // The timeline data carries the analysed beats, so the chase steps here on
   // the same beats the rig will step on.
   const space = useUnitSpace(rig, [rigSignature(drawn), s.profiles]);
-  const sample = useRehearsalSampler(data, space);
+  const sample = useRehearsalSampler(data, space, rehearsal);
   // One entry per light: a par, or each cell of a bar.
-  const auditionSample = useAuditionSampler(space);
+  const auditionSample = useAuditionSampler(space, auditioning);
   const preview = auditioning ? auditionSample(audition.position, fixtures, s.colorPresets, rig) : rehearsal ? sample(position, fixtures, s.colorPresets, rig) : null;
   // Read inside the branch that uses it: a signal subscribes on read, so while
   // rehearsing this panel is driven by its own scrub position and has no reason

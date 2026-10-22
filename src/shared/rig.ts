@@ -201,15 +201,39 @@ function buildRig<F extends StageFixture>(fixtures: readonly F[], profileOf: Pro
   };
 }
 
-function rigSignature(fixtures: readonly StageFixture[], revision: number | string = 0): string {
+function rigSignature(fixtures: readonly StageFixture[], revision: number | string = 0,
+  pointsKey: (points: Point[], fixture: number) => string = (points) => JSON.stringify(points)): string {
   let key = `${revision}|${fixtures.length}`;
-  for (const f of fixtures) {
+  for (let i = 0; i < fixtures.length; i++) {
+    const f = fixtures[i];
     const p = f.position;
     const g = f.geometry;
     key += `|${f.profileId};${p ? `${p.x},${p.y},${p.height ?? ''}` : ''};${f.group || ''};${g ? `${g.length},${g.angle}` : ''};${isHue(f) ? 'h' : ''}`;
-    if (g?.points) key += `;${JSON.stringify(g.points)}`;
+    if (g?.points) key += `;${pointsKey(g.points, i)}`;
   }
   return key;
+}
+
+// Compare exact coordinates across snapshots; serials avoid stringifying thousands of points every frame.
+function createRigSignature(): (fixtures: readonly StageFixture[], revision?: number | string) => string {
+  const remembered: ({ points: Point[]; serial: string } | undefined)[] = [];
+  let serial = 0;
+  const pointsKey = (points: Point[], fixture: number): string => {
+    const prior = remembered[fixture];
+    let same = prior?.points.length === points.length;
+    if (same) for (let i = 0; i < points.length; i++) {
+      const a = points[i], b = prior!.points[i];
+      if (a.x !== b.x || a.y !== b.y || a.height !== b.height) { same = false; break; }
+    }
+    if (same) return prior!.serial;
+    const next = { points: points.map(({ x, y, height }) => ({ x, y, height })), serial: String(++serial) };
+    remembered[fixture] = next;
+    return next.serial;
+  };
+  return (fixtures, revision = 0) => {
+    remembered.length = fixtures.length;
+    return rigSignature(fixtures, revision, pointsKey);
+  };
 }
 
 function isHue(fixture: StageFixture): boolean {
@@ -376,6 +400,7 @@ export {
   lineOf,
   buildRig,
   rigSignature,
+  createRigSignature,
   isHue,
   isHueLamp,
   HUE_COLOR_PROFILE_ID,

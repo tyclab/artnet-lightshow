@@ -84,22 +84,24 @@ test('live director selects a rising wall for builds and a spatial impact on a d
   director.stop();
 });
 
-test('sparse automatic shows avoid particle paths in every section and retain them for pixel rigs', () => {
-  const all = [...PATTERNS, ...V2_PRESETS], sparse = availableFor(all, null), pixels = availableFor(all, null, { pixels: true });
+test('automatic shows require measured particle coverage independently of pixel capability', () => {
+  const all = [...PATTERNS, ...V2_PRESETS], sparse = availableFor(all, null);
+  const covered = new Set(['v2.lightOrbs']);
+  const measured = availableFor(all, null, { particles: covered });
   for (const p of V2_PRESETS) {
     if (p.spec.kind === 'v2.particles') {
       assert.equal(sparse.has(p.id), false, p.id);
-      assert.equal(pixels.has(p.id), true, p.id);
+      assert.equal(measured.has(p.id), covered.has(p.id), p.id);
     }
     if (['v2.neural', 'v2.visualizer'].includes(p.spec.kind)) {
       assert.equal(sparse.has(p.id), false, p.id);
-      assert.equal(pixels.has(p.id), false, p.id);
+      assert.equal(measured.has(p.id), false, p.id);
     }
   }
   for (let seed = 0; seed < 30; seed++) {
-    const analysis = track(); analysis.duration += seed * 0.01;
+    const analysis = track(); analysis.key = ['A', 'C', 'D', 'F', 'G'][seed % 5];
     analysis.segments[4].role = seed % 2 ? 'bridge' : 'breakdown';
-    const plan = new ShowDirector({ patterns: all, colorPresets: COLOR_PRESETS, pixels: false, lamps: 4, intensity: 80 }).plan(analysis);
+    const plan = new ShowDirector({ patterns: all, colorPresets: COLOR_PRESETS, pixels: seed % 2 === 0, lamps: 4, intensity: 80 }).plan(analysis);
     for (const scene of plan.intents.filter((i) => i.kind === INTENT.SCENE)) {
       assert.ok(!['v2.particles', 'v2.neural', 'v2.visualizer'].includes(presetById(scene.pattern)?.spec.kind), scene.pattern);
     }

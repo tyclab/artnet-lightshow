@@ -64,13 +64,18 @@ test('the strobes ask for the acknowledgement and the washes do not', () => {
   assert.deepEqual(rapid, ['Frequency Burst', 'Scatter Strobe']);
 });
 
-test('every preset lights the synthetic room in both forms', () => {
+test('every preset lights the synthetic room within a complete cycle in both forms', () => {
   const { room: synthetic } = syntheticRoom();
   const audio = audioOf({ full: 0.9, bass: 0.9, mid: 0.7, high: 0.8 });
   for (const p of V2_PRESETS) {
-    const lit = [0.01, 0.3, 0.55, 1.05, 2.2, 3.4].some((beat) =>
-      renderKind(p.spec, synthetic, { ...frameAt(beat, { audio }),
-        pictureFeatures: { palette: [{ r: 32, g: 160, b: 255, w: 0, a: 0, uv: 0 }], speed: 1, level: 1, expiresAt: 100000 } }).out.some((s) => s.level > 0.3));
+    const cycle = p.spec.params.cycleBeats ?? 8;
+    let state;
+    const lit = Array.from({ length: Math.ceil(cycle * 16) }, (_, i) => i / 16).some((beat) => {
+      const rendered = renderKind(p.spec, synthetic, { ...frameAt(beat, { audio }),
+        pictureFeatures: { palette: [{ r: 32, g: 160, b: 255, w: 0, a: 0, uv: 0 }], speed: 1, level: 1, expiresAt: 100000 } }, state);
+      state = rendered.state;
+      return rendered.out.some((s) => s.level > 0.3);
+    });
     assert.ok(lit, p.id);
   }
 });

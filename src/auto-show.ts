@@ -106,6 +106,7 @@ class AutoShow {
   declare startPending: symbol | null;
   declare _grid: BeatGrid | null;
   declare _pixels: boolean;
+  declare _particlePatterns: ReadonlySet<string> | undefined;
   declare _panels: boolean;
   declare _lamps: number | null;
   declare _pulse: PulseTrack | null;
@@ -161,6 +162,7 @@ class AutoShow {
     this.startPending = null;
     this._grid = null;
     this._pixels = false;
+    this._particlePatterns = undefined;
     this._panels = false;
     this._lamps = null;
     this._pulse = null;
@@ -704,6 +706,7 @@ class AutoShow {
       intensity: this.intensity,
       blackoutIndex: this._blackoutIdx,
       pixels: this._pixels,
+      particlePatterns: this._particlePatterns,
       panels: this._panels,
       lamps: this._lamps,
       history: settings.group('auto').setMemory === false ? null : this._memory.history(this._memoryKey()),
@@ -847,16 +850,17 @@ class AutoShow {
     }
   }
 
-  setRig({ hasPixels = false, hasPanels = false, lamps = null }:
-    { hasPixels?: boolean; hasPanels?: boolean; lamps?: number | null } = {}): void {
+  setRig({ hasPixels = false, hasPanels = false, lamps = null, particlePatterns }:
+    { hasPixels?: boolean; hasPanels?: boolean; lamps?: number | null; particlePatterns?: ReadonlySet<string> } = {}): void {
     const pixels = !!hasPixels;
     const panels = pixels && !!hasPanels;
     const count = Number.isFinite(lamps) ? lamps : null;
     const kit = (n: number | null) => n === null || n >= 3;
-    if (pixels === this._pixels && panels === this._panels && kit(count) === kit(this._lamps)) {
+    if (pixels === this._pixels && panels === this._panels && kit(count) === kit(this._lamps) && particlePatterns === this._particlePatterns) {
       this._lamps = count;
       return;
     }
+    this._particlePatterns = particlePatterns;
     this._pixels = pixels;
     this._panels = panels;
     this._lamps = count;

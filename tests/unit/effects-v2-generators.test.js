@@ -5,7 +5,7 @@ import { buildRoom } from '../../src/shared/room.ts';
 import { particleObjects, particlesSchema } from '../../src/shared/effects/v2/particles.ts';
 import { noise3 } from '../../src/shared/effects/v2/noise.ts';
 import { pathEndpoints } from '../../src/shared/effects/v2/path.ts';
-import { positionsOf } from '../../src/shared/effects/v2/common.ts';
+import { positionsOf, soft, paint, triggerLevel } from '../../src/shared/effects/v2/common.ts';
 import { frameAt, audioOf, renderKind } from '../helpers/v2-frames.js';
 
 function pointsRoom(points, facingDeg = 0) {
@@ -120,6 +120,27 @@ test('firework sparks follow gravity, and the room launch changes real height', 
   }
 });
 
+test('a high firework launch bursts continuously at the ceiling instead of travelling above it then teleporting', () => {
+  const origin = { x: 0.25, y: 3.5, z: -0.5 };
+  const p = particlesSchema.parse({ mode: 'fireworks', count: 8, trail: 0, fromPoint: origin,
+    gravity: 0.8, cycleBeats: 8, speed: 2 });
+  let previous = particleObjects(p, room, frameAt(0));
+  let burst = null;
+  for (let beat = 0.001; beat <= 2.4; beat += 0.001) {
+    const current = particleObjects(p, room, frameAt(beat));
+    if (current.length === p.count) { burst = current; break; }
+    assert.ok(current[0].y <= room.space.bounds.height + 1e-8, 'rocket stays below the physical ceiling');
+    assert.ok(current[0].y >= previous[0].y, 'the launch rises continuously');
+    previous = current;
+  }
+  assert.ok(burst, 'the rocket bursts before leaving the room');
+  for (const spark of burst) {
+    assert.ok(Math.abs(spark.y - room.space.bounds.height) < 0.005);
+    assert.ok(Math.hypot(spark.x - previous[0].x, spark.y - previous[0].y, spark.z - previous[0].z) < 0.006,
+      'spark positions start at the rocket, with no discontinuous clamp');
+  }
+});
+
 test('a drop starts a bounded orb collision immediately instead of waiting for a whole orbit', () => {
   const p = particlesSchema.parse({ mode: 'orbs', collide: true, count: 3, trail: 0, cycleBeats: 8 });
   const at = (beat) => particleObjects(p, room, { ...frameAt(beat), modulation: { section: 'drop' } });
@@ -164,4 +185,40 @@ test('actual silent stems leave every zone black despite nonzero fallback bands'
     modulation: { stems: { bass: 0, drums: 0, vocals: 0, hats: 0 } } };
   const out = renderKind(spec('zones', { partition: 'stems' }), room, f).out;
   assert.ok(out.every((s) => s.level === 0));
+});
+
+
+test('particle spatial pruning preserves brute-force emitted bytes, including Float32 winner ties', () => {
+  const points = Array.from({ length: 121 }, (_, i) => [Math.sin(i * 1.37) * 2, 2 + Math.cos(i * 0.73) * 2, Math.sin(i * 2.13) * 2]);
+  points.push([0, 1.2, 0], [0, 1.2, 0], [2, 1.2, 0], [-2, 1.2, 0]);
+  const r = pointsRoom(points);
+  r.space.size = Float32Array.from(points, (_, i) => [0, 0.02, 0.2, 0.5, 2][i % 5]);
+  const bytes = (slot) => ['r', 'g', 'b', 'w', 'a', 'uv'].map((channel) => Math.round(slot.level * slot.colour[channel]));
+  for (const space of ['room', 'plan']) for (const mode of ['orbs', 'fireworks', 'rain', 'dense-rain']) {
+    for (const radiusM of [0.05, 1, 5]) for (const beat of [0, 0.337, 2.35, 5.723]) {
+      const p = particlesSchema.parse({ space, mode: mode === 'dense-rain' ? 'rain' : mode, count: 64, trail: 8, radiusM, colour: 'along',
+        ...(mode === 'dense-rain' ? { cycleBeats: 1, speed: 0.1, gravity: 0.05 } : {}) });
+      const frame = frameAt(beat), positions = positionsOf(r, space);
+      const expected = Array.from({ length: r.n }, () => ({ colour: null, level: 0, strength: 0 }));
+      const levels = new Float32Array(r.n), colours = new Float32Array(r.n);
+      for (const particle of particleObjects(p, r, frame)) for (let i = 0; i < r.n; i++) {
+        const distance = Math.hypot(positions.x[i] - particle.x, positions.plan ? 0 : positions.y[i] - particle.y, positions.z[i] - particle.z);
+        const level = soft(distance, particle.radius, positions.size[i]) * particle.level;
+        if (level > levels[i]) { levels[i] = level; colours[i] = particle.colour; }
+      }
+      for (let i = 0; i < r.n; i++) paint(p, frame, colours[i], levels[i] * triggerLevel(p, frame), expected[i]);
+      const actual = renderKind(spec('particles', p), r, frame).out;
+      assert.deepEqual(actual.map(bytes), expected.map(bytes), `${space}/${mode}/radius=${radiusM}/beat=${beat}`);
+    }
+  }
+});
+
+
+test('a classic firework explicit launch uses room X and height, independently of depth and lamp placement', () => {
+  const first = (y, z, r = room) => particleObjects(particlesSchema.parse({ mode: 'fireworks', space: 'plan', trail: 0,
+    fromPoint: { x: 1, y, z } }), r, frameAt(0))[0];
+  assert.deepEqual(first(1, -2), { x: 0.75, y: 0, z: 0.75, radius: 0.1, level: 1, colour: 0.15 });
+  assert.equal(first(3, 2).z, 0.25, 'a higher launch starts higher on the plot');
+  assert.deepEqual(first(1, 2), first(1, -2), 'depth is omitted in the vertical classic animation');
+  assert.deepEqual(first(1, 0, pointsRoom([[1, 1, 0]])), first(1, 0), 'adding lamps cannot move an explicit launch');
 });

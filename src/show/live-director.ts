@@ -47,6 +47,7 @@ export interface LiveDirectorOptions {
   patterns: readonly { id: string }[];
   /** Whether a rig with LED bars can take the pixel patterns. */
   pixels?: () => boolean;
+  particlePatterns?: () => ReadonlySet<string> | undefined;
   now?: () => number;
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (timer: unknown) => void;
@@ -56,6 +57,7 @@ class LiveDirector {
   declare _apply: (patch: Patch) => unknown;
   declare _available: Set<string>;
   declare _pixels: () => boolean;
+  declare _particlePatterns: () => ReadonlySet<string> | undefined;
   declare _now: () => number;
   declare _setTimer: (fn: () => void, ms: number) => unknown;
   declare _clearTimer: (timer: unknown) => void;
@@ -73,7 +75,7 @@ class LiveDirector {
   declare _lastAccentAt: number;
   declare _timers: Set<unknown>;
 
-  constructor({ applyPatch, patterns, pixels = () => false, now = () => performance.now(),
+  constructor({ applyPatch, patterns, pixels = () => false, particlePatterns = () => undefined, now = () => performance.now(),
     setTimer = (fn, ms) => setTimeout(fn, ms), clearTimer = (t) => clearTimeout(t as ReturnType<typeof setTimeout>) }: LiveDirectorOptions) {
     // Called from the live input's events, where a throw would end the server:
     // a patch refused (a strobe burst before the photosensitivity
@@ -88,6 +90,7 @@ class LiveDirector {
     };
     this._available = new Set(patterns.map((p) => p.id));
     this._pixels = pixels;
+    this._particlePatterns = particlePatterns;
     this._now = now;
     this._setTimer = setTimer;
     this._clearTimer = clearTimer;
@@ -190,10 +193,10 @@ class LiveDirector {
     const character: Character = rise ? { ...this._character, energy: Math.max(0.8, this._character.energy) } : this._character;
     const drive = rise ? Math.max(0.8, this._drive()) : this._drive();
     const dropLooks = ['v2.speakerShockwave', 'v2.fireworks', 'v2.orbCollision']
-      .filter((id) => this._available.has(id) && automaticPattern(id, this._pixels()));
+      .filter((id) => this._available.has(id) && automaticPattern(id, this._particlePatterns()));
     const pattern = rise && dropLooks.length ? dropLooks[this._seed % dropLooks.length] : pickPattern({
       character, available: this._available, seed: this._seed, drive,
-      dance: this._character.pulse, pixels: this._pixels(),
+      dance: this._character.pulse, pixels: this._pixels(), particles: this._particlePatterns(),
     });
     const at = (k: number) => WHEEL[(this._hue + k) % WHEEL.length];
     const look: Patch = {

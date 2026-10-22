@@ -88,7 +88,7 @@ test('paint takes its colour by mode and keeps the background floor', () => {
   assert.deepEqual([floor.level, floor.strength], [0.2, 1]);
   const dark = slot();
   paint(common(), frameAt(0), 0, 0, dark);
-  assert.deepEqual([dark.level, dark.strength], [0, 0]);
+  assert.deepEqual([dark.level, dark.strength], [0, 1]);
   assert.deepEqual(dark.colour, { r: 0, g: 0, b: 0, w: 0, a: 0, uv: 0 });
   paint(common({ background: 0.2, backgroundColour: '#0000FF' }), frameAt(0), 0, 0, floor);
   assert.deepEqual(floor.colour, BLUE, 'background uses its own selected colour, not colour A');

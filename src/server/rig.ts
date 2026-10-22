@@ -2,12 +2,13 @@
 
 import { state } from './state.ts';
 import { getProfile, profilesRevision } from './profiles.ts';
-import { buildRig, rigSignature } from '../shared/rig.ts';
+import { buildRig, createRigSignature } from '../shared/rig.ts';
 import type { Rig } from '../shared/rig.ts';
 import type { Fixture } from '../types/rig.ts';
 
 let cached: Rig<Fixture> | null = null;
 let cachedKey = '';
+let rigSignature = createRigSignature();
 
 function currentRig(): Rig<Fixture> {
   const key = rigSignature(state.fixtures, profilesRevision());
@@ -20,6 +21,8 @@ function currentRig(): Rig<Fixture> {
 
 function invalidateRig(): void {
   cached = null;
+  cachedKey = '';
+  rigSignature = createRigSignature();
 }
 
 export {

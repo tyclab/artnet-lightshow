@@ -1,8 +1,8 @@
 // What a party frame costs on the main thread: forty placed fixtures, a
 // two-lane sequence playing, two pad loops on top and the strobe latched,
-// all through the engine's own frame path. A frame must stay under 5 ms.
+// all through the engine's own frame path, including the first frame.
 //
-// Load is handled as in pixel-budget.test.js: the frames are judged on the
+// Load is handled as in render-budget.bench.js: the frames are judged on the
 // CPU time the process spent, and the budget is scaled by how much slower a
 // fixed piece of arithmetic ran than on a quiet machine, so busy neighbours
 // on a CI runner do not fail it. The figures printed are the measured ones.
@@ -27,10 +27,9 @@ import { STROBE_DEFAULTS } from '../../src/shared/effects/strobe.ts';
 import { presetById } from '../../src/shared/effects/index.ts';
 
 const FIXTURES = 40;
-const WARM_UP = 50;
 const FRAMES = 200;
 
-// Same calibration as pixel-budget.test.js: about 2 ms of CPU on a quiet
+// Same calibration as render-budget.bench.js: about 2 ms of CPU on a quiet
 // 2024 desktop core. A slower or busier machine scales the budget up; a
 // faster one never scales it below the 5 ms it is written for.
 const QUIET_CALIBRATION_MS = 2;
@@ -57,7 +56,7 @@ const clip = (id, laneId, preset) => ({
   id, laneId, startBeat: 0, lengthBeats: 1e6, loopBeats: 1e6, effect: presetById(preset).spec, targets: 'lane', mute: false,
 });
 
-test('a party frame on forty placed fixtures renders inside 5 ms', () => {
+test('party frames on forty placed fixtures meet the calibrated mean CPU budget', () => {
   const before = { fixtures: state.fixtures, artnet: state.artnet.enabled, values: settings._values };
   const ownSave = Object.hasOwn(settings, 'save') ? settings.save : null;
   let beat = 0;
@@ -71,7 +70,7 @@ test('a party frame on forty placed fixtures renders inside 5 ms', () => {
   };
   settings.save = () => {};
   try {
-    const width = getProfile({ profileId: BUILTIN_PROFILE_ID }).channelCount;
+    const { channelCount: width, channelMap } = getProfile({ profileId: BUILTIN_PROFILE_ID });
     const perUniverse = Math.floor(512 / width);
     state.fixtures = Array.from({ length: FIXTURES }, (_, i) => ({
       id: i, label: `PAR ${i + 1}`, profileId: BUILTIN_PROFILE_ID, maxBrightness: 255, override: null,
@@ -104,7 +103,6 @@ test('a party frame on forty placed fixtures renders inside 5 ms', () => {
     strobe.on('latched');
 
     const frame = () => { beat += 0.1; renderFrame(); };
-    for (let f = 0; f < WARM_UP; f++) frame();
 
     // The setup took effect: the engine is handed all three voices and a playing sequence.
     const input = renderInput();
@@ -114,8 +112,7 @@ test('a party frame on forty placed fixtures renders inside 5 ms', () => {
     assert.equal(input.sequenceRevision, sequencer.table().revision);
 
     const calibration = calibrate();
-    // Cheapest of a few batches, as pixel-budget.test.js does.
-    let cpu = Infinity;
+    let cpu = 0;
     const ms = [];
     for (let b = 0; b < 5; b++) {
       const cpu0 = process.cpuUsage();
@@ -125,7 +122,7 @@ test('a party frame on forty placed fixtures renders inside 5 ms', () => {
         ms.push(performance.now() - t0);
       }
       const used = process.cpuUsage(cpu0);
-      cpu = Math.min(cpu, (used.user + used.system) / 1000 / FRAMES);
+      cpu += (used.user + used.system) / 1000 / FRAMES / 5;
     }
     ms.sort((a, b) => a - b);
     const mean = ms.reduce((a, b) => a + b, 0) / ms.length;
@@ -135,8 +132,11 @@ test('a party frame on forty placed fixtures renders inside 5 ms', () => {
     // the whole rig black for a tenth of a second after each flash, on the
     // wall clock, and these frames run far faster than that: so look, untimed,
     // for as long as that gap can last and a little more.
-    const lit = () => state.fixtures.some((fix) => universes.getBuffer(fix.universe)
-      .subarray(fix.address - 1, fix.address - 1 + width).some((v) => v > 0));
+    const emitters = ['red', 'green', 'blue', 'white', 'amber', 'uv'].map((key) => channelMap[key]).filter(Number.isInteger);
+    const lit = () => state.fixtures.some((fix) => {
+      const bytes = universes.getBuffer(fix.universe), at = fix.address - 1;
+      return bytes[at + channelMap.dimmer] > 0 && emitters.some((offset) => bytes[at + offset] > 0);
+    });
     let shown = lit();
     for (const until = performance.now() + DARK_GAP_MS; !shown && performance.now() < until;) { frame(); shown = lit(); }
     assert.ok(shown, 'the rig shows something');

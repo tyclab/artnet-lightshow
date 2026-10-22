@@ -16,7 +16,7 @@ import { HUE_PROFILE_IDS } from './profiles.ts';
 import { FRAME_MS } from './frame-clock.ts';
 import { PATTERN_FUNCS, paletteOf } from '../shared/patterns.ts';
 import { renderLayer } from '../shared/layer.ts';
-import { buildRig, rigSignature } from '../shared/rig.ts';
+import { buildRig, createRigSignature } from '../shared/rig.ts';
 import { cellPlace, channelPlace, stripOf } from '../shared/placement.ts';
 // Shared with the browser's rehearsal preview so the two cannot drift.
 import { EXPRESSION_REST, blendExpression, blendFixture, cellDrive, HOLD_STROBE } from '../shared/look-math.ts';
@@ -295,6 +295,8 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
 
   let rig: Rig<RenderFixture> | null = null;
   let rigKey = '';
+  let guardUnitsKey = '';
+  const rigSignature = createRigSignature();
   let space: UnitSpace | null = null;
 
   // Keep base and voices in one stepper so checkpoints, expiry and resets share their lifetimes.
@@ -340,7 +342,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
   // Reset effect history on a new grid or patch while adopting each voice launch only once.
   function resetEffects(clock = true): void {
     stepper.reset();
-    outputGuard.resetEffects();
+    // Output permits follow physical fixture cells and monotonic time, independent of animation resets.
     base = null;
     if (!clock) return;
     voiceRecords.clear();
@@ -394,7 +396,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     if (key !== hardwareKey) {
       hardwareKey = key;
       hardwareClock.clear();
-      outputGuard.blackout(rig?.units.length ?? 0);
+      outputGuard.blackout();
       capabilityIndex = new Map(input.fixtures.map((f, i) => [f.id, i]));
       outputGuard.retainNative(new Set(input.fixtures.map((f) => String(f.id))));
       capabilities = input.fixtures.map((f) => hardwareOf(f, profileOf(f), input.hardware));
@@ -537,6 +539,11 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     if (!rig || key !== rigKey) {
       rig = buildRig(fixtures, profileOf);
       rigKey = key;
+    }
+    const unitsKey = fixtures.map((fixture, i) => `${fixture.id}:${rig!.ranges[i].count}`).join('|');
+    if (unitsKey !== guardUnitsKey) {
+      guardUnitsKey = unitsKey;
+      outputGuard.retainEffects(new Set(rig.units.map(({ fixture, cell }) => `${fixtures[fixture].id}:${cell}`)));
     }
     return rig;
   }
@@ -1000,7 +1007,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     const sync = syncTestEnergy(now);
 
     if (input.masterBlackout) {
-      outputGuard.blackout(rigNow.units.length);
+      outputGuard.blackout();
       for (const unit of emittedUnits) if (!ident?.ids.has(fixtures[unit.fixture].id)) {
         outputGuard.measuredLight(unit.id, COLOR_PRESETS[14], 0, now, capabilities[unit.fixture], 'blackout', true, unit.measure);
       }
@@ -1079,7 +1086,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
           : input.effect ? baseOwner[u] ?? 'base:excluded' : `legacy:${input.pattern}`));
         const cut = kind === 'energy.kill' || !voice && !sync && (!!fix.override?.blackout
           || !pixelOwners[u] && (target?.level === 0 && !fix.override?.enabled || !!clip && input.sequenceTransport?.stop?.mode === 'black'));
-        const guardedLight = outputGuard.light(id, light.col, light.dim, effNow, capabilities[i], owner, cut);
+        const guardedLight = outputGuard.light(id, light.col, light.dim, now, capabilities[i], owner, cut);
         light.col = guardedLight.colour; light.dim = guardedLight.dim;
       }
       outputGuard.retain(ids);
@@ -1088,7 +1095,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       const scale = mastersOf(input, fixtures[i]), start = rigNow.ranges[i].start;
       for (let c = 0; c < all[i].length; c++) {
         const light = all[i][c], u = start + c;
-        light.dim = outputGuard.effectLevel(u, light.dim, scale, watch ? topKind[u] : null, effNow);
+        light.dim = outputGuard.effectLevel(`${fixtures[i].id}:${c}`, light.dim, scale, watch ? topKind[u] : null, now);
       }
     }
     if (input.flashLimit) limitFlashes(input, all, now);

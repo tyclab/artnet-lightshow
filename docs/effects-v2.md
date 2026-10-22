@@ -14,8 +14,12 @@ local Audition and colour sliders. All new-show workflows hide retired rows.
 
 - **Geometry:** room x/z are floor coordinates; y is height in metres. Sweep and
   particle paths accept named anchors or explicit endpoints, including diagonals.
-  Plan mode projects them into the plot and preserves a purely vertical gesture
-  as bottom-to-top motion. Dense surfaces still sample individual physical pixels.
+  Plan mode maps explicit x/z continuously into the room's normalized width/depth;
+  named anchors use their nearest lamp's plot position. Diagonal plan paths omit
+  height; coincident projections use `1 - y / room height` for bottom-to-top motion.
+  Room paths retain all three coordinates. An explicit Fireworks launch in Plan
+  uses X across and Y from bottom to top, ignoring Z; anchor launches retain their
+  nearest lamp's plot position. Dense surfaces still sample individual physical pixels.
 - **Selection:** Scatter Strobe/Fade/Grow and Frequency Burst choose places,
   fixtures and physical segments, so cell count does not dominate the random draw.
   Whole-fixture and legacy cell selection remain explicit options. New WLED imports
