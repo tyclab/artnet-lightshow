@@ -239,8 +239,8 @@ function Universes({ nodes }) {
 // mode and a pixel one.
 const WLED_MODES = [
   { id: 'wash', label: 'Wash', help: 'One light, every LED the same colour: it washes, chases, strobes and blinds with the pars.' },
-  { id: 'zones', label: 'Zones', help: 'A few cells along it, like an LED bar: chases and stacks run across them.' },
-  { id: 'pixels', label: 'Pixels', help: 'Every LED its own cell, and a panel a picture: for a screen or a matrix.' },
+  { id: 'zones', label: 'Zones', help: 'A fixed small number of cells: each zone repeats one colour over several LEDs, reducing motion detail.' },
+  { id: 'pixels', label: 'Pixels', help: 'Keep every LED for smooth motion along strips and across panels. Scatter groups nearby LEDs into flashes by physical distance; this keeps the original pixel detail for other effects.' },
   { id: 'strobe', label: 'Strobe panel', help: 'A matrix as a strobe panel: a line of white segments across its middle, lit only by strobes and blinders, with square colour zones above and below.' },
 ];
 
@@ -248,7 +248,7 @@ function Wled() {
   const [devices, setDevices] = useState(null);
   const [status, setStatus] = useState('');
   const [host, setHost] = useState('');
-  const [mode, setMode] = useState('zones');
+  const [mode, setMode] = useState('pixels');
   const [zones, setZones] = useState(8);
   const find = async () => {
     setStatus('Asking the network…');

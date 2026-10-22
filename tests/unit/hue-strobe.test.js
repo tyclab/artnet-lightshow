@@ -127,8 +127,8 @@ for (const [kind, params] of [['hd.frequencyBurst', {}], ['hd.twinkle', { probab
 }
 
 for (const [name, patch] of [
-  ['White Strobe', { energy: 'white-strobe', ...SAFETY }],
-  ['Colour Strobe', { energy: 'color-strobe', ...SAFETY }],
+  ['Saved White Strobe', { effect: spec({ kind: 'energy.whiteStrobe' }), ...SAFETY }],
+  ['Saved Colour Strobe', { effect: spec({ kind: 'energy.colorStrobe' }), ...SAFETY }],
   ['Strobe look', { pattern: 'strobe', strobeSpeed: 121 }],
 ]) {
   test(`${name}: hardware strobes keep Hue steady in both modes`, () => {

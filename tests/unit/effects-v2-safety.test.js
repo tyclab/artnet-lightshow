@@ -11,11 +11,12 @@ import { hdGuarded } from '../../src/shared/effects/layer.ts';
 import { lookInput } from '../../scripts/golden-party-looks.js';
 import { syntheticRig } from '../../scripts/golden-frames.js';
 import '../../src/shared/effects/index.ts';
+import { audioOf } from '../helpers/v2-frames.js';
 
 const STROBING = { trigger: { mode: 'beatAccent', band: 'full', beatInterval: 0.125, threshold: 0.15, reactiveDepth: 1 },
   envelope: { curve: 'cut', attack: 0, hold: 0.03, release: 0 } };
 const KINDS = {
-  'v2.sweep': { profile: 'gradient' }, 'v2.orbit': { profile: 'gradient' }, 'v2.neural': { idle: 1 },
+  'v2.sweep': { profile: 'gradient' }, 'v2.orbit': { profile: 'gradient' }, 'v2.neural': { smoothing: 0 },
   'v2.shell': { profile: 'fill', origin: 'centre', speed: 40 }, 'v2.scatter': { density: 1, stepBeats: 1 },
 };
 const pars = syntheticRig().fixtures.slice(0, 6);
@@ -24,7 +25,8 @@ const red = getProfile(pars[0]).channelMap.red;
 function trace(spec, acknowledged, ms = 3000) {
   const renderer = createRenderer({ profileOf: getProfile, profilesRevision, now: 0 });
   const store = createUniverseStore(allocateShared());
-  const input = { ...lookInput('probe', pars, () => validateSpec(spec)), safety: { acknowledged, hdFlashIntervalMs: 350 } };
+  const input = { ...lookInput('probe', pars, () => validateSpec(spec)), safety: { acknowledged, hdFlashIntervalMs: 350 },
+    audioMode: 'reactive', audio: audioOf({ full: 1, bass: 1, mid: 1, high: 1 }) };
   const out = [];
   for (let k = 0; k * FRAME_MS <= ms; k++) {
     const t = k * FRAME_MS;

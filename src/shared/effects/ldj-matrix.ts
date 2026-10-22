@@ -27,7 +27,7 @@ const paramsSchema = z.object({ cadence: z.number().min(.125), beats: z.number()
   iterations: ldjIterationsSchema }).strict();
 const definitions = new Map<MatrixMode, EffectKindDef<LdjParams, LdjState>>();
 
-for (const [name, mode] of Object.entries({ PartyStrobe: 'pulse', MatrixPulse: 'pulse', MatrixFlash: 'flash',
+for (const [name, mode] of Object.entries({ MatrixPulse: 'pulse', MatrixFlash: 'flash',
   MatrixFirework: 'firework', MatrixSplotch: 'splotch' }) as [string, MatrixMode][]) {
   const def = makeLdjKind(name, {
     cadence: 1, channels: 'lights', rapidFlash: true,
@@ -52,6 +52,8 @@ for (const [name, mode] of Object.entries({ PartyStrobe: 'pulse', MatrixPulse: '
   registerKind(def);
   definitions.set(mode, def);
 }
+
+registerKind({ ...definitions.get('pulse')!, kind: 'ldj.PartyStrobe' });
 
 const cycle = makeLdjKind('MatrixCycle', LDJ_ITERATION_ROWS.MatrixCycle);
 const boardSchema = z.object({

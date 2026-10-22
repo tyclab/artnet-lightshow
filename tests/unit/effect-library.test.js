@@ -9,6 +9,7 @@ import path from 'node:path';
 
 import { EffectLibrary, MAX_PRESETS } from '../../src/server/effect-library.ts';
 import { CATALOGUE, presetById } from '../../src/shared/effects/index.ts';
+import { migrateEffectSpec, EFFECT_LIBRARY_VERSION } from '../../src/shared/effects/migrate.ts';
 import { validateSpec } from '../../src/shared/effects/registry.ts';
 
 function place(t) {
@@ -97,7 +98,7 @@ test("creating presets persists normalized defaults and metadata", (t) => {
   assert.equal(created.updatedAt, created.createdAt);
   assert.equal(library.revision(), 1);
   assert.equal(heard, 1);
-  assert.deepEqual(onDisk(file), { presets: [created] });
+  assert.deepEqual(onDisk(file), { version: EFFECT_LIBRARY_VERSION, presets: [created] });
   assert.deepEqual(library.resolve(created.id), created.spec);
   assert.equal(library.isKnownPattern(created.id), true);
   assert.deepEqual(library.get(created.id), { source: 'user', preset: created });
@@ -174,7 +175,7 @@ test("removing presets persists deletion and ignores missing records", (t) => {
   assert.equal(library.isKnownPattern(created.id), false);
   assert.equal(library.revision(), 4);
   assert.equal(heard, 4);
-  assert.deepEqual(onDisk(file), { presets: [] });
+  assert.deepEqual(onDisk(file), { version: EFFECT_LIBRARY_VERSION, presets: [] });
   assert.equal(library.remove(created.id), false);
   assert.equal(library.update(created.id, { name: 'gone' }), null);
   assert.equal(library.revision(), 4);
@@ -267,7 +268,7 @@ test('a failed write changes nothing: not the library, not the file, not the rev
   assert.deepEqual(library.resolve(kept.id), kept.spec);
   assert.equal(library.revision(), 1);
   assert.equal(heard, 0);
-  assert.deepEqual(onDisk(file), { presets: [kept] });
+  assert.deepEqual(onDisk(file), { version: EFFECT_LIBRARY_VERSION, presets: [kept] });
   assert.ok(warn.mock.callCount() >= 3, 'the fault is logged');
 });
 
@@ -340,6 +341,6 @@ test('invalid preset files are quarantined', (t) => {
   // A good file loads with its specs as stored, defaults and all.
   fs.writeFileSync(file, JSON.stringify({ presets: [good] }));
   const library = new EffectLibrary(file).load();
-  assert.deepEqual(library.list().user, [good]);
-  assert.deepEqual(library.resolve(good.id), good.spec);
+  assert.deepEqual(library.list().user, [{ ...good, spec: migrateEffectSpec(good.spec) }]);
+  assert.deepEqual(library.resolve(good.id), migrateEffectSpec(good.spec));
 });

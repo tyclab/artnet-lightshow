@@ -1,3 +1,5 @@
+import { SpatialControls } from './SpatialControls.jsx';
+import { startAudition } from '../audition.js';
 import { HardwareFit } from './HardwareFit.jsx';
 import { ADMISSION_LABELS } from './setup/Hardware.jsx';
 import { gradientSettings } from './GradientEditor.jsx';
@@ -85,11 +87,11 @@ export function findPreset(id, lib, patterns = []) {
 
 /** The family whose kinds include this one. */
 export function familyOf(kind, families = []) {
-  return families.find((f) => f.kinds.some((k) => k.kind === kind)) || null;
+  return families.find((f) => f.kinds.some((k) => k.kind === kind || k.kind === kind?.replace(/^compat\./, ''))) || null;
 }
 export function kindDef(kind, families = []) {
   for (const f of families) {
-    const k = f.kinds.find((x) => x.kind === kind);
+    const k = f.kinds.find((x) => x.kind === kind || x.kind === kind?.replace(/^compat\./, ''));
     if (k) return k;
   }
   return null;
@@ -419,7 +421,8 @@ function DiscoControls({ spec, fixtures, setParam }) {
 }
 
 function ParamControls({ spec, caps, families, lib, fixtures, setParam, setKind }) {
-  const { kind } = spec;
+  const kind = spec.kind.replace(/^compat\./, '');
+  if (kind.startsWith('v2.') || kind === 'strobe') return <SpatialControls spec={spec} setParam={setParam} />;
   if (kind === 'hd.disco') return <DiscoControls spec={spec} fixtures={fixtures} setParam={setParam} />;
   if (kind.startsWith('hd.')) return <HdControls spec={spec} caps={caps} setParam={setParam} />;
   if (kind === 'ldj.visualizer') return <VisualizerControls spec={spec} setParam={setParam} />;
@@ -437,7 +440,7 @@ function ParamControls({ spec, caps, families, lib, fixtures, setParam, setKind 
 // ── The card ────────────────────────────────────────────────────────────────
 
 export function Inspector({ id, onSelect, onPlay, onClose, inline = null, onApply, auditionTargets = 'shared', auditionUnavailable = null }) {
-  const s = pick(['families', 'patterns', 'fixtures', 'pattern']);
+  const s = pick(['families', 'patterns', 'fixtures', 'pattern', 'armed']);
   const lib = librarySig.value;
   const families = s.families || lib.families || [];
   const preset = inline ? { id: inline.key, name: inline.name, spec: inline.spec, source: 'clip' }
@@ -623,10 +626,13 @@ export function Inspector({ id, onSelect, onPlay, onClose, inline = null, onAppl
 
       <div class="insp-actions">
         {onPlay && !playing && <button type="button" class="btn sm" disabled={dirty}
-          title={dirty ? 'Save your changes to play them as the base look, or hold Audition to try them.' : undefined}
+          title={dirty ? 'Save your changes to play them as the base look, or use Audition on Stage to try them.' : undefined}
           onClick={() => onPlay(preset.id)}>Play</button>}
         <button type="button" class="btn sm" disabled={paletteInvalid || !!auditionUnavailable} aria-pressed={audition.held.has('inspector-audition')}
-          {...auditionProps}>Hold to audition</button>
+          title="Launch a voice on the live engine while held" {...auditionProps}>Hold on live rig</button>
+        <button type="button" class="btn sm" disabled={paletteInvalid || !!s.armed} onClick={() => {
+          startAudition(`draft:${preset.id}`, spec, draft.name); if (onClose) onClose(); window.location.hash = 'stage';
+        }}>Audition on Stage</button>
         {inline && <button type="button" class="btn sm" disabled={paletteInvalid || applying} onClick={apply}>Apply to clip</button>}
         {preset.source === 'user' && <button type="button" class="btn sm" disabled={!dirty || paletteInvalid} onClick={saveInPlace}>Save</button>}
         {!naming && <button type="button" class="btn sm" onClick={() => { setNaming(true); setCopyName(`${draft.name} copy`); }}>Save as…</button>}

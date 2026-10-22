@@ -264,7 +264,7 @@ function readSegments(raw: unknown, wled: WledInfo, host: string): WledSegment[]
 export type WledMode = 'wash' | 'zones' | 'pixels' | 'strobe';
 
 export const WLED_MODES: readonly WledMode[] = ['wash', 'zones', 'pixels', 'strobe'];
-export const DEFAULT_WLED_MODE: WledMode = 'zones';
+export const DEFAULT_WLED_MODE: WledMode = 'pixels';
 export const DEFAULT_WLED_ZONES = 8;
 
 export interface WledLook {

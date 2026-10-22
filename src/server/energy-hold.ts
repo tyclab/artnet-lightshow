@@ -11,11 +11,11 @@ const LATCH_KEY = 'energy:latch';
 
 const ENERGY_OF_VOICE = new Map(ENERGY_EFFECTS.flatMap(({ id }) => [[`energy:${id}`, id], [`energy:${id}:hold`, id]]));
 const ENERGY_OF_KIND = new Map<string, string>(Object.entries(ENERGY_KIND_BY_ID).map(([id, kind]) => [kind, id]));
-const PALETTE_STROBE = canonical(energyEffectSpec(HOLD_STROBE));
+const ENERGY_OF_SPEC = new Map(ENERGY_EFFECTS.map(({ id }) => [canonical(energyEffectSpec(id)), id]));
 
 function energyOf(v: VoiceSummary): string | null {
   if (v.hidden || v.source === 'strobe') return null;
-  return ENERGY_OF_KIND.get(v.kind) ?? (v.kind === 'strobe' && canonical(v.spec) === PALETTE_STROBE ? HOLD_STROBE : null);
+  return ENERGY_OF_KIND.get(v.kind) ?? ENERGY_OF_SPEC.get(canonical(v.spec)) ?? null;
 }
 
 class EnergyHold {

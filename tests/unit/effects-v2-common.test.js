@@ -10,7 +10,7 @@ const common = (patch = {}) => v2CommonSchema.parse(patch);
 test('the shared modifiers default to the room, the timeline and a short linear envelope', () => {
   assert.deepEqual(common(), {
     space: 'room', trigger: { mode: 'timeline', band: 'full', beatInterval: 1, threshold: 0.15, reactiveDepth: 1 },
-    envelope: { curve: 'linear', attack: 0, hold: 0.25, release: 0.5 }, colour: 'along', background: 0,
+    envelope: { curve: 'linear', attack: 0, hold: 0.25, release: 0.5 }, colour: 'along', background: 0, backgroundColour: '#FFFFFF',
   });
   assert.equal(v2CommonSchema.safeParse({ space: 'floor' }).success, false);
   assert.equal(v2CommonSchema.safeParse({ background: 2 }).success, false);
@@ -89,6 +89,9 @@ test('paint takes its colour by mode and keeps the background floor', () => {
   const dark = slot();
   paint(common(), frameAt(0), 0, 0, dark);
   assert.deepEqual([dark.level, dark.strength], [0, 0]);
+  assert.deepEqual(dark.colour, { r: 0, g: 0, b: 0, w: 0, a: 0, uv: 0 });
+  paint(common({ background: 0.2, backgroundColour: '#0000FF' }), frameAt(0), 0, 0, floor);
+  assert.deepEqual(floor.colour, BLUE, 'background uses its own selected colour, not colour A');
   const timed = [0, 8].map((beat) => { const s = slot(); paint(common({ colour: 'time' }), frameAt(beat), 0.9, 1, s); return s.colour; });
   assert.deepEqual(timed, [RED, BLUE], 'time mode walks the palette over four bars');
 });

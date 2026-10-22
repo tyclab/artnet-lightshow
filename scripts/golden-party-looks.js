@@ -11,7 +11,7 @@ export const LOOKS = ['position-chase', 'radial-pulse', 'spatial-wash', 'bounce-
   'anchor-fill', 'halves', 'flip', 'room-wave', 'ring-strobe', 'ring-backlit', 'fireworks', 'flashes', 'swirl'];
 
 import { barProfile } from '../src/server/bar-profile.ts';
-import { presetById } from '../src/shared/effects/catalogue.ts';
+import { LEGACY_PRESETS, presetById } from '../src/shared/effects/catalogue.ts';
 
 export const MIXED_EFFECTS = ['ldj.PartyStrobe', 'ldj.SceneMakerFirework', 'ldj.ScatterStrobe', 'ldj.Popcorn',
   'hd.neonDomino', 'hd.prismRicochet', 'hd.meteorShower', 'hd.auroraDrift'];
@@ -78,7 +78,7 @@ export function withMixedRig(run) {
 
 export function mixedBytes(fixtures) {
   const resolve = (id) => {
-    const row = presetById(id);
+    const row = LEGACY_PRESETS.find((p) => p.id === id || p.aliases?.includes(id)) ?? presetById(id);
     if (MIXED_EFFECTS.includes(id) && !row?.spec) throw new Error(`Missing effect ${id}`);
     return row?.spec ?? null;
   };

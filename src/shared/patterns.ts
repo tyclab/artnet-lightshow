@@ -117,6 +117,11 @@ function gradientAt(pal: readonly Colour[], p: number): Colour {
   return table[Math.floor(frac(p) * table.length) % table.length];
 }
 
+const solid: PatternFn = (ctx) => {
+  const [colour] = ctx.colors;
+  for (let i = 0; i < ctx.fixtureCount; i++) ctx.write(i, colour, 255, 0);
+};
+
 const PATTERN_FUNCS: Record<string, PatternFn> = {
   ensemble(ctx) {
     const d = ctx.dynamics || { bass: .5, vocal: .5, air: .3, width: .5, motion: .4 };
@@ -146,25 +151,7 @@ const PATTERN_FUNCS: Record<string, PatternFn> = {
     }
   },
 
-  solid(ctx) {
-    const [colA] = ctx.colors;
-    for (let i = 0; i < ctx.fixtureCount; i++) ctx.write(i, colA, 255, 0);
-  },
-
-  fade(ctx) {
-    const [colA] = ctx.colors;
-    for (let i = 0; i < ctx.fixtureCount; i++) ctx.write(i, colA, 255, 0);
-  },
-
-  hit(ctx) {
-    const [colA] = ctx.colors;
-    for (let i = 0; i < ctx.fixtureCount; i++) ctx.write(i, colA, 255, 0);
-  },
-
-  strobe(ctx) {
-    const [colA] = ctx.colors;
-    for (let i = 0; i < ctx.fixtureCount; i++) ctx.write(i, colA, 255, 0);
-  },
+  solid, fade: solid, hit: solid, strobe: solid,
 
   'color-cycle'(ctx) {
     const pal = paletteOf(ctx);

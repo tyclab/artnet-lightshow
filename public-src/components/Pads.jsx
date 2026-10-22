@@ -48,7 +48,7 @@ export function padChoices(rows, shelf = [], favourites = []) {
   const presets = [];
   for (const row of contentRows(rows, favourites)) {
     const target = row.legacy ? byId.get(row.preset) : row;
-    if (!target || target.legacy || seen.has(target.id)) continue;
+    if (!target || target.legacy || target.retired || seen.has(target.id)) continue;
     seen.add(target.id);
     presets.push({ value: `preset:${target.id}`, name: target.name });
   }

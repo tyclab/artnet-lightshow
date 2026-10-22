@@ -1,4 +1,4 @@
-import { pickPattern, burstFor, goldenStep } from './look.ts';
+import { automaticPattern, pickPattern, burstFor, goldenStep } from './look.ts';
 import { messageOf } from '../errors.ts';
 import type { Character } from './look.ts';
 import type { LiveEvent, LiveReading } from '../live-input.ts';
@@ -189,7 +189,9 @@ class LiveDirector {
     this._hue = goldenStep(this._seed, WHEEL.length);
     const character: Character = rise ? { ...this._character, energy: Math.max(0.8, this._character.energy) } : this._character;
     const drive = rise ? Math.max(0.8, this._drive()) : this._drive();
-    const pattern = pickPattern({
+    const dropLooks = ['v2.speakerShockwave', 'v2.fireworks', 'v2.orbCollision']
+      .filter((id) => this._available.has(id) && automaticPattern(id, this._pixels()));
+    const pattern = rise && dropLooks.length ? dropLooks[this._seed % dropLooks.length] : pickPattern({
       character, available: this._available, seed: this._seed, drive,
       dance: this._character.pulse, pixels: this._pixels(),
     });
@@ -199,6 +201,7 @@ class LiveDirector {
       colorA: at(0), colorB: at(3), colorC: at(5), colorD: at(7),
       beatDivision: 1,
       running: true,
+      ...(pattern.startsWith('v2.') ? { pixelPattern: null, panelPattern: null, pixelMap: 'stage', pixelSpan: null, pixelFrom: null, split: 0 } : {}),
       ...(fadeMs > 0 ? { fadeMs: Math.min(10000, Math.round(fadeMs)) } : {}),
     };
     this._look = look;
@@ -234,7 +237,11 @@ class LiveDirector {
       case 'BUILDUP':
         if (this._building || this._silent) break;
         this._building = true;
-        this._apply({ beatDivision: 2 });
+        if (this._available.has('v2.risingWall')) {
+          this._look = { ...this._look, pattern: 'v2.risingWall', beatDivision: 2, pixelPattern: null, panelPattern: null,
+            pixelMap: 'stage', pixelSpan: null, pixelFrom: null, split: 0 };
+          this._apply(this._look);
+        } else this._apply({ beatDivision: 2 });
         break;
       case 'DROP': {
         this._newLook({ rise: true });

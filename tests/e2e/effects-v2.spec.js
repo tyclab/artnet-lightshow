@@ -5,9 +5,11 @@ import { test, expect } from '@playwright/test';
 import { open, previewLook, reset, set, state, until } from './helpers.js';
 import { stageImage } from './stage-image.js';
 
-const NAMES = ['Scatter Strobe', 'Scatter Fade', 'Scatter Grow', 'Popcorn', 'Groove Wave', 'Big Room Wave', 'Ascent', 'Double Wave', 'Swagger',
+const NAMES = ['Scatter Strobe', 'Scatter Fade', 'Scatter Grow', 'Groove Wave', 'Big Room Wave', 'Ascent', 'Double Wave', 'Swagger',
   'Impact', 'Vortex', 'Speaker Shockwave', 'Rotation', 'Swirl', 'Beacon', 'Neural', 'Neural Distance',
-  'Beat Accent Wash', 'Volume Gate Wash', 'Frequency Burst'];
+  'Beat Accent Wash', 'Volume Gate Wash', 'Frequency Burst', 'Wash', 'Breathe', 'Chase', 'Path Runner', 'Surround',
+  'Zones', 'Surround Answer', 'Near and Far', 'Drifting Clouds', 'Aurora', 'Fire', 'Rising Wall', 'Falling Wall',
+  'Light Orbs', 'Orb Collision', 'Fireworks', 'Rain', 'Stems in Space', 'Visualizer Flow', 'Visualizer Drift'];
 
 test.beforeEach(async ({ request }) => {
   await request.post('/api/outputs/disarm');
@@ -23,6 +25,8 @@ test('the Spatial group lists every effect in the room and in 2D', async ({ page
   const group = page.locator('details.effects-group').filter({ has: page.locator('summary', { hasText: /^Spatial$/ }) });
   await group.locator('summary').click();
   const s = await state(request);
+  expect(s.patterns.filter((p) => p.family === 'spatial' && !p.retired)).toHaveLength(NAMES.length * 2);
+  await expect(group.getByText(/^Popcorn(?: 2D)?$/)).toHaveCount(0);
   for (const name of NAMES) {
     for (const shown of [name, `${name} 2D`]) {
       const row = s.patterns.find((p) => p.name === shown && p.family === 'spatial');

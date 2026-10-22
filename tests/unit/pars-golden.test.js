@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { state } from '../../src/server/state.ts';
+import { state, voices } from '../../src/server/state.ts';
 import * as universes from '../../src/server/universes.ts';
 import { renderFrame, resizeFixtureBuffers, setPulseSource } from '../../src/server/engine.ts';
 import { conductor } from '../../src/server/conductor.ts';
@@ -111,6 +111,9 @@ function engineHash() {
       const scene = (patch, n = 48) => {
         beat = 0;
         applyPatch(patch);
+        if (patch.energyOverride === 'color-strobe') voices.start({ id: 'energy:color-strobe', key: 'energy:latch',
+          mode: 'latched', source: 'energy', tier: 'voice', targets: 'shared', holdsGrid: true,
+          spec: { kind: 'energy.colorStrobe', params: {} } });
         frames(n);
       };
       const base = {

@@ -29,7 +29,7 @@ const fixturePosition = z.object({
   height: z.number().min(0).max(100).optional(),
 }).strict();
 const fixtureGroup = z.enum(FIXTURE_GROUPS);
-const pictureSourceSchema = z.object({ source: z.enum(['effects', 'visualizer']) }).strict();
+const pictureSourceSchema = z.object({ source: z.enum(['effects', 'visualizer', 'inspired']) }).strict();
 const pictureGradePatchSchema = pictureGradeSchema.partial().strict();
 
 const fixtureGeometry = z.object({

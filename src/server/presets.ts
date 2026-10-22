@@ -106,7 +106,7 @@ const PATTERN_IDS = PATTERNS.map((p) => p.id);
 // Use the effective rapid-flash requirement so pickers match renderer admission.
 const PRESET_ROWS = CATALOGUE.flatMap((p) => p.legacy ? [] : [{
   id: p.id, name: p.name, desc: p.desc, ...(p.party ? { party: true } : {}), ...(p.pixel ? { pixel: true } : {}),
-  app: p.app, family: p.family, rapidFlash: requiresAcknowledgement(p.spec), scope: p.spec.scope ?? null,
+  ...(p.retired ? { retired: true } : {}), app: p.app, family: p.family, rapidFlash: requiresAcknowledgement(p.spec), scope: p.spec.scope ?? null,
 }]);
 
 const ENERGY_EFFECTS = [...Object.keys(ENERGY_KIND_BY_ID), 'palette-strobe'].map((id) => {

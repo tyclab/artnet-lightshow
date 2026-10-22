@@ -72,9 +72,12 @@ test('a flash is short, not a blink', () => {
   assert.ok(longest * FRAME_MS <= 50 + FRAME_MS, `a flash lasted ${longest} frames`);
 });
 
-test('a strobing burst flashes it too', () => {
-  const [lit] = run([fixture(0, 1, BAR.id)], { pattern: 'solid', strobeSpeed: 0, energy: 'color-strobe' }, 1);
-  assert.ok(onsets(lit) >= 5, `${onsets(lit)} flashes in a colour-strobe second`);
+test('a strobing burst shares the overlay five-Hz ceiling and remains active', () => {
+  const [lit] = run([fixture(0, 1, BAR.id)], { pattern: 'solid', strobeSpeed: 0, energy: 'color-strobe' }, 4);
+  const rises = lit.flatMap((on, i) => on && !lit[i - 1] ? [i] : []);
+  assert.ok(rises.length >= 12, `${rises.length} flashes in four colour-strobe seconds`);
+  for (let i = 5; i < rises.length; i++) assert.ok(rises[i] - rises[i - 5] >= 44, 'at most five admitted flashes in a rolling second');
+  assert.ok(lit.some((on) => !on), 'dark between flashes');
 });
 
 test('the random strobe flashes each fixture on its own, the same way every time', () => {

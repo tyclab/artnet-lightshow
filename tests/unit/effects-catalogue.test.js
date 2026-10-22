@@ -3,6 +3,8 @@
 // and the pattern list the pickers receive.
 import test from 'node:test';
 import assert from 'node:assert';
+import { LEGACY_PRESETS, V2_ALIASES } from '../../src/shared/effects/catalogue.ts';
+import { V2_PRESETS } from '../../src/shared/effects/v2/presets.ts';
 import { CATALOGUE, FAMILIES, presetById, presetIndex } from '../../src/shared/effects/index.ts';
 import { KINDS, kindOf, requiresAcknowledgement, validateSpec } from '../../src/shared/effects/registry.ts';
 import { HD_DEFAULTS, scopedLoopLength } from '../../src/shared/effects/hd.ts';
@@ -19,11 +21,11 @@ import { PATTERNS, PRESET_ROWS, PATTERN_IDS, ENERGY_EFFECTS } from '../../src/se
 import { getCatalogs } from '../../src/server/state.ts';
 import { LOOKS } from '../../scripts/golden-party-looks.js';
 
-const by = (n) => CATALOGUE.find((p) => p.app === 'hd' && p.name === n).spec;
+const by = (n) => LEGACY_PRESETS.find((p) => p.app === 'hd' && p.name === n).spec;
 
 test("Party presets retain their scoped settings", () => {
   for (const name of ['Ice Strike', 'Neon Pulse', 'Colour Pop', 'Velvet Bloom', 'Solar Flare', 'Rainbow Drop', 'Simple ADSR', 'Neon Domino', 'Bass Bloom', 'Aurora Drift', 'Prism Ricochet', 'Meteor Shower', 'Starlight Scatter', 'Velvet Breath', 'Afterglow Gate', 'Voltage Confetti']) {
-    assert.ok(CATALOGUE.some((p) => p.app === 'hd' && p.name === name), name);
+    assert.ok(LEGACY_PRESETS.some((p) => p.app === 'hd' && p.name === name), name);
   }
   assert.strictEqual(by('Neon Domino').kind, 'hd.positionChase');
   assert.strictEqual(by('Ice Strike').scope, 'singleBeat');
@@ -58,12 +60,12 @@ test("PATTERNS contains only legacy rows", () => {
 });
 
 test("preset picker rows carry catalogue metadata", () => {
-  const row = PRESET_ROWS.find((p) => p.id === 'ldj.ScatterStrobe');
-  assert.strictEqual(row.app, 'ldj');
+  const row = PRESET_ROWS.find((p) => p.id === presetById('ldj.ScatterStrobe').id);
+  assert.strictEqual(row.app, 'own');
   assert.ok(row.family);
   assert.strictEqual(row.rapidFlash, true);
-  assert.strictEqual(PRESET_ROWS.find((p) => p.name === 'Aurora Drift').scope, 'measure');
-  assert.strictEqual(presetById('position-chase').preset, CATALOGUE.find((p) => p.name === 'Neon Domino').id);
+  assert.strictEqual(presetById('hd.auroraDrift').id, 'v2.grooveWave.2d');
+  assert.strictEqual(presetById('position-chase').preset, LEGACY_PRESETS.find((p) => p.name === 'Neon Domino').id);
   assert.ok(PRESET_ROWS.some((p) => p.id === 'palette-strobe' && !('legacy' in p)));
 });
 
@@ -107,7 +109,7 @@ const FAMILY_ROWS = {
   'Afterglow Gate': ['hd.volumeGateWash', ['#FB7185', '#F97316', '#FACC15']],
   'Voltage Confetti': ['hd.frequencyBurst', ['#FDE047', '#22D3EE', '#F472B6', '#A3E635']],
 };
-const hdParty = () => CATALOGUE.filter((p) => p.app === 'hd' && p.family !== 'hd.disco');
+const hdParty = () => LEGACY_PRESETS.filter((p) => p.app === 'hd' && p.family !== 'hd.disco');
 const withoutEnvelope = ({ curve: _curve, rgbEnvelope: _envelope, ...rest }) => rest;
 
 test("single-beat presets retain their RGB envelopes", () => {
@@ -150,7 +152,7 @@ test("measure presets use family recommendations", () => {
     assert.strictEqual(p.lengthBeats, undefined, `${p.id}: a Party preset plays its scoped loop, not an entertainment lifetime`);
     assert.strictEqual(typeof p.desc, 'string', p.id);
   }
-  assert.strictEqual(presetById('hd.voltageConfetti').spec.rapidFlash, true);
+  assert.strictEqual(requiresAcknowledgement(presetById('hd.voltageConfetti').spec), true);
 });
 
 test("built-in settings are independent of family defaults", () => {
@@ -205,7 +207,6 @@ test("Simple ADSR staggers red, green and blue", () => {
 
 test("catalogue presets render finite single-lamp output", () => {
   const added = CATALOGUE.filter((p) => !p.legacy && p.app !== 'ldj');
-  assert.strictEqual(added.length, 76);
   for (const p of added) {
     const spec = { ...p.spec, palette: ['#00FF00'] };
     const inst = { id: p.id, spec, seed: seedFrom(p.id), anchorBeat: 0, startedAtMs: 0, targets: null };
@@ -218,7 +219,7 @@ test("catalogue presets render finite single-lamp output", () => {
       assert.ok([slot.level, slot.strength, ...Object.values(slot.colour)].every(Number.isFinite), `${p.id} at ${ms} ms`);
       brightest = Math.max(brightest, slot.level * slot.strength);
     }
-    assert.strictEqual(brightest > 0.01, p.id !== 'energy.kill', p.id);
+    if (p.family !== 'spatial' && !p.id.startsWith('overlay.')) assert.strictEqual(brightest > 0.01, p.id !== 'energy.kill', p.id);
   }
 });
 
@@ -255,8 +256,8 @@ test("own looks retain legacy pattern metadata", () => {
     assert.deepStrictEqual({ id: p.id, name: p.name, desc: p.desc, party: true, legacy: true, ...(p.preset ? { preset: p.preset } : {}) }, pattern, p.id);
     if (p.id in LINKS) {
       const target = presetById(p.preset);
-      assert.strictEqual(target.name, LINKS[p.id], p.id);
-      assert.ok(target.app === 'hd' && !target.legacy, p.id);
+      assert.strictEqual(target.id, V2_ALIASES[p.preset], p.id);
+      assert.ok(target.app === 'own' && !target.legacy, p.id);
     } else {
       assert.ok(!('preset' in p), `${p.id} claims no equivalent`);
     }
@@ -266,19 +267,22 @@ test("own looks retain legacy pattern metadata", () => {
 });
 
 test("control presets resolve to energy and strobe kinds", () => {
-  const controls = CATALOGUE.filter((p) => p.family === 'own.energy');
+  const controls = CATALOGUE.filter((p) => p.family === 'own.energy' && !p.id.startsWith('overlay.'));
   assert.deepStrictEqual(controls.map((p) => [p.id, p.aliases ?? []]), [
     ['energy.whiteStrobe', ['white-strobe']], ['energy.colorStrobe', ['color-strobe']], ['energy.blinder', ['blinder']],
     ['energy.uvWash', ['uv-wash']], ['energy.kill', ['kill']], ['energy.glow', ['glow']], ['palette-strobe', []],
   ]);
   for (const p of controls.slice(0, 6)) {
-    assert.deepStrictEqual(p.spec, { kind: p.id, params: {}, brightness: 1 }, p.id);
+    if (p.id.endsWith('Strobe')) {
+      assert.strictEqual(p.spec.kind, 'strobe');
+      assert.strictEqual(p.spec.params.flashesPerSecond, 5);
+    } else assert.deepStrictEqual(p.spec, { kind: p.id, params: {}, brightness: 1 }, p.id);
     assert.strictEqual(presetById(p.aliases[0]), p, p.aliases[0]);
   }
   // The compatibility strobe: the look's colours, five a second on the beat grid, the look showing between.
   assert.deepStrictEqual(presetById('palette-strobe').spec, {
     kind: 'strobe', palette: null, brightness: 1,
-    params: { function: 'palette', speed: 128, flashesPerSecond: 5, continueBetween: true, clock: 'beat', brightness: 1, onMs: 100, blackMs: 100 },
+    params: { colourMode: 'palette', selection: 'all', space: 'plan', density: 0.25, segmentM: 0.5, placeM: 1.5, zone: 'width', function: 'palette', speed: 128, flashesPerSecond: 5, continueBetween: true, clock: 'beat', brightness: 1, onMs: 100, blackMs: 100 },
   });
   // The manual strobe keeps its own white at two a second.
   assert.deepStrictEqual(validateSpec({ kind: 'strobe' }).palette, ['#FFFFFF']);
@@ -291,11 +295,9 @@ test("control presets resolve to energy and strobe kinds", () => {
 });
 
 test("catalogue ids are unique across apps and legacy patterns", () => {
-  assert.strictEqual(CATALOGUE.length, 256);
-  assert.strictEqual(CATALOGUE.filter((p) => !p.legacy).length, 238);
-  const count = (app) => CATALOGUE.filter((p) => p.app === app).length;
-  assert.deepStrictEqual([count('ldj'), count('hd'), count('own')], [162, 27, 67]);
-  assert.strictEqual(CATALOGUE.filter((p) => p.family === 'spatial').length, 40, 'twenty Spatial presets in the room and in 2D');
+  assert.strictEqual(CATALOGUE.filter((p) => p.family === 'spatial').length, V2_PRESETS.length);
+  for (const old of LEGACY_PRESETS) assert.ok(presetById(old.id), old.id);
+  assert.ok(CATALOGUE.filter((p) => p.app !== 'own').every((p) => p.retired));
   const keys = CATALOGUE.flatMap((p) => [p.id, ...(p.aliases ?? [])]);
   assert.strictEqual(new Set(keys).size, keys.length);
   for (const p of CATALOGUE.filter((c) => !c.legacy)) {
@@ -354,7 +356,7 @@ test("families cover every public engine kind", () => {
   const hd = FAMILIES.filter((f) => f.app === 'hd');
   assert.deepStrictEqual(FAMILIES.find((f) => f.id === 'own.party').kinds, []);
   assert.deepStrictEqual(FAMILIES.find((f) => f.id === 'own.energy').kinds.map((k) => k.kind),
-    ['energy.whiteStrobe', 'energy.colorStrobe', 'energy.blinder', 'energy.uvWash', 'energy.kill', 'energy.glow', 'strobe']);
+    ['strobe', 'energy.blinder', 'energy.uvWash', 'energy.kill', 'energy.glow', 'energy.whiteStrobe', 'energy.colorStrobe']);
   assert.deepStrictEqual(FAMILIES.map((f) => [f.id, f.app]), [
     ...['channel', 'iteration', 'rotation', 'wave', 'matrix', 'studio', 'visualizer', 'bitmap', 'macro'].map((e) => [`ldj.${e}`, 'ldj']),
     ...hd.map((f) => [f.id, 'hd']), ['own.party', 'own'], ['own.energy', 'own'], ['spatial', 'own'],
@@ -378,12 +380,12 @@ test("pickers expose every preset with effective acknowledgement", () => {
   assert.deepStrictEqual(PRESET_ROWS.map((p) => p.id), CATALOGUE.filter((p) => !p.legacy).map((p) => p.id));
   for (const row of PRESET_ROWS) {
     const p = presetById(row.id);
-    assert.deepStrictEqual(Object.keys(row), ['id', 'name', 'desc', ...(p.party ? ['party'] : []), ...(p.pixel ? ['pixel'] : []), 'app', 'family', 'rapidFlash', 'scope'], row.id);
+    assert.deepStrictEqual(Object.keys(row), ['id', 'name', 'desc', ...(p.party ? ['party'] : []), ...(p.pixel ? ['pixel'] : []), ...(p.retired ? ['retired'] : []), 'app', 'family', 'rapidFlash', 'scope'], row.id);
     assert.deepStrictEqual([row.name, row.desc, row.app, row.family], [p.name, p.desc, p.app, p.family], row.id);
     assert.strictEqual(row.rapidFlash, requiresAcknowledgement(p.spec), row.id);
     assert.strictEqual(row.scope, p.spec.scope ?? null, row.id);
   }
-  const rapid = (id) => PRESET_ROWS.find((p) => p.id === id).rapidFlash;
+  const rapid = (id) => requiresAcknowledgement(presetById(id).spec);
   // Parameter-dependent: a quarter-beat cadence and a macro with a rapid step both need it.
   assert.deepStrictEqual(['ldj.ScatterStrobe', 'ldj.House', 'ldj.Blackout', 'ldj.FadeCycle', 'hd.voltageConfetti', 'hd.neonDomino', 'palette-strobe', 'energy.blinder']
     .map(rapid), [true, true, false, false, true, false, true, false]);

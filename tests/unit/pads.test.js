@@ -18,7 +18,6 @@ import { SequenceStore } from '../../src/server/sequence-store.ts';
 import { VoiceManager, HOLD_TIMEOUT_MS, builtinPresets, launchOf } from '../../src/server/voices.ts';
 import { presetById } from '../../src/shared/effects/index.ts';
 import { requiresAcknowledgement } from '../../src/shared/effects/registry.ts';
-import { scopedLoopLength } from '../../src/shared/effects/hd.ts';
 import { attachRoutes } from '../../src/server/routes.ts';
 import { setupIntegrations } from '../../src/server/integrations.ts';
 import { attachSockets } from '../../src/server/sockets.ts';
@@ -106,15 +105,14 @@ test('the default layout has 16 entries', (t) => {
   assert.equal(PAD_COUNT, 16);
   assert.equal(layout.length, 16);
   assert.deepEqual(layout.map((p) => [p.bank, p.slot]), Array.from({ length: 16 }, (_, i) => [Math.floor(i / 8), i % 8]));
-  // Bank 0: the six energy effects under their canonical ids, the strobe, one Party preset.
+  // Bank 0 retains the six held energy effects and strobe before the spatial showpieces.
   assert.deepEqual(layout.slice(0, 6).map((p) => p.content),
     ['energy.whiteStrobe', 'energy.colorStrobe', 'energy.blinder', 'energy.uvWash', 'energy.kill', 'energy.glow'].map(preset));
   assert.deepEqual([layout[6].content, layout[6].launch], [{ kind: 'strobe', id: 'strobe' }, 'hold']);
-  // Then nine Party and entertainment presets, both scopes among them.
   const nine = layout.slice(7).map((p) => presetById(p.content.id));
-  assert.ok(nine.every((row) => row && !row.legacy && (row.app === 'hd' || row.app === 'ldj')));
-  assert.equal(nine[0].app, 'hd');
-  assert.ok(nine.some((row) => row.app === 'ldj'));
+  assert.ok(nine.every((row) => row && !row.legacy && row.app === 'own' && row.spec.params.space === 'room'));
+  assert.equal(nine[0].id, 'v2.speakerShockwave');
+  assert.ok(nine.some((row) => row.id === 'v2.fireworks'));
   for (const p of layout) {
     assert.match(p.accent, /^#[0-9A-F]{6}$/);
     assert.equal(p.targets, 'shared', 'on the whole rig');
@@ -290,11 +288,11 @@ test('once ends after the preset\'s scoped loop length', async (t) => {
   const { voices: m, pads, put, advance } = rig(t, { bpm: 120 });
   put(1, 0, pad(preset('hd.auroraDrift'), { launch: 'once' }));
   const { spec } = builtinPresets('hd.auroraDrift');
-  assert.equal(scopedLoopLength(spec, spec.params), 5, 'Aurora Drift loops at five beats');
+  assert.equal(spec.kind, 'v2.sweep', 'the old preset id resolves to its modern 2D sweep');
   const v = pads.press(1, 0, 'tablet', 't');
   assert.equal(v.mode, 'once');
-  assert.equal(v.untilMs - v.startedAtMs, 2500, 'five beats at 120 BPM');
-  advance(2499);
+  assert.equal(v.untilMs - v.startedAtMs, 2000, 'the modern sweep plays a four-beat phrase at 120 BPM');
+  advance(1999);
   assert.equal(pads.lit()[8], v.id);
   advance(1);
   assert.equal(m.get(v.id), null);
@@ -305,7 +303,7 @@ test('once ends after the preset\'s scoped loop length', async (t) => {
   assert.equal(short.untilMs - short.startedAtMs, 300);
   const after = pads.once(1, 0);
   assert.equal(m.get(short.id), null);
-  assert.equal(after.untilMs - after.startedAtMs, 2500);
+  assert.equal(after.untilMs - after.startedAtMs, 2000);
   assert.throws(() => pads.once(1, 0, -5), refusedWith(400));
   // An entertainment row plays its 32 beats, a hold pad played once included; a Studio row's kind would say a bar.
   put(1, 1, pad(preset('ldj.StudioN1')));
@@ -321,7 +319,7 @@ test('once ends after the preset\'s scoped loop length', async (t) => {
   near(launched.untilMs - launched.startedAtMs, 150, 'its own length');
   res = await s.call('POST', '/api/pads/1/0/once');
   launched = voices.get(res.body.id);
-  assert.ok(Math.abs(launched.untilMs - launched.startedAtMs - 5 * 60000 / conductor.status().bpm) < 1);
+  assert.ok(Math.abs(launched.untilMs - launched.startedAtMs - 4 * 60000 / conductor.status().bpm) < 1);
   for (const ms of ['-1', '0', 'soon', '']) {
     res = await s.call('POST', `/api/pads/1/0/once?ms=${ms}`);
     assert.equal(res.status, 400, ms);

@@ -28,15 +28,15 @@ test.afterEach(async ({ request }) => {
 test('a built-in, changed and saved as a copy, lists as a preset of your own', async ({ page, request }) => {
   await open(page, 'effects');
   const search = page.getByLabel('Search effects');
-  await search.fill('Neon Domino');
+  await search.fill('Chase');
   // The inspector stays closed until Edit is chosen.
   await expect(page.getByRole('dialog', { name: 'Edit effect' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Edit Neon Domino' }).first().click();
+  await page.getByRole('button', { name: 'Edit Chase', exact: true }).first().click();
 
   const sheet = page.getByRole('dialog', { name: 'Edit effect' });
-  await expect(sheet.locator('.effect-inspector-head strong')).toHaveText('Neon Domino');
+  await expect(sheet.locator('.effect-inspector-head strong')).toHaveText('Chase');
   await expect(sheet.locator('.effect-inspector-head')).toContainText('Built-in');
-  await sheet.getByLabel('Stagger', { exact: true }).fill('0.25');
+  await sheet.getByLabel('Step Beats', { exact: true }).fill('0.25');
   await expect(sheet.locator('.insp-dirty')).toHaveText('Changed');
 
   await sheet.getByRole('button', { name: 'Save as…' }).click();
@@ -48,8 +48,8 @@ test('a built-in, changed and saved as a copy, lists as a preset of your own', a
   const saved = s.effects.find((e) => e.name === NAME);
   const lib = await (await request.get('/api/effects')).json();
   const spec = lib.user.find((p) => p.id === saved.id).spec;
-  expect(spec.params.stagger).toBe(0.25);
-  expect(spec.kind).toBe('hd.positionChase');
+  expect(spec.params.stepBeats).toBe(0.25);
+  expect(spec.kind).toBe('v2.step');
 
   // The inspector moves to the copy, which saves in place from now on.
   await expect(sheet.locator('.effect-inspector-head strong')).toHaveText(NAME);
@@ -82,10 +82,10 @@ test('a built-in, changed and saved as a copy, lists as a preset of your own', a
 
 async function editedDomino(page) {
   await open(page, 'effects');
-  await page.getByLabel('Search effects').fill('Neon Domino');
-  await page.getByRole('button', { name: 'Edit Neon Domino' }).first().click();
+  await page.getByLabel('Search effects').fill('Chase');
+  await page.getByRole('button', { name: 'Edit Chase', exact: true }).first().click();
   const sheet = page.getByRole('dialog', { name: 'Edit effect' });
-  await sheet.getByLabel('Stagger', { exact: true }).fill('0.25');
+  await sheet.getByLabel('Step Beats', { exact: true }).fill('0.25');
   return sheet;
 }
 
@@ -93,12 +93,12 @@ test('audition holds the edited draft without saving or replacing the base', asy
   const library = await (await request.get('/api/effects')).json();
   const sheet = await editedDomino(page);
   await expect(sheet.getByRole('button', { name: 'Play', exact: true })).toBeDisabled();
-  const audition = sheet.getByRole('button', { name: 'Hold to audition' });
+  const audition = sheet.getByRole('button', { name: 'Hold on live rig' });
   await audition.focus();
   await page.keyboard.down('Enter');
   try {
-    const live = await until(request, (s) => s.voices.some((v) => v.spec.params.stagger === 0.25));
-    expect(live.voices.find((v) => v.spec.params.stagger === 0.25).mode).toBe('hold');
+    const live = await until(request, (s) => s.voices.some((v) => v.spec.params.stepBeats === 0.25));
+    expect(live.voices.find((v) => v.spec.params.stepBeats === 0.25).mode).toBe('hold');
     expect(live.pattern).toBe('chase');
     expect(await (await request.get('/api/effects')).json()).toEqual(library);
   } finally {
@@ -113,7 +113,7 @@ test('closing an audition releases its own voice and keeps another voice', async
   expect(launch.ok()).toBe(true);
   const other = (await launch.json()).id;
   try {
-    await sheet.getByRole('button', { name: 'Hold to audition' }).focus();
+    await sheet.getByRole('button', { name: 'Hold on live rig' }).focus();
     await page.keyboard.down('Enter');
     await until(request, (s) => s.voices.length === 2);
     await page.keyboard.press('Escape');
@@ -129,14 +129,14 @@ test('closing an audition releases its own voice and keeps another voice', async
 test('rapid draft audition requires acknowledgement and a fresh hold', async ({ page, request }) => {
   const { settings } = await (await request.get('/api/settings')).json();
   const library = await (await request.get('/api/effects')).json();
-  const preset = library.builtin.find((p) => p.spec?.kind === 'hd.frequencyBurst');
+  const preset = library.builtin.find((p) => p.id === 'v2.scatterStrobe');
   const ack = (value) => request.put('/api/settings', { data: { safety: { photosensitivityAcknowledged: value } } });
   expect((await ack(false)).ok()).toBe(true);
   try {
     await open(page, 'effects');
     await page.getByLabel('Search effects').fill(preset.name);
     await page.getByRole('button', { name: `Edit ${preset.name}`, exact: true }).first().click();
-    const audition = page.getByRole('button', { name: 'Hold to audition' });
+    const audition = page.getByRole('button', { name: 'Hold on live rig' });
     await audition.click();
     await expect(page.getByRole('alertdialog', { name: 'Rapid flashing' })).toBeVisible();
     expect((await state(request)).voices).toHaveLength(0);
@@ -145,7 +145,7 @@ test('rapid draft audition requires acknowledgement and a fresh hold', async ({ 
     expect((await state(request)).voices).toHaveLength(0);
     await audition.focus();
     await page.keyboard.down('Enter');
-    await until(request, (s) => s.voices.some((v) => v.kind === 'hd.frequencyBurst'));
+    await until(request, (s) => s.voices.some((v) => v.kind === 'v2.scatter'));
   } finally {
     await page.keyboard.up('Enter');
     await until(request, (s) => s.voices.length === 0);
@@ -165,11 +165,11 @@ test.describe('on a touch screen', () => {
 
   test('the deck, the chips, the catalogue and the inspector are all at least 44 px', async ({ page }) => {
     await open(page, 'effects');
-    // Spatial leads the catalogue; Neon Domino, edited below, is under Party & Disco.
+    // Spatial leads the catalogue; Chase, edited below, is under Party & Disco.
     await page.locator('.effects-group summary').first().click();
-    await page.locator('.effects-group summary', { hasText: 'Party & Disco' }).click();
+    await page.getByLabel('Search effects').fill('Chase');
     expect(await small(page, '.card.effects')).toEqual([]);
-    await page.getByRole('button', { name: 'Edit Neon Domino' }).first().click();
+    await page.getByRole('button', { name: 'Edit Chase', exact: true }).first().click();
     await page.locator('.effect-sheet').waitFor();
     expect(await small(page, '.effect-sheet')).toEqual([]);
   });

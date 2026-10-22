@@ -4,7 +4,8 @@ import { hueEmitterColour } from './hue-colour.ts';
 import { isHueProfile } from './hue-lamp.ts';
 import { HardwareClock } from './hardware-clock.ts';
 import { hueLightMeasure } from './hue-light.ts';
-import { HardwareGuard } from './hardware-guard.ts';
+import { OutputGuard } from './output-guard.ts';
+import { fixtureLuminance, limitRoomFlashes } from './room-flash.ts';
 import { hardwareStrobe } from './hardware-strobe.ts';
 import { hardwareOf } from './hardware.ts';
 import type { UnitSpace } from './space.ts';
@@ -15,18 +16,18 @@ import type { PaletteBody } from './palette-model.ts';
 import { PATTERN_FUNCS, paletteOf } from './patterns.ts';
 import { renderLayer } from './layer.ts';
 import { buildRig, rigSignature, isHueLamp } from './rig.ts';
-import { EXPRESSION_REST, resolveEnergyOverride, blendExpression, blendFixture, HOLD_STROBE, holdStrobeFlash, holdStrobeLook } from './look-math.ts';
+import { EXPRESSION_REST, resolveEnergyOverride, blendExpression, blendFixture, HOLD_STROBE } from './look-math.ts';
 import { gridFromAnalysis, beatPositionAt, localBpm, anchorStep, stepAt, motionAdvance } from './beat-clock.ts';
-import { canonical, effectContentKey, handOverStrobes, hdGuarded, relaunchEffect, renderEffectLayer, renderVoices, voiceAnchor, voiceLaunchKey, voiceLayout } from './effects/layer.ts';
+import { canonical, effectContentKey, handOverStrobes, relaunchEffect, renderEffectLayer, renderVoices, voiceAnchor, voiceLaunchKey, voiceLayout } from './effects/layer.ts';
 import { energyEffectSpec } from './effects/catalogue.ts';
 import { requiresAcknowledgement, ridesLevel, validateSpec } from './effects/registry.ts';
 import { EffectStepper } from './effects/stepper.ts';
-import { HdFlashGuard, StrobeLampGuard } from './effects/flash-guard.ts';
 import { seedFrom } from './effects/hash.ts';
-import { STROBE_FRAME_MS, strobeFrameOf } from './effects/strobe.ts';
+import { STROBE_FRAME_MS } from './effects/strobe.ts';
 import { HD_MASTER_DEFAULTS } from './effects/types.ts';
 import { copySequenceRun, newSequenceRun, renderSequenceLayer, transportOf } from './effects/sequence.ts';
 import { parseHex } from './effects/palette.ts';
+import type { AudioFrame } from './effects/audio-frame.ts';
 import type { GridSource } from './beat-clock.ts';
 import type { Layout, Rig } from './rig.ts';
 import type { UnitLight } from './look-math.ts';
@@ -108,7 +109,15 @@ export interface PreviewSafety {
   acknowledged: boolean;
 }
 
+export interface PreviewAudioSource {
+  /** Pure, seekable samples in timeline milliseconds; never reads the live audio input. */
+  frameAt(positionMs: number): AudioFrame | null;
+  modulationAt?(positionMs: number): FrameBase['modulation'];
+  pictureAt?(positionMs: number): FrameBase['pictureFeatures'];
+}
+
 export interface PreviewOptions {
+  audioSource?: PreviewAudioSource;
   hardware?: HardwareSettings;
   profiles?: Record<string, Profile>;
   resolveEffect?: ((id: string) => EffectSpec | null | undefined) | null;
@@ -272,12 +281,8 @@ interface Walk {
   /** How many timeline events have been applied. */
   cursor: number;
   stepper: EffectStepper;
-  guard: HdFlashGuard;
+  outputGuard: OutputGuard;
   /** The strobe's permit per lamp, as the renderer keeps it. */
-  strobeGuard: StrobeLampGuard;
-  hardwareGuard: HardwareGuard;
-  emittedGuard: HardwareGuard;
-  hardwareStrobeGuard: HardwareGuard;
   hardwareClock: HardwareClock;
   expression: Expression;
   phase: number;
@@ -311,11 +316,7 @@ function copyWalk(w: Walk): Walk {
   return {
     ...w,
     stepper: w.stepper.clone(),
-    guard: w.guard.clone(),
-    strobeGuard: w.strobeGuard.clone(),
-    hardwareGuard: w.hardwareGuard.clone(),
-    emittedGuard: w.emittedGuard.clone(),
-    hardwareStrobeGuard: w.hardwareStrobeGuard.clone(),
+    outputGuard: w.outputGuard.clone(),
     hardwareClock: w.hardwareClock.clone(),
     expression: { ...w.expression },
     base: w.base && { ...w.base },
@@ -334,7 +335,7 @@ function copyWalk(w: Walk): Walk {
 interface Checkpoint { walk: Walk; periodic: boolean; used: number }
 
 const emptyWalk = (k: number, intervalMs: number): Walk => ({
-  k, cursor: 0, stepper: new EffectStepper(), guard: new HdFlashGuard(intervalMs), strobeGuard: new StrobeLampGuard(), hardwareGuard: new HardwareGuard(), emittedGuard: new HardwareGuard(), hardwareStrobeGuard: new HardwareGuard(), hardwareClock: new HardwareClock(), expression: { ...EXPRESSION_REST }, phase: 0,
+  k, cursor: 0, stepper: new EffectStepper(), outputGuard: new OutputGuard(intervalMs), hardwareClock: new HardwareClock(), expression: { ...EXPRESSION_REST }, phase: 0,
   lastBeat: null, lastEpoch: 0, lastNow: null, lastSweep: -Infinity, epoch: 0, base: null, voices: new Map(), records: new Map(), strobes: new Set(),
   compat: null, fadeOf: null, fade: null, shown: [], output: null, seq: newSequenceRun(),
 });
@@ -364,6 +365,8 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
 
   // In time order, ties in the order given, on a copy: an event with no time is ignored.
   const timeline = events.filter((e) => Number.isFinite(e.timeMs)).sort((a, b) => a.timeMs - b.timeMs);
+  const strobeBursts = timeline.some((event) => event.action === 'energy'
+    && energyEffectSpec(String((event.data as PreviewPatch | undefined)?.id ?? event.id ?? ''))?.kind === 'strobe');
 
   let look: PreviewLook = { ...OPENING, ...(options.basePalette ? { basePalette: options.basePalette } : {}) };
   let anchor = 0;
@@ -529,7 +532,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
   }
 
   function sampleLegacy(positionMs: number, env: Pick<Env, 'fixtures' | 'presets' | 'rig' | 'hue'>): Colour[] {
-    const { fixtures, presets, rig, hue } = env;
+    const { fixtures, presets, rig } = env;
     const index = frameIndex(positionMs);
     const frame = frames[index];
     if (!frame) return dark(rig);
@@ -541,17 +544,10 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       if (spec && requiresAcknowledgement(spec)) burstId = null;
     }
     const energy = burstId ? resolveEnergyOverride(burstId, paletteOverride?.[0] ?? colors[0], expr.level) : null;
-    // The hold strobe is a burst per light, as the rig renders it: a flash,
-    // a Hue lamp's pulse, or nothing between flashes.
-    const hold = !energy && burstId === HOLD_STROBE
-      ? holdStrobeFlash(beatAt(positionMs, frame), beatGrid ? localBpm(beatGrid, positionMs) : frame.look.bpm)
-      : null;
-    const palette = hold ? paletteOverride ?? paletteOf({ colors }) : null;
-
     return layer.map(({ color, dim, strobe }, u) => {
       const { fixture: i, cell } = rig.units[u];
       const fixture = fixtures[i];
-      const burst = hold && palette ? holdStrobeLook(palette, hold, hue[i] && hueStrobe === 'pulse') : energy;
+      const burst = energy;
       if (burst) {
         color = burst.col;
         dim = burst.dim;
@@ -593,7 +589,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       if (spec) anyEffect = true;
       effectsKey += `${JSON.stringify(id)}=${key};`;
     }
-    if (!(explicitVoices || anyEffect || sequence || options.hardware)) {
+    if (!(explicitVoices || strobeBursts || anyEffect || sequence || options.hardware || options.audioSource || frames.some((frame) => frame.look.flashLimit))) {
       // Nothing steps: answered straight from the timeline, nothing kept.
       if (env) { env = null; forgetHistory(); }
       return { key: '', stepped: false, fixtures, presets, rig, specs, hue: rig.hue, cells: new Map() };
@@ -710,7 +706,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       w.stepper.sweep(t);
       w.lastSweep = t;
     }
-    w.guard.setInterval(intervalMs);
+    w.outputGuard.setInterval(intervalMs);
     // A fade asked for since the last frame starts from what that frame showed.
     if (f.fade !== w.fadeOf) {
       w.fadeOf = f.fade;
@@ -734,7 +730,13 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       fb = {
         beatPos, bpm, nowMs: t, dtMs: dt, anchorBeat: 0, lookPalette: s.basePalette?.gradients?.length ? colors : paletteOf({ colors }), paletteOverride,
         lookGradient: s.basePalette, overrideGradient: options.overridePalette,
-        audio: null, audioMode: 'tempo', master: { ...HD_MASTER_DEFAULTS }, seed: [0, 0, 0, 0], acknowledged, hueStrobe,
+        audio: options.audioSource?.frameAt(t) ?? null, audioMode: options.audioSource ? 'reactive' : 'tempo',
+        modulation: {
+          ...options.audioSource?.modulationAt?.(t),
+          ...(s.pixelSpan ? { sectionProgress: Math.max(0, Math.min(1, (s.pixelFrom ?? 0)
+            + (beatPos - f.anchor / Math.max(1, s.beatDivision)) / s.pixelSpan)) } : {}),
+        },
+        pictureFeatures: options.audioSource?.pictureAt?.(t), master: { ...HD_MASTER_DEFAULTS }, seed: [0, 0, 0, 0], acknowledged, hueStrobe,
         manualStrobeActive, expressionLevel: w.expression.level,
         unitSpace: options.space && options.space.n === n ? options.space : null,
       };
@@ -800,8 +802,6 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
     const dims: number[] = new Array<number>(n);
     const flashes: number[] = new Array(n);
     const tops: (string | null)[] = new Array<string | null>(n);
-    let guarded = false;
-    let strobed = false;
     for (let u = 0; u < n; u++) {
       // The base as it goes out, partway through any fade: what the next fade starts from.
       const layer = w.fade && w.fade.from[u] ? blendFixture(w.fade.from[u], units[u], fadeT) : units[u];
@@ -822,8 +822,6 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       }
       flashes[u] = voice ? voice.strobe ?? 0 : clip ? clip.strobe : s.pattern === 'strobe' ? Number(s.strobeSpeed) || 0 : below.strobe;
       tops[u] = voice ? voice.kind ?? null : clip ? clipKind[u] : baseKind[u];
-      if (hdGuarded(tops[u])) guarded = true;
-      if (tops[u] === 'strobe' || tops[u] === 'strobe.program') strobed = true;
     }
     w.shown = shown;
     const programs = new Array<boolean>(n).fill(false);
@@ -841,32 +839,31 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       const voice = voiceTop?.[u], clip = clips?.[u];
       const owner = voice?.owner ?? (clip ? clipOwner[u] ?? 'sequence:black' : spec ? baseOwner[u] ?? 'base:excluded' : `legacy:${s.pattern}`);
       const cut = tops[u] === 'energy.kill' || !voice && (target?.level === 0 || !!clip && sequence?.transport.stop?.mode === 'black');
-      const guardedLight = w.hardwareGuard.light(`${fixtures[i]?.id ?? i}:${cell}`, cols[u], dims[u], t, e.hardware[i], owner, cut);
+      const guardedLight = w.outputGuard.light(`${fixtures[i]?.id ?? i}:${cell}`, cols[u], dims[u], t, e.hardware[i], owner, cut);
       cols[u] = guardedLight.colour; dims[u] = guardedLight.dim;
       if (e.hardware[i].technology !== 'hue' && !programs[u]) {
         const planned = hardwareStrobe(flashes[u], e.hardware[i], t, s.flashLimit ? 3 : undefined);
-        if (w.hardwareStrobeGuard.apply(String(fixtures[i]?.id ?? i), planned.previewLevel, t,
+        if (w.outputGuard.nativeLevel(String(fixtures[i]?.id ?? i), planned.previewLevel, t,
           { ...e.hardware[i], maxFlashHz: Math.min(e.hardware[i].maxFlashHz, s.flashLimit ? 3 : Infinity), minTransitionMs: 0 }, planned.cycle) === 0) dims[u] = 0;
       }
     }
-    // The party flash limit on the hd.* kinds, on what each lamp puts out at its trim (the preview's master is full).
-    if (guarded) {
-      for (let u = 0; u < n; u++) {
-        if (!hdGuarded(tops[u])) { w.guard.clear(u); continue; }
-        const trim = (fixtures[rig.units[u].fixture]?.maxBrightness ?? 255) / 255;
-        if (w.guard.apply(u, (dims[u] / 255) * trim, t) === 0) dims[u] = 0;
-      }
-    } else if (w.guard.brightCount) for (let u = 0; u < n; u++) w.guard.clear(u);
-    // The strobe's permit per lamp, across every strobe that draws it (renderer.ts limitStrobeRises).
-    if (strobed) {
-      const frameIndex = strobeFrameOf(t);
-      for (let u = 0; u < n; u++) {
-        if (tops[u] !== 'strobe' && tops[u] !== 'strobe.program') { w.strobeGuard.clear(u); continue; }
-        const level = dims[u] / 255;
-        const allowed = w.strobeGuard.apply(u, level, frameIndex, tops[u] === 'strobe.program');
-        if (allowed < level) dims[u] = 255 * allowed;
-      }
-    } else if (w.strobeGuard.liveCount) for (let u = 0; u < n; u++) w.strobeGuard.clear(u);
+    for (let u = 0; u < n; u++) {
+      const trim = (fixtures[rig.units[u].fixture]?.maxBrightness ?? 255) / 255;
+      dims[u] = w.outputGuard.effectLevel(u, dims[u], trim, tops[u], t);
+    }
+
+    if (s.flashLimit) {
+      const all = rig.ranges.map(({ start, count }) => Array.from({ length: count }, (_, c) => ({ col: cols[start + c], dim: dims[start + c] })));
+      const measure = (gain = 1) => all.reduce((sum, lights, i) => sum + fixtureLuminance(lights,
+        options.profiles?.[fixtures[i]?.profileId ?? ''] ?? { channelMap: { red: 0, green: 1, blue: 2 } },
+        rig.cellMaps[i], (fixtures[i]?.maxBrightness ?? 255) / 255, gain), 0) / Math.max(1, all.length);
+      limitRoomFlashes(w.outputGuard, measure, (gain) => {
+        for (let i = 0; i < all.length; i++) for (let c = 0; c < all[i].length; c++) {
+          const dim = Math.min(255, all[i][c].dim * gain);
+          all[i][c].dim = dim; dims[rig.ranges[i].start + c] = dim;
+        }
+      }, t);
+    } else w.outputGuard.resetRoom();
 
     if (e.hardware) for (let u = 0; u < n; u++) {
       const { fixture: i, cell } = rig.units[u], fixture = fixtures[i], caps = e.hardware[i];
@@ -878,10 +875,10 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       const map = rig.cellMaps[i]?.[cell] ?? profile.channelMap;
       if (!programs[u]) {
         const planned = hardwareStrobe(flashes[u], caps, t, s.flashLimit ? 3 : undefined);
-        if (w.hardwareStrobeGuard.apply(String(fixture.id), planned.previewLevel, t,
+        if (w.outputGuard.nativeLevel(String(fixture.id), planned.previewLevel, t,
           { ...caps, maxFlashHz: Math.min(caps.maxFlashHz, s.flashLimit ? 3 : Infinity), minTransitionMs: 0 }, planned.cycle) === 0) dims[u] = 0;
       }
-      const guardedLight = w.emittedGuard.light(`${fixture?.id ?? i}:${cell}`, cols[u], dims[u], t, caps, owner, cut,
+      const guardedLight = w.outputGuard.measuredLight(`${fixture?.id ?? i}:${cell}`, cols[u], dims[u], t, caps, owner, cut,
         hueLightMeasure(profile, map), (fixture.maxBrightness ?? 255) / 255);
       cols[u] = guardedLight.colour; dims[u] = guardedLight.dim;
     }

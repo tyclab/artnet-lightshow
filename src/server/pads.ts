@@ -115,11 +115,7 @@ const fileSchema = z.object({ pads: layoutSchema, activeLayoutId: z.string().min
 const ordered = (pads: readonly PadEntry[]): PadEntry[] =>
   [...pads].sort((a, b) => (a.bank * PAD_SLOTS + a.slot) - (b.bank * PAD_SLOTS + b.slot));
 
-// A fresh install: the six energy effects and the strobe held, then party
-// and entertainment looks. None but the two energy strobes (and the
-// strobe pad, the strobe's own) waits for the photosensitivity acknowledgement.
-// The energy effects and the strobe start on the press, as they always have;
-// the looks on the party quarter beat.
+// New installations pair held energy controls with spatial showpieces on the shared beat grid.
 const DEFAULTS: [content: PadContent, launch: PadLaunchMode, accent: string][] = [
   [{ kind: 'preset', id: 'energy.whiteStrobe' }, 'hold', '#FFFFFF'],
   [{ kind: 'preset', id: 'energy.colorStrobe' }, 'hold', '#F472B6'],
@@ -128,15 +124,15 @@ const DEFAULTS: [content: PadContent, launch: PadLaunchMode, accent: string][] =
   [{ kind: 'preset', id: 'energy.kill' }, 'hold', '#334155'],
   [{ kind: 'preset', id: 'energy.glow' }, 'hold', '#FB923C'],
   [{ kind: 'strobe', id: STROBE_ID }, 'hold', '#E2E8F0'],
-  [{ kind: 'preset', id: 'hd.bassBloom' }, 'once', '#FF006E'],
-  [{ kind: 'preset', id: 'hd.auroraDrift' }, 'loop', '#06B6D4'],
-  [{ kind: 'preset', id: 'hd.neonDomino' }, 'loop', '#FF2BD6'],
-  [{ kind: 'preset', id: 'hd.prismRicochet' }, 'loop', '#A855F7'],
-  [{ kind: 'preset', id: 'hd.meteorShower' }, 'once', '#38BDF8'],
-  [{ kind: 'preset', id: 'ldj.Swirl' }, 'loop', '#22D3EE'],
-  [{ kind: 'preset', id: 'ldj.GrooveWave' }, 'loop', '#22C55E'],
-  [{ kind: 'preset', id: 'ldj.NorthernLights' }, 'loop', '#10B981'],
-  [{ kind: 'preset', id: 'ldj.Popcorn' }, 'once', '#FACC15'],
+  [{ kind: 'preset', id: 'v2.speakerShockwave' }, 'once', '#FF006E'],
+  [{ kind: 'preset', id: 'v2.aurora' }, 'loop', '#06B6D4'],
+  [{ kind: 'preset', id: 'v2.surround' }, 'loop', '#FF2BD6'],
+  [{ kind: 'preset', id: 'v2.risingWall' }, 'loop', '#A855F7'],
+  [{ kind: 'preset', id: 'v2.fireworks' }, 'once', '#38BDF8'],
+  [{ kind: 'preset', id: 'v2.lightOrbs' }, 'loop', '#22D3EE'],
+  [{ kind: 'preset', id: 'v2.grooveWave' }, 'loop', '#22C55E'],
+  [{ kind: 'preset', id: 'v2.stemsSpace' }, 'loop', '#10B981'],
+  [{ kind: 'preset', id: 'v2.rain' }, 'loop', '#FACC15'],
 ];
 const startsAtOnce = (content: PadContent): boolean => content.kind === 'strobe' || content.id.startsWith('energy.');
 /** The layout a fresh install starts with, frozen; labels are the presets' names. */

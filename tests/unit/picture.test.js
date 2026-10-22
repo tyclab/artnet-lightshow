@@ -33,10 +33,12 @@ test('a frame may carry the small picture it was sampled from, for the Stage scr
   const picture = { width: 2, height: 1, data: Uint8Array.from([1, 2, 3, 4, 5, 6]) };
   assert.deepEqual(input.frame('a', { leaseId: claim.leaseId, data: bytes(4), image: picture }), { ok: true });
   assert.deepEqual(input.image(), picture);
+  assert.deepEqual(input.image(true), picture);
   assert.notEqual(input.image().data, picture.data, 'the picture is copied');
   tick(100);
   assert.deepEqual(input.frame('a', { leaseId: claim.leaseId, data: bytes(4) }), { ok: true });
   assert.deepEqual(input.image(), picture, 'a frame without a picture keeps the last one');
+  assert.equal(input.image(true), null, 'feature extraction must use the new unit colours instead of an old image');
   tick(100);
   assert.equal(code(() => input.frame('a', { leaseId: claim.leaseId, data: bytes(4), image: { width: 2, height: 1, data: Uint8Array.from([1, 2, 3]) } })), 'INVALID');
   assert.equal(code(() => input.frame('a', { leaseId: claim.leaseId, data: bytes(4), image: { width: 129, height: 1, data: new Uint8Array(129 * 3) } })), 'INVALID');

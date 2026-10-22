@@ -129,6 +129,7 @@ test('three thousand lights in a room play every Spatial preset inside a frame',
   const { roomSceneSchema } = await import('../../src/shared/room-scene.ts');
   const { buildUnitSpace } = await import('../../src/shared/space.ts');
   const { V2_PRESETS } = await import('../../src/shared/effects/v2/presets.ts');
+  const { DEMO_AUDIO_SOURCE } = await import('../../src/shared/demo-track.ts');
   const cells = (n) => Array.from({ length: n }, (_, c) => ({ channelMap: { red: 3 * c, green: 3 * c + 1, blue: 3 * c + 2 } }));
   const panel = { id: 'budget-curtain-60x40', name: 'Curtain', channelCount: 7200, channelMap: {}, grid: { columns: 60, rows: 40 }, cells: cells(2400) };
   const strip = { id: 'budget-strip-300', name: 'Strip', channelCount: 900, channelMap: {}, cells: cells(300) };
@@ -164,14 +165,24 @@ test('three thousand lights in a room play every Spatial preset inside a frame',
   const { validateSpec } = await import('../../src/shared/effects/registry.ts');
   const slowShell = (space, origin) => ({ id: `slow shell ${space} ${origin}`, spec: validateSpec({ kind: 'v2.shell',
     params: { space, origin, speed: 0.05, width: 0.3, trigger: { mode: 'timeline', band: 'full', beatInterval: 1 / 16, threshold: 0.15, reactiveDepth: 1 } } }) });
-  const rows = [...V2_PRESETS, slowShell('room', 'anchor'), slowShell('plan', 'anchor'), slowShell('room', 'random')];
+  const rows = [...V2_PRESETS, slowShell('room', 'anchor'), slowShell('plan', 'anchor'), slowShell('room', 'random'),
+    { id: 'room-limited wash', flashLimit: true, spec: validateSpec({ kind: 'v2.wash', palette: ['#FFFFFF'],
+      params: { shape: 'envelope', cycleBeats: 0.25, envelope: { attack: 0, hold: 0.04, release: 0.02, curve: 'linear' } } }) }];
   for (const preset of rows) {
     const renderer = createRenderer({ profileOf, now: 0 });
     renderer.setSpace(space);
     const store = universes.createUniverseStore(universes.allocateShared());
-    const input = { ...base, pattern: preset.id, effect: preset.spec };
+    const input = { ...base, pattern: preset.id, effect: preset.spec, audioMode: 'reactive', flashLimit: !!preset.flashLimit,
+      safety: { acknowledged: true, hdFlashIntervalMs: preset.flashLimit ? 0 : 350 } };
     let beat = 0, cpu = Infinity;
-    const frame = () => { beat += 0.05; renderer.frame(input, { beatPos: beat, bpm: 128, epoch: 0 }, beat * 469, store); };
+    const frame = () => {
+      beat += 0.05;
+      const now = beat * 469;
+      input.audio = DEMO_AUDIO_SOURCE.frameAt(now);
+      input.modulation = DEMO_AUDIO_SOURCE.modulationAt(now);
+      input.pictureFeatures = DEMO_AUDIO_SOURCE.pictureAt(now);
+      renderer.frame(input, { beatPos: beat, bpm: 128, epoch: 0 }, now, store);
+    };
     for (let f = 0; f < 5; f++) frame();
     for (let b = 0; b < 3; b++) {
       const cpu0 = process.cpuUsage();

@@ -77,6 +77,9 @@ export function Inspector() {
         <span class="inspector-key">Profile</span>
         <span class="inspector-value">{profile ? `${profile.name}${profile.modeName ? ` — ${profile.modeName}` : ''}` : fix.profileId}
           {profile && <small> · {profile.channelCount} ch{bar ? `, ${grid ? `${grid.columns} × ${grid.rows}` : rig.ranges[index].count} cells` : ''}</small>}</span>
+        {wled && <><span class="inspector-key">Resolution</span>
+          <span class="inspector-value">{rig.ranges[index].count} effect cells → {fix.output.leds || rig.ranges[index].count} physical LEDs.
+            {fix.output.leds > rig.ranges[index].count ? ' Each cell repeats across several LEDs; fine spatial motion needs a pixel profile.' : ' Every LED retains its own animation value.'}</span></>}
         <span class="inspector-key">Output</span>
         <span class="inspector-value">{wled ? `WLED at ${fix.output.host}, over DDP`
           : openrgb ? `OpenRGB device #${fix.output.device}${profile ? ` (${profile.name})` : ''} at ${fix.output.host}${fix.output.port ? `:${fix.output.port}` : ''}, over the SDK`

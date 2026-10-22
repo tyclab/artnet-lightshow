@@ -20,6 +20,7 @@ export interface HardwareRun {
 }
 
 interface InstanceState {
+  kind?: string;
   hardware?: Map<string, HardwareRun>;
   initialized: boolean;
   value: unknown;
@@ -65,6 +66,13 @@ function copyState<T>(value: T, seen = new Map<object, unknown>()): T {
   if (seen.has(value)) return seen.get(value) as T;
   // Only the class itself: a subclass could add state of its own.
   if (Object.getPrototypeOf(value) === ConstantTable.prototype) return value;
+  if (ArrayBuffer.isView(value)) {
+    const copy = value instanceof DataView ? new DataView(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength))
+      : (value as unknown as { slice(): T }).slice();
+    seen.set(value, copy);
+    return copy as T;
+  }
+  if (value instanceof ArrayBuffer) { const copy = value.slice(0); seen.set(value, copy); return copy as T; }
   if (value instanceof Map) {
     const copy = new Map(); seen.set(value, copy);
     for (const [key, item] of value) copy.set(copyState(key, seen), copyState(item, seen));
@@ -147,6 +155,12 @@ export class EffectStepper {
     }
     entry.lastSeen = nowMs;
     return entry;
+  }
+
+  prepareKind(id: string, kind: string, nowMs: number): void {
+    const previous = this.states.get(id);
+    if (previous?.kind !== undefined && previous.kind !== kind) this.forget(id);
+    this.touch(id, nowMs).kind = kind;
   }
 
   get<S>(id: string, make: () => S, nowMs: number): S {

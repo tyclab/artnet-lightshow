@@ -37,6 +37,7 @@ export class StateMirror {
     const checked = this.base();
     if (!checked.ok) return checked;
     const { state } = checked;
+    if (state.picture?.source === 'inspired') return { ok: false, reason: 'Colour + motion uses the room feed only' };
     const fixture = Array.isArray(state.fixtures) && state.fixtures.find(f => f.id === fixtureId);
     const profile = fixture && state.profiles?.[fixture.profileId];
     if (!fixture || fixture.output?.protocol !== 'ddp' || typeof fixture.output.host !== 'string' || !profile || profile.zoned || profile.grid?.columns !== width || profile.grid?.rows !== height || profile.cells?.length !== width * height) return { ok: false, reason: 'Target is not the expected full RGB DDP grid' };

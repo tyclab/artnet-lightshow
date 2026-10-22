@@ -10,7 +10,7 @@ import { pulseTrack, DECAY_MS } from '../../src/show/pulse.ts';
 import { PATTERN_FUNCS, CELL_PATTERNS } from '../../src/shared/patterns.ts';
 import { COLOR_PRESETS, PATTERNS } from '../../src/server/presets.ts';
 import { availableFor, pickPattern, PULSE_PATTERNS } from '../../src/show/look.ts';
-import { renderInput, setPulseSource } from '../../src/server/engine.ts';
+import { renderInput, setPulseSource, setModulationSource } from '../../src/server/engine.ts';
 import AutoShow from '../../src/auto-show.ts';
 
 const b64 = (values) => Buffer.from(Uint8Array.from(values)).toString('base64');
@@ -185,4 +185,31 @@ test('auto shows expose pulse data only while playing', () => {
     show.stop();
     show._worker.shutdown();
   }
+});
+
+test('analysis sections reach the renderer without inventing absent pulse or stems', () => {
+  let position = 0;
+  const show = Object.assign(Object.create(AutoShow.prototype), {
+    running: true, _pulse: null, _getPositionMs: () => position, syncOffsetMs: 0, autoSyncMs: 0,
+    analysis: { segments: [
+      { start: 0, end: 2, role: 'buildup' }, { start: 2, end: 3, role: 'drop' },
+      { start: 4, end: 4, role: 'bad' }, { start: 4, end: Infinity, role: 'bad' },
+    ] },
+  });
+  setPulseSource(() => show.pulse()); setModulationSource(() => show.modulation());
+  try {
+    assert.deepStrictEqual(renderInput().modulation, { section: 'buildup', sectionProgress: 0 });
+    position = 1500;
+    const frame = renderInput();
+    assert.deepStrictEqual(frame.modulation, { section: 'buildup', sectionProgress: 0.75 });
+    assert.strictEqual(frame.pulse, null);
+    assert.strictEqual(frame.modulation.stems, undefined, 'no audio is different from zero-energy audio');
+    position = 2000;
+    assert.deepStrictEqual(show.modulation(), { section: 'drop', sectionProgress: 0 });
+    for (const value of [3000, 4000, NaN]) { position = value; assert.strictEqual(show.modulation(), undefined); }
+    position = 1500; show.running = false;
+    assert.strictEqual(show.modulation(), undefined);
+    setModulationSource(() => { throw new Error('synthetic modulation failure'); });
+    assert.strictEqual(renderInput().modulation, undefined, 'a failed source does not lose the render frame');
+  } finally { setPulseSource(null); setModulationSource(null); }
 });

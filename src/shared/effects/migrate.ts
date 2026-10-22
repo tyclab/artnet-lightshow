@@ -1,0 +1,18 @@
+import { validateSpec } from './registry.ts';
+import type { EffectSpec } from './types.ts';
+
+export const EFFECT_LIBRARY_VERSION = 2;
+export const legacyKind = (kind: string): string => kind.startsWith('compat.') ? kind.slice(7) : kind;
+export const compatibilityKind = (kind: string): string => /^(hd|ldj)\./.test(kind) ? `compat.${kind}` : kind;
+
+// Authored legacy parameters retain their renderer; only proven equivalents become generator aliases.
+export function migrateEffectSpec(raw: unknown, fromVersion = 0): EffectSpec {
+  const spec = validateSpec(raw);
+  if (fromVersion >= EFFECT_LIBRARY_VERSION) return spec;
+  const params = { ...spec.params };
+  if (spec.kind === 'macro' && Array.isArray(params.steps)) {
+    params.steps = params.steps.map((step: { effect: EffectSpec }) => ({ ...step, effect: migrateEffectSpec(step.effect, fromVersion) }));
+  }
+  const kind = spec.kind === 'ldj.PartyStrobe' ? 'compat.ldj.MatrixPulse' : compatibilityKind(spec.kind);
+  return validateSpec({ ...spec, kind, params });
+}

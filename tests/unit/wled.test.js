@@ -335,14 +335,14 @@ test('adding a WLED patches it with no DMX address, sent DDP', async () => {
   });
 });
 
-test('a WLED is added in zones unless asked otherwise, and once whatever its mode', async () => {
+test('a new WLED keeps every physical pixel unless zones are chosen, and adds only once', async () => {
   const infos = { '10.0.0.50': { ...INFO, leds: { count: 300, lc: 1 } }, '10.0.0.61': PANEL_INFO };
   const client = { ...fakeClient(infos), segments: async (host, info) => readSegments(PANEL_STATE, info, host) };
   await withApp(client, async (call) => {
     const added = await call('/api/wled/add', { host: '10.0.0.50' });
     assert.strictEqual(added.status, 200, JSON.stringify(added.body));
     assert.deepStrictEqual([added.body.profile.cells.length, added.body.fixture.output],
-      [8, { protocol: 'ddp', host: '10.0.0.50', leds: 300 }]);
+      [300, { protocol: 'ddp', host: '10.0.0.50' }]);
     // The same device, found at a new address and asked for as a wash.
     infos['10.0.0.52'] = infos['10.0.0.50'];
     const again = await call('/api/wled/add', { host: '10.0.0.52', mode: 'wash' });

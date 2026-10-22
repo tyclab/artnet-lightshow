@@ -162,7 +162,7 @@ test("initial base launches have no state to inherit", () => {
 test("energy bursts resolve to their catalogue row", () => {
   for (const [id, kind] of Object.entries(ENERGY_KIND_BY_ID)) {
     assert.deepStrictEqual(energyEffectSpec(id), presetById(kind).spec, id);
-    assert.strictEqual(energyEffectSpec(id).kind, kind);
+    assert.strictEqual(energyEffectSpec(id).kind, id.endsWith('-strobe') ? 'strobe' : kind);
   }
 });
 

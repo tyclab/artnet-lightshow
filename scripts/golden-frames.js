@@ -14,11 +14,19 @@ import { buildUnitSpace } from '../src/shared/space.ts';
 import { presetById } from '../src/shared/effects/catalogue.ts';
 import { BEATS, BPM, flatRig, lookInput, placedRig } from './golden-party-looks.js';
 import { V2_PRESETS } from '../src/shared/effects/v2/presets.ts';
+import { DEMO_AUDIO_SOURCE, DEMO_BPM } from '../src/shared/demo-track.ts';
 
 const MS_PER_BEAT = 60000 / BPM;
 const SEED = 0x5eed;
 // The Spatial goldens sample the party looks' beats.
 export const V2_BEATS = BEATS;
+export const V2_COMPLETE_BEATS = [...BEATS, 15.5, 16.25, 24, 32.5, 48.25, 63];
+const demoMs = (ms) => ms * BPM / DEMO_BPM;
+export const V2_COMPLETE_OPTIONS = {
+  audioAt: (ms) => ({ ...DEMO_AUDIO_SOURCE.frameAt(demoMs(ms)), t: ms }),
+  modulationAt: (ms) => DEMO_AUDIO_SOURCE.modulationAt(demoMs(ms)),
+  pictureAt: (ms) => ({ ...DEMO_AUDIO_SOURCE.pictureAt(demoMs(ms)), expiresAt: ms + 1000 }),
+};
 
 /** The committed synthetic room: its fixtures, the profiles they need and the room model. */
 export function syntheticRig() {
@@ -72,7 +80,7 @@ function unitChannels(fixtures, profileOf) {
 }
 
 /** Frames per id on a named rig: one row per unit, its channels at each beat in turn. The synthetic rig plays in its room unless `space` is false. */
-export function renderGolden(ids, rigName, beats, { space = true } = {}) {
+export function renderGolden(ids, rigName, beats, { space = true, audioAt, modulationAt, pictureAt } = {}) {
   const { fixtures, profileOf } = rigOf(rigName);
   const unitSpace = space && rigName === 'synthetic' ? syntheticSpace() : null;
   const channels = unitChannels(fixtures, profileOf);
@@ -86,7 +94,11 @@ export function renderGolden(ids, rigName, beats, { space = true } = {}) {
       const rows = channels.map(() => []);
       const input = lookInput(id, fixtures, effectOf);
       for (const beatPos of beats) {
-        renderer.frame(input, { beatPos, bpm: BPM, epoch: 0 }, beatPos * MS_PER_BEAT, store);
+        const ms = beatPos * MS_PER_BEAT;
+        if (audioAt) { input.audio = audioAt(ms); input.audioMode = 'reactive'; }
+        if (modulationAt) input.modulation = modulationAt(ms);
+        if (pictureAt) input.pictureFeatures = pictureAt(ms);
+        renderer.frame(input, { beatPos, bpm: BPM, epoch: 0 }, ms, store);
         channels.forEach(({ universe, offsets }, u) => {
           const buffer = store.getBuffer(universe);
           for (const k of offsets) rows[u].push(buffer[k]);
@@ -116,11 +128,11 @@ export function frameDiff(a, b) {
   return { maxChannel, units };
 }
 
-// Writes the Spatial goldens; the test only ever reads them.
+// Phase A remains a read-only baseline; this records the complete show against deterministic demo input.
 function main() {
-  const frames = renderGolden(V2_PRESETS.map((p) => p.id), 'synthetic', V2_BEATS);
+  const frames = renderGolden(V2_PRESETS.map((p) => p.id), 'synthetic', V2_COMPLETE_BEATS, V2_COMPLETE_OPTIONS);
   const body = Object.entries(frames).map(([id, rows]) => `  ${JSON.stringify(id)}: [\n${rows.map((row) => `    ${JSON.stringify(row)}`).join(',\n')}\n  ]`);
-  fs.writeFileSync(new URL('../tests/fixtures/golden/v2-spatial.json', import.meta.url), `{\n${body.join(',\n')}\n}\n`);
+  fs.writeFileSync(new URL('../tests/fixtures/golden/v2-complete.json', import.meta.url), `{\n${body.join(',\n')}\n}\n`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) main();

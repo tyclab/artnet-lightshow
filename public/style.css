@@ -4145,3 +4145,23 @@ input[type=range]::-moz-range-thumb {
 .seq-clip-row > span { flex: 1 1 80px; }
 .seq-clip-row > select { flex: 2 1 140px; min-width: 0; min-height: 44px; }
 .seq-clip-row > input[type="number"] { flex: 0 1 90px; width: 90px; min-width: 0; min-height: 44px; }
+
+.colour-sliders { display: grid; gap: .6rem; margin: .75rem 0; min-width: 0; }
+.colour-sliders label { display: grid; grid-template-columns: minmax(5rem, 8rem) minmax(4rem, 1fr) 3.5rem; align-items: center; gap: .6rem; }
+.colour-sliders input { width: 100%; min-width: 0; }
+.colour-sliders .colour-slider-value { text-align: right; font-variant-numeric: tabular-nums; }
+.hue-slider { accent-color: #bd65ff; background: linear-gradient(90deg, red, #ff0, #0f0, cyan, blue, magenta, red); }
+.hue-pair { margin: .75rem 0; }
+.pair-preview { display: inline-flex; height: 1.8rem; overflow: hidden; border-radius: .4rem; }
+.pair-preview i { display: block; width: 2.4rem; }
+.audition-panel { padding: .8rem; border: 1px solid var(--border); border-radius: .65rem; margin-bottom: .8rem; }
+.audition-panel select { max-width: 100%; margin: .7rem .4rem; }
+.audition-panel input[type=range] { min-width: 6rem; flex: 1; }
+.audition-bands { display: flex; flex-wrap: wrap; gap: .8rem; margin: .6rem 0; }
+.audition-bands label { display: flex; gap: .4rem; align-items: center; }
+.audition-bands meter { width: 5rem; }
+.spatial-controls > .insp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.spatial-fields { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; min-width: 0; padding: .6rem; border: 1px solid var(--border); }
+.spatial-fields > label, .spatial-colour { grid-column: 1 / -1; }
+.spatial-colour input[type=color] { margin-left: .6rem; }
+.spatial-fields .insp-field { margin-top: .2rem; }

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { HEX_COLOUR, parseHex, toHex, paletteBodySchema } from '../../src/shared/palette-model.ts';
+import { ColourSliders, HuePair } from './ColourSliders.jsx';
+import { CURATED_PALETTE_IDS } from '../../src/shared/colour-sliders.ts';
 import { GradientEditor, gradientSettings } from './GradientEditor.jsx';
 import { api, patchLibrary } from '../state.js';
 
@@ -54,6 +56,7 @@ export function PaletteEditor({ colours, onChange, body, onBodyChange, onInvalid
   // stored colour is written back on blur or Enter.
   const texts = useRef({});
   const [, redraw] = useState(0);
+  const [selected, setSelected] = useState(0);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState('');
   const list = body?.colours ?? (Array.isArray(colours) ? colours : []);
@@ -118,9 +121,9 @@ export function PaletteEditor({ colours, onChange, body, onBodyChange, onInvalid
             <div key={i} class={`palette-entry ${invalid ? 'invalid' : ''}`}>
               {random ? <span class="palette-random" title={randomTitle}>Random</span> : <>
                 <span class="palette-swatch" style={{ background: pickerValue(entry) }}>
-                  <input type="color" aria-label={`Colour ${i + 1} picker`} value={pickerValue(entry)} onInput={(e) => picked(i, e.target.value)} />
+                  <input type="color" aria-label={`Colour ${i + 1} picker`} value={pickerValue(entry)} onFocus={() => setSelected(i)} onInput={(e) => picked(i, e.target.value)} />
                 </span>
-                <input type="text" class="palette-hex" aria-label={`Colour ${i + 1}`} value={text} maxLength={13} spellcheck={false}
+                <input onFocus={() => setSelected(i)} type="text" class="palette-hex" aria-label={`Colour ${i + 1}`} value={text} maxLength={13} spellcheck={false}
                   aria-invalid={invalid ? 'true' : undefined} onInput={(e) => typed(i, e.target.value)}
                   onBlur={() => settle(i)} onKeyDown={(e) => { if (e.key === 'Enter') settle(i); }} />
                 <details class="palette-emitters"><summary>W / A / UV</summary>
@@ -137,6 +140,15 @@ export function PaletteEditor({ colours, onChange, body, onBodyChange, onInvalid
           );
         })}
       </div>
+      {list.length > 0 && <>
+        <label>Adjust colour <select aria-label="Slider colour" value={Math.min(selected, list.length - 1)} onChange={(e) => setSelected(Number(e.currentTarget.value))}>
+          {list.map((_, i) => <option key={i} value={i}>Colour {i + 1}</option>)}
+        </select></label>
+        {isHexColour(list[Math.min(selected, list.length - 1)]) && <ColourSliders value={list[Math.min(selected, list.length - 1)]}
+          label={`Colour ${Math.min(selected, list.length - 1) + 1}`} onChange={(value) => setAt(Math.min(selected, list.length - 1), value)} />}
+      </>}
+      <HuePair onChange={(pair) => { setTexts({}); emitBody({ ...palette, colours: pair,
+        gradients: palette.gradients.map((g) => ({ ...g, stops: g.stops.map((stop) => 'slot' in stop ? { ...stop, slot: Math.min(1, stop.slot) } : stop) })) }); }} />
       {list.length < MAX_COLOURS && (
         <div class="palette-add">
           <button type="button" class="btn sm" onClick={() => add('#FFFFFF')}>+ Colour</button>
@@ -148,6 +160,7 @@ export function PaletteEditor({ colours, onChange, body, onBodyChange, onInvalid
       <div class="palette-tools">
         <select class="auto-select" aria-label="Pick a palette" value="" onChange={pickPalette}>
           <option value="">Pick a palette…</option>
+          <optgroup label="Curated">{builtin.filter((p) => CURATED_PALETTE_IDS.includes(p.id)).map((p) => <option key={p.id} value={p.id}>{paletteName(p)}</option>)}</optgroup>
           {!!byApp('look').length && <optgroup label="Stage palettes">{byApp('look').map((p) => <option key={p.id} value={p.id}>{paletteName(p)}</option>)}</optgroup>}
           {byApp('ldj').length > 0 && (
             <optgroup label="Entertainment">{byApp('ldj').map((p) => <option key={p.id} value={p.id}>{paletteName(p)}</option>)}</optgroup>

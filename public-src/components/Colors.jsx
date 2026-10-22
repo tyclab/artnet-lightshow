@@ -1,3 +1,4 @@
+import { ColourSliders } from './ColourSliders.jsx';
 import { PaletteStrip } from './PaletteStrip.jsx';
 import { parseHex, toHex } from '../../src/shared/palette-model.ts';
 import { useState, useRef } from 'preact/hooks';
@@ -163,6 +164,13 @@ export function Colors() {
         </div>
       </div>
 
+      <ColourSliders label={`Slot ${SLOTS.find((slot) => slot.key === activeSlot).label}`} value={toHex(slotPreset(activeSlot) || presets[0])}
+        onChange={(value) => {
+          const colours = Array.from({ length: Math.max(4, s.basePalette?.colours.length || 0) }, (_, i) =>
+            i < 4 ? toHex(slotPreset(SLOTS[i].key) || presets[0]) : s.basePalette.colours[i]);
+          colours[SLOTS.findIndex((slot) => slot.key === activeSlot)] = value;
+          send({ basePalette: { ...s.basePalette, colours } });
+        }} />
       <div class="color-hint">
         Click a swatch to write into the active slot.
         <kbd>Shift</kbd> + click → paired slot. Right-click → paired slot.

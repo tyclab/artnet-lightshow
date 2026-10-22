@@ -1,12 +1,51 @@
 # Effects v2
 
-This is a plan to fold the effect engines into a few spatial generators that
-sample one metric room. Status: Phase A built: the unit space (steps 0 and 3), and
-Sweep, Shell, Orbit, Scatter and Neural with the Spatial presets in room and 2D
-forms (step 4 and the operator's list from step 5). The rest waits on the operator's
-review; the [README](../README.md) describes current behaviour. Paths and line numbers refer to `4d4837f`. The plan
-was drawn up for a 41-fixture rig with a metre-accurate room model, but no part
-of it depends on that rig.
+This document preserves the original design and its implementation decisions.
+The [README](../README.md#spatial-effects) describes current controls. The historical
+inventory and line numbers below refer to `4d4837f`; they are not the current catalogue.
+
+## Implementation status (2026-10-22)
+
+The operator authorized the full build after reviewing Phase A. There are now 39
+named spatial looks, each in room and plan forms, over eleven generators (the nine
+planned fields plus Neural and visualizer-derived animation). The additions include
+particles, stems in space, diagonal endpoints, build/drop/breakdown choreography,
+local Audition and colour sliders. All new-show workflows hide retired rows.
+
+- **Geometry:** room x/z are floor coordinates; y is height in metres. Sweep and
+  particle paths accept named anchors or explicit endpoints, including diagonals.
+  Plan mode projects them into the plot and preserves a purely vertical gesture
+  as bottom-to-top motion. Dense surfaces still sample individual physical pixels.
+- **Selection:** Scatter Strobe/Fade/Grow and Frequency Burst choose places,
+  fixtures and physical segments, so cell count does not dominate the random draw.
+  Whole-fixture and legacy cell selection remain explicit options. New WLED imports
+  use pixels; existing patches are not migrated behind the operator's back.
+- **Rest and rotation:** backgrounds and Neural idle default to zero. Explicit
+  backgrounds have an independent colour. Rotation has soft sector transitions.
+  Popcorn ids resolve to Scatter Fade and are absent from the picker.
+- **Composition and safety:** one output-guard owner retains device, lamp and room
+  histories across voice changes. White/colour/palette energy strobes use the
+  acknowledged overlay. Legacy output adapters retain their hardware semantics.
+- **Compatibility:** the old golden files remain unchanged. Version-2 saved specs
+  use `compat.*` adapters to preserve authored legacy parameters. Selected old
+  preset ids intentionally resolve to modern plan looks; `scripts/effects-v2-alias-diff.js`
+  measures their frame differences. Unmapped ids remain hidden compatibility rows.
+  **Step 9 is implemented as retirement from the active catalogue, not deletion of
+  every legacy renderer or clock:** deleting those would break saved specs whose
+  parameter richness has no exact field equivalent. No claim of byte identity is
+  made for the explicitly changed aliases.
+- **Palettes:** the chooser is curated and includes a hue-pair generator; every
+  old palette id remains available through Show all and integrations.
+- **Audition:** a typed, deterministic demo source supplies beat, bands, sections,
+  stems and picture features to a browser-only Stage sampler. It never sends a
+  live look, room, master or arm mutation.
+
+Verification covers original legacy goldens, a separate new-preset snapshot,
+room/plan parity, dense-fixture fairness, dark rest, rotation continuity, overlay
+permits, stored-library migration, browser isolation and a 3,000-unit benchmark.
+The original steps and open questions below explain the design history; the
+implementation decisions above supersede the old proposed deletion and blocking
+questions. Installation data is never part of these fixtures.
 
 ## Where the effects stand
 

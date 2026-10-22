@@ -266,12 +266,15 @@ export function Effects() {
     const family = familyOf(e.kind, families);
     return { ...e, user: true, app: 'own', kindApp: family?.app, family: family?.id || 'user', desc: 'A preset saved on this server' };
   });
-  const rows = [...userRows, ...(s.patterns || [])];
+  const rows = [...userRows, ...(s.patterns || []).filter((p) => !p.retired)];
+  const canonicalId = (id) => rows.some((row) => row.id === id) ? id : (lib.builtin || []).find((row) => row.aliases?.includes(id))?.id || id;
+  const playingId = canonicalId(s.pattern);
+  const pins = [...new Set(favourites.map(canonicalId))];
   const query = q.trim().toLowerCase();
   const visible = filterByLibrary(rows, library)
     .filter((r) => (!flags.party || r.party) && (!flags.pixel || r.pixel) && (!flags.rapid || r.rapidFlash))
     .filter((r) => matches(r, query, families));
-  const deck = quickDeck(visible, favourites);
+  const deck = quickDeck(visible, pins);
   const groups = groupRows(visible, families);
 
   const tap = (row) => tapRow(row, acknowledged, setConfirm);
@@ -286,7 +289,7 @@ export function Effects() {
   };
   const edit = (id) => { editingSig.value = id; };
   const toggleFavourite = (id) => {
-    const next = favourites.includes(id) ? favourites.filter((x) => x !== id) : [...favourites, id];
+    const next = pins.includes(id) ? pins.filter((x) => x !== id) : [...pins, id];
     setFavourites(next);
     writeFavourites(next);
   };
@@ -298,15 +301,15 @@ export function Effects() {
   const onBars = bars && s.pixelPattern ? s.pixelPattern : null;
   const panels = hasPanels(s);
   const onPanels = panels && s.panelPattern ? s.panelPattern : null;
-  const playing = s.pattern ? rows.find((r) => r.id === s.pattern) || { id: s.pattern, name: s.pattern } : null;
-  const activePreset = [...(lib.builtin || []), ...(lib.user || [])].find((p) => p.id === s.pattern);
+  const playing = s.pattern ? rows.find((r) => r.id === playingId) || { id: s.pattern, name: s.pattern } : null;
+  const activePreset = [...(lib.builtin || []), ...(lib.user || [])].find((p) => p.id === playingId);
   const activeKind = activePreset?.spec?.kind || playing?.kind;
   const lampLevel = LAMP_PATTERNS.has(s.pattern) || families.some((f) => f.kinds?.some((k) => k.kind === activeKind && k.level === 'lamp'));
-  const pixel = (s.patterns || []).filter((p) => p.pixel);
+  const pixel = (s.patterns || []).filter((p) => p.pixel && !p.retired);
   // Along each bar is across the stage on a rig without bars.
   const map = !bars && s.pixelMap === 'bar' ? 'stage' : (s.pixelMap || 'stage');
   const rowProps = (row) => ({
-    row, active: s.pattern === row.id, favourite: favourites.includes(row.id), onTap: tap, onEdit: edit, onToggleFavourite: toggleFavourite,
+    row, active: playingId === row.id, favourite: pins.includes(row.id), onTap: tap, onEdit: edit, onToggleFavourite: toggleFavourite,
   });
 
   return <>
