@@ -228,6 +228,8 @@ The effect catalogue and show workflows cover the Party & Disco and the
 Entertainment scope. The detailed fields below describe the data contract as
 well as the browser controls. See [feature coverage](docs/feature-coverage.md)
 for deliberate scope decisions and the upstream adoption policy.
+[Effects v2](docs/effects-v2.md) is the open plan to fold the effect engines
+into a few spatial generators.
 
 An **effect** draws the lights. A **look** combines the base effect, colours and fixture
 settings. A **pattern** is a reusable sequence of clips. Favourites are quick access
