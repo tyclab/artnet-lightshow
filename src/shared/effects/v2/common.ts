@@ -95,6 +95,16 @@ export function bandGate(common: V2Common, frame: EffectFrame): number | null {
   return threshold >= 1 ? Number(level >= 1) : clamp((level - threshold) / (1 - threshold));
 }
 
+/** A flash envelope: no attack and gone within a fifth of a beat. */
+export function isFlashEnvelope(envelope: V2Common['envelope']): boolean {
+  return envelope.attack <= 0.02 && envelope.hold + envelope.release <= 0.2;
+}
+
+/** A beat accent fast and short enough to strobe: every v2 kind then asks for the photosensitivity acknowledgement. */
+export function accentStrobes(common: Pick<V2Common, 'trigger' | 'envelope'>): boolean {
+  return common.trigger.mode === 'beatAccent' && common.trigger.beatInterval <= 0.25 && isFlashEnvelope(common.envelope);
+}
+
 /** A beat accent's peak now: the band gate with live audio, else full, kept above the depth floor. */
 export function accentPeak(common: V2Common, frame: EffectFrame): number {
   const gate = bandGate(common, frame);

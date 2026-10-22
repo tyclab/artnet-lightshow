@@ -2,6 +2,7 @@
 // Rows are output units in rig order; a row holds that unit's channels for every sampled beat.
 
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import { createRenderer } from '../src/server/renderer.ts';
 import * as universes from '../src/server/universes.ts';
@@ -11,10 +12,13 @@ import { buildRig } from '../src/shared/rig.ts';
 import { roomSceneSchema } from '../src/shared/room-scene.ts';
 import { buildUnitSpace } from '../src/shared/space.ts';
 import { presetById } from '../src/shared/effects/catalogue.ts';
-import { BPM, flatRig, lookInput, placedRig } from './golden-party-looks.js';
+import { BEATS, BPM, flatRig, lookInput, placedRig } from './golden-party-looks.js';
+import { V2_PRESETS } from '../src/shared/effects/v2/presets.ts';
 
 const MS_PER_BEAT = 60000 / BPM;
 const SEED = 0x5eed;
+// The Spatial goldens sample the party looks' beats.
+export const V2_BEATS = BEATS;
 
 /** The committed synthetic room: its fixtures, the profiles they need and the room model. */
 export function syntheticRig() {
@@ -111,3 +115,12 @@ export function frameDiff(a, b) {
   }
   return { maxChannel, units };
 }
+
+// Writes the Spatial goldens; the test only ever reads them.
+function main() {
+  const frames = renderGolden(V2_PRESETS.map((p) => p.id), 'synthetic', V2_BEATS);
+  const body = Object.entries(frames).map(([id, rows]) => `  ${JSON.stringify(id)}: [\n${rows.map((row) => `    ${JSON.stringify(row)}`).join(',\n')}\n  ]`);
+  fs.writeFileSync(new URL('../tests/fixtures/golden/v2-spatial.json', import.meta.url), `{\n${body.join(',\n')}\n}\n`);
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) main();

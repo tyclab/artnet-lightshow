@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { sampleEnvelope } from '../envelope.ts';
 import { hash01 } from '../hash.ts';
 import { registerKind } from '../registry.ts';
-import { bandSchema, paint, positionsOf, triggerLevel, v2CommonSchema } from './common.ts';
-import type { Positions, V2Common } from './common.ts';
+import { accentStrobes, bandSchema, isFlashEnvelope, paint, positionsOf, triggerLevel, v2CommonSchema } from './common.ts';
+import type { Positions } from './common.ts';
 import type { EffectFrame, EffectSlot } from '../types.ts';
 import type { Room } from '../../room.ts';
 
@@ -11,24 +11,18 @@ import type { Room } from '../../room.ts';
 export const scatterSchema = v2CommonSchema.extend({
   density: z.number().min(0).max(1).default(0.15),
   stepBeats: z.number().min(1 / 16).max(16).default(0.25),
+  // Metres; density stays the share of lights lit, so clusters mean fewer, larger patches.
   clusterM: z.number().min(0).max(10).default(0),
   // With live audio, a step fires only on a hit in one of these bands; empty fires every step.
   bands: z.array(bandSchema).max(4).default([]),
 });
 export type ScatterParams = z.output<typeof scatterSchema>;
 
-// The slot kind a rapid Scatter Strobe reports, so the per-lamp flash permit (layer.ts) covers it.
-export const SCATTER_FLASH_KIND = 'v2.scatter.flash';
 const KEEP_STEPS = 64;
 const MAX_BACK_STEPS = 64;
 
-/** A flash envelope: no attack and gone within a fifth of a beat. */
-export function isFlashEnvelope(envelope: V2Common['envelope']): boolean {
-  return envelope.attack <= 0.02 && envelope.hold + envelope.release <= 0.2;
-}
-
-export function scatterRapidFlash(p: Pick<ScatterParams, 'stepBeats' | 'envelope'>): boolean {
-  return p.stepBeats <= 0.25 && isFlashEnvelope(p.envelope);
+export function scatterRapidFlash(p: Pick<ScatterParams, 'stepBeats' | 'envelope' | 'trigger'>): boolean {
+  return (p.stepBeats <= 0.25 && isFlashEnvelope(p.envelope)) || accentStrobes(p);
 }
 
 interface ScatterState { fired: Map<number, boolean> }
@@ -79,6 +73,38 @@ function neighbourhood(pos: Positions, n: number, radius: number): Map<number, n
   return cubes;
 }
 
+// The lights of one step: its picks, or with clusters every light within the radius of each pick, adding
+// picks until `count` lights are lit (a light keeps its first pick's colour). Pure in the seed and the
+// step, so it is worked out once and remembered.
+const stepMemo = new WeakMap<Positions, Map<string, { units: Int32Array; colours: Float32Array }>>();
+const KEEP_STEP_LIGHTS = 32;
+function stepLights(pos: Positions, n: number, seed: EffectFrame['seed'], step: number, count: number, cluster: number): { units: Int32Array; colours: Float32Array } {
+  let memo = stepMemo.get(pos);
+  if (!memo) { memo = new Map(); stepMemo.set(pos, memo); }
+  const key = `${seed.join(',')}|${step}|${count}|${cluster}|${n}`;
+  const known = memo.get(key);
+  if (known) return known;
+  const picks = picksOf(seed, step, n, cluster ? n : count);
+  let found = picks;
+  if (cluster) {
+    const cubes = neighbourhood(pos, n, cluster);
+    const colourOf = new Map<number, number>();
+    for (let k = 0; k < n && colourOf.size < count; k++) {
+      const c = picks.units[k];
+      const cx = Math.floor(pos.x[c] / cluster), cy = Math.floor(pos.y[c] / cluster), cz = Math.floor(pos.z[c] / cluster);
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+        for (const i of cubes.get(cubeKey(cx + dx, cy + dy, cz + dz)) ?? []) {
+          if (!colourOf.has(i) && Math.hypot(pos.x[i] - pos.x[c], pos.y[i] - pos.y[c], pos.z[i] - pos.z[c]) <= cluster) colourOf.set(i, picks.colours[k]);
+        }
+      }
+    }
+    found = { units: Int32Array.from(colourOf.keys()), colours: Float32Array.from(colourOf.values()) };
+  }
+  memo.set(key, found);
+  if (memo.size > KEEP_STEP_LIGHTS) memo.delete(memo.keys().next().value!);
+  return found;
+}
+
 function fires(p: ScatterParams, s: ScatterState, f: EffectFrame, step: number): boolean {
   if (!p.bands.length || f.audioMode !== 'reactive' || !f.audio) return true;
   let fired = s.fired.get(step);
@@ -94,7 +120,8 @@ function fires(p: ScatterParams, s: ScatterState, f: EffectFrame, step: number):
 function renderScatter(p: ScatterParams, s: ScatterState, room: Room, f: EffectFrame, out: EffectSlot[]): void {
   const n = room.n;
   const pos = positionsOf(room, p.space);
-  const levels = new Float32Array(n), along = new Float32Array(n);
+  // Double precision, so a later equal level never displaces the first by single-precision rounding.
+  const levels = new Float64Array(n), along = new Float64Array(n);
   const t = f.beatPos - f.anchorBeat;
   const now = Math.floor((Number.isFinite(t) ? t : 0) / p.stepBeats);
   const length = p.envelope.attack + p.envelope.hold + p.envelope.release;
@@ -102,29 +129,17 @@ function renderScatter(p: ScatterParams, s: ScatterState, room: Room, f: EffectF
   // At least one pick a step, so a sparse density still plays on a small rig.
   const count = p.density > 0 ? Math.min(n, Math.max(1, Math.round(p.density * n))) : 0;
   const cluster = p.clusterM > 0 && !pos.plan ? p.clusterM : 0;
-  const cubes = cluster ? neighbourhood(pos, n, cluster) : null;
-  const light = (i: number, level: number, colour: number) => { if (level > levels[i]) { levels[i] = level; along[i] = colour; } };
   for (let step = now - back; step <= now && count > 0; step++) {
     const level = sampleEnvelope(t - step * p.stepBeats, p.envelope);
     if (!(level > 0) || !fires(p, s, f, step)) continue;
-    const { units, colours } = picksOf(f.seed, step, n, count);
-    for (let k = 0; k < count; k++) {
-      const c = units[k];
-      if (!cubes) { light(c, level, colours[k]); continue; }
-      const cx = Math.floor(pos.x[c] / cluster), cy = Math.floor(pos.y[c] / cluster), cz = Math.floor(pos.z[c] / cluster);
-      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
-        for (const i of cubes.get(cubeKey(cx + dx, cy + dy, cz + dz)) ?? []) {
-          if (Math.hypot(pos.x[i] - pos.x[c], pos.y[i] - pos.y[c], pos.z[i] - pos.z[c]) <= cluster) light(i, level, colours[k]);
-        }
-      }
+    const { units, colours } = stepLights(pos, n, f.seed, step, count, cluster);
+    for (let k = 0; k < units.length; k++) {
+      const i = units[k];
+      if (level > levels[i]) { levels[i] = level; along[i] = colours[k]; }
     }
   }
   const trigger = triggerLevel(p, f);
-  const kind = scatterRapidFlash(p) ? SCATTER_FLASH_KIND : undefined;
-  for (let i = 0; i < n; i++) {
-    paint(p, f, along[i], levels[i] * trigger, out[i]);
-    if (kind && out[i].strength > 0) out[i].kind = kind;
-  }
+  for (let i = 0; i < n; i++) paint(p, f, along[i], levels[i] * trigger, out[i]);
 }
 
 registerKind<ScatterParams, ScatterState>({

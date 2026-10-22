@@ -166,7 +166,7 @@ test('GET /api/effects lists families, built-ins, user presets and both palette 
   assert.equal(res.body.ok, true);
   assert.deepEqual(res.body.families, json(FAMILIES));
   assert.deepEqual(res.body.builtin, json(CATALOGUE));
-  assert.equal(res.body.builtin.length, 216);
+  assert.equal(res.body.builtin.length, 256);
   assert.deepEqual(res.body.user, [preset]);
   assert.deepEqual(res.body.palettes, { builtin: json(ALL_PALETTES), user: [palette] });
   assert.equal(res.body.palettes.builtin.length, 54);

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { hash01 } from '../hash.ts';
 import { registerKind } from '../registry.ts';
-import { directionOf, extentAlong, lengthIn, paint, planDirectionOf, positionsOf, project, soft, triggerLevel, v2CommonSchema } from './common.ts';
+import { accentStrobes, directionOf, extentAlong, lengthIn, paint, planDirectionOf, positionsOf, project, soft, triggerLevel, v2CommonSchema } from './common.ts';
 import type { Point, Positions } from './common.ts';
 import type { EffectFrame, EffectSlot } from '../types.ts';
 import type { Room } from '../../room.ts';
@@ -65,15 +65,18 @@ function passOf(p: SweepParams, pos: Positions, travel: number, width: number, s
     const [lo, hi] = extentAlong(pos, d);
     return { d, lo, hi, crest: lo - width + q * (hi - lo + 2 * width), heading: 1, lap };
   }
-  const turns = lap0 > 0 ? travel / lap0 : 0;
-  const d = directionAt(p, pos, turns);
-  const [lo, hi] = extentAlong(pos, d);
+  // The phase runs on the base direction's lengths, so a turning plane never changes the crest's pace:
+  // the crest sits at the same fraction of whatever span the plane has now.
   if (p.motion === 'bounce') {
-    const span = Math.max(1e-6, hi - lo), u = travel - Math.floor(travel / (2 * span)) * 2 * span;
-    return { d, lo, hi, crest: lo + (u < span ? u : 2 * span - u), heading: u < span ? 1 : -1, lap: Math.floor(travel / span) };
+    const span0 = Math.max(1e-6, hi0 - lo0), u = travel - Math.floor(travel / (2 * span0)) * 2 * span0;
+    const d = directionAt(p, pos, travel / span0);
+    const [lo, hi] = extentAlong(pos, d);
+    return { d, lo, hi, crest: lo + (u < span0 ? u : 2 * span0 - u) * ((hi - lo) / span0), heading: u < span0 ? 1 : -1, lap: Math.floor(travel / span0) };
   }
-  const length = hi - lo + 2 * width, lap = Math.floor(travel / length);
-  return { d, lo, hi, crest: lo + (travel - lap * length), heading: 1, lap };
+  const lap = Math.floor(travel / lap0);
+  const d = directionAt(p, pos, travel / lap0);
+  const [lo, hi] = extentAlong(pos, d);
+  return { d, lo, hi, crest: lo + (travel - lap * lap0) * ((hi - lo + 2 * width) / lap0), heading: 1, lap };
 }
 
 function renderSweep(p: SweepParams, room: Room, f: EffectFrame, out: EffectSlot[]): void {
@@ -99,6 +102,7 @@ function renderSweep(p: SweepParams, room: Room, f: EffectFrame, out: EffectSlot
 registerKind<SweepParams, Record<string, never>>({
   kind: 'v2.sweep', app: 'own', level: 'cell', schema: sweepSchema,
   defaults: { params: sweepSchema.parse({}), brightness: 1 },
+  rapidFlashWhen: accentStrobes,
   init: () => ({}),
   render: (params, _state, room, frame, out) => renderSweep(params, room, frame, out),
 });

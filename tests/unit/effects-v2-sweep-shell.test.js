@@ -176,3 +176,49 @@ test('a tempo change mid-sweep moves the crest less than one width per frame, in
     assert.ok(Math.abs(crests[k] - crests[k - 1]) < 0.6, `crest jumped ${crests[k - 1]} -> ${crests[k]} at ${times[k]} ms`);
   }
 });
+
+test('a turning sweep keeps its crest moving smoothly, however long it has played', () => {
+  const frameBeats = (FRAME_MS / 60000) * 128;
+  // A soft crest moving 8 cm a frame changes no light by more than about a third in one frame; a jump flips many.
+  for (const [motion, turnPerLap, profile, width] of [['bounce', 45, 'crest', 0.35], ['loop', 30, 'crest', 0.6]]) {
+    for (const space of ['room', 'plan']) {
+      const spec = sweep({ azimuthDeg: 90, profile, width, speed: 1.5, motion, turnPerLap, space });
+      for (const start of [0, 4096]) {
+        let previous = null, worst = 0;
+        for (let k = 0; k < 300; k++) {
+          const levels = renderKind(spec, room, frameAt(start + k * frameBeats, { bpm: 128 })).out.map((s) => s.level);
+          if (previous) worst = Math.max(worst, levels.filter((v, i) => Math.abs(v - previous[i]) > 0.5).length);
+          previous = levels;
+        }
+        assert.ok(worst <= room.n * 0.05, `${motion} turning ${turnPerLap}° in ${space} from beat ${start}: ${worst} of ${room.n} lights flip in one frame`);
+      }
+    }
+  }
+});
+
+test('a ring from a random corner light crosses the whole room', async () => {
+  const { hash01 } = await import('../../src/shared/effects/hash.ts');
+  const profiles = { lamp: { channelMap: { red: 0 } } };
+  const fixtures = [{ id: 1, profileId: 'lamp', position: { x: 50, y: 50 } }, { id: 2, profileId: 'lamp', position: { x: 5, y: 5 } }, { id: 3, profileId: 'lamp', position: { x: 95, y: 95 } }];
+  const tiny = buildRig(fixtures, (f) => profiles[f.profileId]);
+  const model = roomSceneSchema.parse({ version: 1, name: 'Corners', bounds: { width: 4, depth: 4, height: 2.6 }, bindings: [
+    { id: 'c', fixtureId: 1, position: { x: 0, y: 1.3, z: 0 }, confidence: 'measured' },
+    { id: 'a', fixtureId: 2, position: { x: -1.9, y: 0.1, z: -1.9 }, confidence: 'measured' },
+    { id: 'b', fixtureId: 3, position: { x: 1.9, y: 2.5, z: 1.9 }, confidence: 'measured' }] });
+  const tinyLayout = voiceLayout(tiny);
+  const tinyRoom = effectRoom(tinyLayout, buildUnitSpace(tiny, model));
+  const slot = (id) => tinyLayout.units.list.findIndex((u) => tiny.fixtures[tiny.units[u].fixture].id === id);
+  const pick = (seed, event) => Math.min(2, Math.floor(hash01(seed, 5, event) * 3));
+  // A seed whose first ring starts at the centre light and a later one at corner a.
+  let seed = null, event = 0;
+  for (let s = 1; s < 500 && !seed; s++) {
+    const candidate = [s, 7, 7, 7];
+    if (pick(candidate, 0) !== slot(1)) continue;
+    for (let k = 1; k < 20; k++) if (pick(candidate, k) === slot(2)) { seed = candidate; event = k; break; }
+  }
+  assert.ok(seed, 'a seed to test with');
+  const spec = shell({ origin: 'random', alsoAnchor: null, speed: 2, width: 0.3, trigger: { ...ACCENT_BAR, mode: 'timeline' } });
+  const far = Math.hypot(3.8, 2.4, 3.8);
+  const at = { ...frameAt(event * 4 + far / 2), seed };
+  assert.ok(renderKind(spec, tinyRoom, at).out[slot(3)].level >= 0.8, 'the ring from corner a reaches corner b');
+});

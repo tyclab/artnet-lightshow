@@ -99,8 +99,7 @@ test('before the photosensitivity acknowledgement a Scatter Strobe never flashes
 });
 
 test('a rapid Scatter Strobe takes the per-lamp flash permit', () => {
-  assert.equal(hdGuarded('v2.scatter.flash'), true);
-  assert.equal(hdGuarded('v2.scatter'), false);
+  assert.equal(hdGuarded('v2.scatter'), true);
   const pars = syntheticRig().fixtures.slice(0, 1);
   const red = getProfile(pars[0]).channelMap.red;
   const frames = trace(pars, scatter({ density: 1, stepBeats: 0.25, envelope: FLASH }));
@@ -157,4 +156,17 @@ test('a small rig still lights one unit on every step', () => {
   const four = buildRoom(4, (i) => i / 3, () => 0.5, () => 0.5, null);
   for (const step of [0, 1, 2]) assert.equal(lit(renderKind(scatter({ density: 0.08, stepBeats: 0.25, envelope: FLASH }), four, frameAt(step * 0.25 + 0.01)).out), 1);
   assert.equal(lit(renderKind(scatter({ density: 0, stepBeats: 0.25, envelope: FLASH }), four, frameAt(0.01)).out), 0);
+});
+
+test('with clusters the density is still the share of lights lit, so a dense curtain is not all lit', () => {
+  // 1,600 cells 5 cm apart on a wall: a 0.3 m cluster covers about a hundred of them.
+  const n = 1600;
+  const wall = buildRoom(n, (i) => (i % 40) / 39, (i) => Math.floor(i / 40) / 39, () => 0.5, null);
+  const x = new Float32Array(n), y = new Float32Array(n), z = new Float32Array(n), size = new Float32Array(n).fill(0.025);
+  for (let i = 0; i < n; i++) { x[i] = (i % 40) * 0.05 - 1; y[i] = Math.floor(i / 40) * 0.05 + 0.2; }
+  const spaced = { ...wall, space: { x, y, z, size, bounds: { width: 4, depth: 4, height: 2.6 }, listener: { x: 0, y: 1.2, z: 0, facingDeg: 0 }, anchors: {} } };
+  for (const step of [0, 1, 2]) {
+    const on = lit(renderKind(scatter({ density: 0.2, clusterM: 0.3, stepBeats: 0.25, envelope: FLASH }), spaced, frameAt(step * 0.25 + 0.01)).out);
+    assert.ok(on >= 320 && on < 320 + 120, `step ${step}: ${on} of ${n} lit`);
+  }
 });

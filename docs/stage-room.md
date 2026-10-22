@@ -10,8 +10,9 @@ Use Download room JSON to preserve saved placements before replacement. Replacin
 or clearing a room with saved positions asks for confirmation, as does discarding
 changed placement fields.
 
-Room geometry changes the preview. It does not move fixtures in the engine's
-Rig plot, alter effect targets or arm outputs. Keep those placements consistent
+Room geometry changes the preview and the room form of the Spatial effects, which
+sample each light's bound position in metres. It does not move fixtures in the
+engine's Rig plot, alter any other effect or arm outputs. Keep those placements consistent
 when commissioning the room. Estimated dimensions and bindings remain marked
 as estimates; a detailed model does not prove measured optical timing.
 
