@@ -17,6 +17,7 @@ import './bundle.ts';
 import './v2/sweep.ts';
 import './v2/shell.ts';
 import './v2/orbit.ts';
+import './v2/scatter.ts';
 // The catalogue comes last: building it validates specs of every kind above.
 export { BUILTIN_PALETTES, CATALOGUE, FAMILIES, LDJ_PRESETS, deepFreeze, presetById, presetIndex } from './catalogue.ts';
 export type { CatalogueFamily, CataloguePreset } from './catalogue.ts';
