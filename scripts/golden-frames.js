@@ -8,6 +8,8 @@ import * as universes from '../src/server/universes.ts';
 import { getProfile, profilesRevision } from '../src/server/profiles.ts';
 import { barProfile } from '../src/server/bar-profile.ts';
 import { buildRig } from '../src/shared/rig.ts';
+import { roomSceneSchema } from '../src/shared/room-scene.ts';
+import { buildUnitSpace } from '../src/shared/space.ts';
 import { presetById } from '../src/shared/effects/catalogue.ts';
 import { BPM, flatRig, lookInput, placedRig } from './golden-party-looks.js';
 
@@ -25,6 +27,12 @@ export function syntheticRig() {
   // As the engine hands fixtures to the renderer: full brightness, no override.
   const fixtures = doc.fixtures.map(({ label: _label, ...f }) => ({ maxBrightness: 255, override: null, hue: false, ...f }));
   return { fixtures, profiles, profileOf, room: doc.room, units: buildRig(fixtures, profileOf).units.length };
+}
+
+/** The synthetic rig's unit space, as the engine builds it from the room. */
+export function syntheticSpace() {
+  const { fixtures, profileOf, room } = syntheticRig();
+  return buildUnitSpace(buildRig(fixtures, profileOf), roomSceneSchema.parse(room));
 }
 
 function rigOf(name) {
@@ -59,15 +67,17 @@ function unitChannels(fixtures, profileOf) {
   });
 }
 
-/** Frames per id on a named rig: one row per unit, its channels at each beat in turn. */
-export function renderGolden(ids, rigName, beats) {
+/** Frames per id on a named rig: one row per unit, its channels at each beat in turn. The synthetic rig plays in its room unless `space` is false. */
+export function renderGolden(ids, rigName, beats, { space = true } = {}) {
   const { fixtures, profileOf } = rigOf(rigName);
+  const unitSpace = space && rigName === 'synthetic' ? syntheticSpace() : null;
   const channels = unitChannels(fixtures, profileOf);
   const random = Math.random;
   Math.random = seeded(SEED);
   try {
     return Object.fromEntries(ids.map((id) => {
       const renderer = createRenderer({ profileOf, profilesRevision, now: 0 });
+      renderer.setSpace(unitSpace);
       const store = universes.createUniverseStore(universes.allocateShared());
       const rows = channels.map(() => []);
       const input = lookInput(id, fixtures, effectOf);

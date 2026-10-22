@@ -357,7 +357,7 @@ export function renderSequenceLayer(rig: Rig, layout: Layout, frame: FrameBase, 
     picture.covered[k] = 1;
     set(list[k], colour, dim, strobe, kind, owner);
   };
-  const placed = renderPlaced(frame, table, transport, run, stepper, effectRoom(layout), ids, (k, slot, kind) => {
+  const placed = renderPlaced(frame, table, transport, run, stepper, effectRoom(layout, frame.unitSpace), ids, (k, slot, kind) => {
     if (slot) keep(k, slot.colour, 255 * slot.level, slot.strobe ?? 0, slot.kind ?? kind, slot.owner);
     else keep(k, BLACK, 0, 0, null);
   });

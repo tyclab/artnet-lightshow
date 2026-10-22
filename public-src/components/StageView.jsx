@@ -4,7 +4,7 @@ import { api, pick, connectedSig, dmxSig, field, pictureImageSig, stagePreviewSi
 import { fmtTime, rigLights, stageMode } from '../utils.js';
 import { useDmxFeed } from '../use-dmx.js';
 import { useTimeline } from '../use-timeline.js';
-import { useRehearsalTrack, useRehearsalSampler } from '../rehearsal.js';
+import { useRehearsalTrack, useRehearsalSampler, useUnitSpace } from '../rehearsal.js';
 import { placeRig, roomRig, hasBeams, lightRGB, STAGE_W, STAGE_D, TRUSS_H } from '../stage3d/world.js';
 import { buildRig, rigSignature } from '../../src/shared/rig.ts';
 import { StageRoomPanel } from './StageRoomPanel.jsx';
@@ -56,7 +56,8 @@ export function StageView({ compact = false } = {}) {
   const signature = rigSignature(fixtures);
   const rig = useMemo(() => buildRig(fixtures, (f) => profiles[f.profileId] || null), [signature, profiles]);
   const placed = useMemo(() => room ? roomRig(fixtures, rig, room) : placeRig(fixtures, profiles, rig), [rig, room, fixtures, profiles]);
-  const sample = useRehearsalSampler(data);
+  const space = useUnitSpace(rig, [rig], room);
+  const sample = useRehearsalSampler(data, space);
 
   // What the frame loop reads, without restarting it for every change.
   const live = useRef({});

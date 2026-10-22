@@ -1,10 +1,13 @@
 import type { Express, Request, Response } from 'express';
 import { roomSceneSchema } from '../../shared/room-scene.ts';
-import { RoomSceneStore } from '../room-scene-store.ts';
+import { RoomSceneStore, sharedRoomScene } from '../room-scene-store.ts';
+import { currentRig } from '../rig.ts';
+import { buildUnitSpace, spaceReport } from '../../shared/space.ts';
+import type { Rig } from '../../shared/rig.ts';
 
-export function attachRoomSceneRoutes(app: Express, suppliedStore?: RoomSceneStore): void {
+export function attachRoomSceneRoutes(app: Express, suppliedStore?: RoomSceneStore, rigOf: () => Rig = currentRig): void {
   let store = suppliedStore;
-  const current = () => (store ??= new RoomSceneStore().load());
+  const current = () => (store ??= sharedRoomScene());
   const matches = (value: string | undefined, revision: string) => value === revision || value === `"${revision}"`;
   const response = (res: Response) => {
     const snapshot = current().snapshot();
@@ -28,6 +31,14 @@ export function attachRoomSceneRoutes(app: Express, suppliedStore?: RoomSceneSto
     const snapshot = response(res);
     if (matches(req.headers['if-none-match'], snapshot.revision)) return res.status(304).end();
     res.json({ ok: true, ...snapshot });
+  });
+  // Read-only: where the effects place each unit, against the bindings and the Rig plot.
+  app.get('/api/stage/room/report', (_req, res) => {
+    const { room, revision } = current().peek();
+    const rig = rigOf();
+    const space = buildUnitSpace(rig, room);
+    res.set('Cache-Control', 'private, no-cache');
+    res.json({ ok: true, revision, units: space.n, ...spaceReport(rig, room, space) });
   });
   app.put('/api/stage/room', (req, res) => {
     if (!precondition(req, res)) return;

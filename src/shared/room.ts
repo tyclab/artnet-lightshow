@@ -1,8 +1,11 @@
 import type { PatternContext } from './patterns.ts';
+import type { RoomSpace } from './space.ts';
 
 
 export interface Room {
   lamps?: LampRoom;
+  // Room metres in this room's order; absent means plan-only.
+  space?: RoomSpace;
   n: number;
   u: number[];
   v: number[];

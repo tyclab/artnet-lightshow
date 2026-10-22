@@ -167,6 +167,9 @@ port.on('message', guarded('engine-worker', (msg: ToWorker | null) => {
     case 'profiles':
       setProfiles(msg.profiles);
       break;
+    case 'space':
+      renderer.setSpace(msg.space);
+      break;
     case 'snapshot':
       takeSequence();
       snapshot = { input: msg.input, outputs: msg.outputs };

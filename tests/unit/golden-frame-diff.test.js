@@ -2,7 +2,7 @@
 // look moved and on how many lights, instead of only that its bytes changed.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { frameDiff, renderGolden, syntheticRig } from '../../scripts/golden-frames.js';
+import { frameDiff, renderGolden, syntheticRig, syntheticSpace } from '../../scripts/golden-frames.js';
 
 test('identical frames differ by nothing', () => {
   const frames = [[0, 10, 255], [3, 4, 5]];
@@ -28,4 +28,21 @@ test('the synthetic rig renders one row per unit, the same on every call', () =>
 test('flat and placed rigs keep their party-look rigs', () => {
   assert.equal(renderGolden(['solid'], 'flat', [0]).solid.length, 4);
   assert.equal(renderGolden(['solid'], 'placed', [0]).solid.length, 8);
+});
+
+test('every existing id renders the same frames with the room space as without it', async () => {
+  const { CATALOGUE } = await import('../../src/shared/effects/catalogue.ts');
+  const { PATTERN_IDS } = await import('../../src/server/presets.ts');
+  const ids = [...new Set([...PATTERN_IDS, ...CATALOGUE.map((row) => row.id)])];
+  const beats = [0, 0.5, 1.25, 3, 7.5];
+  const spaced = renderGolden(ids, 'synthetic', beats);
+  const plain = renderGolden(ids, 'synthetic', beats, { space: false });
+  const moved = ids.map((id) => [id, frameDiff(spaced[id], plain[id])]).filter(([, d]) => d.maxChannel > 0);
+  assert.deepEqual(moved, []);
+  assert.ok(ids.length > 250, `${ids.length} ids`);
+});
+
+test('the synthetic rig renders with its room space', () => {
+  assert.equal(syntheticSpace().n, syntheticRig().units);
+  assert.deepEqual(Object.keys(syntheticSpace().listeners), ['desk', 'couch']);
 });

@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { stateSig, dmxSig, connectedSig, emitFixture, stagePreviewSig } from '../state.js';
 import { colorToCss, fixtureOutputColor, fixtureCellColors, meanLight, fmtTime, patchedAt, stageMode } from '../utils.js';
 import { useDmxFeed } from '../use-dmx.js';
-import { useRehearsalTrack, useRehearsalSampler } from '../rehearsal.js';
+import { useRehearsalTrack, useRehearsalSampler, useUnitSpace } from '../rehearsal.js';
 import { NowPlaying } from './NowPlaying.jsx';
 import { useTimeline } from '../use-timeline.js';
 import { stagePositions } from '../../src/shared/stage.ts';
-import { buildRig, lineOf } from '../../src/shared/rig.ts';
+import { buildRig, lineOf, rigSignature } from '../../src/shared/rig.ts';
 import { STAGE_EDGES, clamp, geometryOf, placeAt, pointIn, surfaceStyle } from '../stage-geometry.js';
 
 export function StagePreview() {
@@ -39,7 +39,8 @@ export function StagePreview() {
   const shown = mode.lit ? s : { ...s, masterBlackout: true };
   // The timeline data carries the analysed beats, so the chase steps here on
   // the same beats the rig will step on.
-  const sample = useRehearsalSampler(data);
+  const space = useUnitSpace(rig, [rigSignature(drawn), s.profiles]);
+  const sample = useRehearsalSampler(data, space);
   // One entry per light: a par, or each cell of a bar.
   const preview = rehearsal ? sample(position, fixtures, s.colorPresets, rig) : null;
   // Read inside the branch that uses it: a signal subscribes on read, so while

@@ -6,6 +6,7 @@ import type { TransmitConfig } from './transmit.ts';
 import type { SharedUniverses } from './universes.ts';
 import type { Profile } from '../types/rig.ts';
 import type { SequenceTable } from '../shared/effects/sequence.ts';
+import type { UnitSpace } from '../shared/space.ts';
 
 export interface EngineWorkerData {
   shared: SharedUniverses;
@@ -20,6 +21,7 @@ export type RenderedFrames = Record<number, number[] | null>;
 
 export type ToWorker =
   | { type: 'profiles'; profiles: Profile[] }
+  | { type: 'space'; space: UnitSpace | null }
   | { type: 'snapshot'; at: number; input: RenderInput; reading: PostedReading; outputs: TransmitConfig }
   | { type: 'render'; id: number; input: RenderInput; reading: MusicalTime; now: number; gridOriginMs?: number; table?: SequenceTable | null }
   | { type: 'sequence'; table: SequenceTable | null }

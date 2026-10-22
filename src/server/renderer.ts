@@ -1,4 +1,5 @@
 import { fixedColours, colourSlots, resolveGradient } from '../shared/palette-model.ts';
+import type { UnitSpace } from '../shared/space.ts';
 import type { PaletteBody } from '../shared/palette-model.ts';
 import { COLOR_PRESETS, STANDARD_STROBE } from './presets.ts';
 import { outputEmitters } from '../shared/emitter-capability.ts';
@@ -206,6 +207,8 @@ export interface Renderer {
   rejectCommands(status: CommandStatus): void;
   commandStatus(): { processed: number; applied: number };
   setSequence(table: SequenceTable | null): void;
+  // Room metres per unit for this rig, built on the main thread; null is plan-only.
+  setSpace(space: UnitSpace | null): void;
 }
 
 const RANDOM_PATTERNS = new Set(['twinkle', 'sparkle', 'random-flash']);
@@ -290,6 +293,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
 
   let rig: Rig<RenderFixture> | null = null;
   let rigKey = '';
+  let space: UnitSpace | null = null;
   const limiter = createFlashLimiter();
 
   // Keep base and voices in one stepper so checkpoints, expiry and resets share their lifetimes.
@@ -955,6 +959,8 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       cellsFor(input, rigNow);
       const manualStrobeActive = voices.some((v) => v.spec.kind === 'strobe' && coversPatch(v, voiceCells!.ids));
       fb = frameBaseOf(input, reading, effNow, effDt, input.safety.acknowledged, manualStrobeActive);
+      // A space built for another patch is never read with this one's unit indices.
+      fb.unitSpace = space && space.n === rigNow.units.length ? space : null;
     }
     const commands = takeCommands(input);
 
@@ -1208,6 +1214,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       }
     },
     commandStatus() { return { processed: processedSeq, applied: appliedSeq }; },
+    setSpace(next) { space = next ?? null; },
     setSequence(table) {
       const ok = !!table && typeof table === 'object' && Number.isFinite(table.revision) && Array.isArray(table.lanes) && Array.isArray(table.clips);
       sequence = ok ? table : null;
