@@ -189,8 +189,10 @@ blackout and the master. Effects holds the full catalogue, colours and fixture
 overrides; Perform is the tablet surface for pads, strobes, the Matrix board
 and tempo tools; Sequence arranges clips or runs a playlist; Stage shows the
 rig in 3D with its room bindings or a rehearsal. Arming is a separate action
-from preparing or previewing a look. Stage and the fixture plot say **Preview (disarmed)**
-while outputs are disarmed; their colours show the rendered look, and nothing is transmitted.
+from preparing or previewing a look. Stage and the fixture plot say **Outputs off**
+while outputs are disarmed and draw every light off, because nothing is transmitted. **Preview look**
+draws the rendered look that arming would send and the label becomes **Preview (disarmed)**; the choice
+lasts until the page reloads and is shared by both views.
 They say **Live output** once outputs are armed.
 Import a private floor model and place its lights with the
 [Stage room controls](docs/stage-room.md). Room geometry affects the preview;

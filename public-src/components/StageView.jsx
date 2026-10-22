@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect } from '@preact/signals';
 import { api, pick, connectedSig, dmxSig, field, pictureImageSig, stagePreviewSig } from '../state.js';
-import { fmtTime, rigLights } from '../utils.js';
+import { fmtTime, rigLights, stageMode } from '../utils.js';
 import { useDmxFeed } from '../use-dmx.js';
 import { useTimeline } from '../use-timeline.js';
 import { useRehearsalTrack, useRehearsalSampler } from '../rehearsal.js';
@@ -33,6 +33,7 @@ export function StageView({ compact = false } = {}) {
   const { data } = useTimeline();
   const ui = stagePreviewSig.value;
   const rehearsing = ui.rehearsal && !!data;
+  const mode = stageMode({ rehearsing, connected, armed: s.armed, preview: ui.preview });
   const durationMs = data && data.duration ? data.duration * 1000 : 0;
   const [status, setStatus] = useState('loading');   // loading | ready | nowebgl | error
   const [view, setView] = useState('audience');
@@ -59,7 +60,7 @@ export function StageView({ compact = false } = {}) {
 
   // What the frame loop reads, without restarting it for every change.
   const live = useRef({});
-  live.current = { fixtures, profiles, rig, sample, rehearsing, presets: s.colorPresets, durationMs };
+  live.current = { fixtures, profiles, rig, sample, rehearsing, dark: !mode.lit, presets: s.colorPresets, durationMs };
 
   useEffect(() => {
     let cancelled = false;
@@ -122,6 +123,7 @@ export function StageView({ compact = false } = {}) {
     let lastFixtures = null;
     let lastProfiles = null;
     let lastRig = null;
+    let lastDark = null;
     let rehearsalInputs = null;
     let rehearsalFrame = null;
     let lastNow = performance.now();
@@ -150,15 +152,16 @@ export function StageView({ compact = false } = {}) {
       } else {
         position = st.position;
         const dmx = dmxSig.value;
-        if (dmx !== lastDmx || cur.fixtures !== lastFixtures || cur.profiles !== lastProfiles || cur.rig !== lastRig) {
+        if (dmx !== lastDmx || cur.fixtures !== lastFixtures || cur.profiles !== lastProfiles || cur.rig !== lastRig || cur.dark !== lastDark) {
           lastDmx = dmx;
           lastFixtures = cur.fixtures;
           lastProfiles = cur.profiles;
           lastRig = cur.rig;
+          lastDark = cur.dark;
           // What is on the wire, as it is: the feed already carries overrides,
-          // the masters and identify.
+          // the masters and identify. Disarmed, the wire carries nothing.
           const raw = cur.fixtures.map((f) => (f.override ? { ...f, override: null } : f));
-          liveFrame = rigLights(raw, { profiles: cur.profiles, masterBlackout: false, masterDimmer: 255 }, dmx, cur.rig);
+          liveFrame = rigLights(raw, { profiles: cur.profiles, masterBlackout: cur.dark, masterDimmer: 255 }, dmx, cur.rig);
         }
         scene.current.setLights(liveFrame);
       }
@@ -192,13 +195,14 @@ export function StageView({ compact = false } = {}) {
   const bars = rig.cellMaps.filter(Boolean).length;
   const description = `The rig in 3D from ${view === 'audience' ? 'the audience' : view === 'above' ? 'above' : 'the side'}: `
     + `${fixtures.length} fixtures${bars ? `, ${bars} of them bars` : ''}, ${parts} lights, `
-    + `${rehearsing ? `rehearsing the track at ${fmtTime(ui.position)}` : connected ? s.armed ? 'showing the live output' : 'previewing with outputs disarmed; nothing is transmitted' : 'offline'}.`;
+    + `${rehearsing ? `rehearsing the track at ${fmtTime(ui.position)}` : !connected ? 'offline' : s.armed ? 'showing the live output'
+      : mode.lit ? 'previewing with outputs disarmed; nothing is transmitted' : 'outputs disarmed, lights drawn off; nothing is transmitted'}.`;
 
   return (
     <div class={`stage3d-view${compact ? ' compact' : ''}`}>
       {!compact && <StageRoomPanel snapshot={roomState} coverage={room ? placed : null} fixtures={fixtures} rig={rig} onChange={setRoomState} />}
       <div class="stage3d-tools" role="toolbar" aria-label="Stage view">
-        <span class="panel-tag">{rehearsing ? 'Rehearsal' : connected ? s.armed ? 'Live output' : 'Preview (disarmed)' : 'Offline'}</span>
+        <span class="panel-tag">{mode.tag}</span>
         <div class="segmented" role="group" aria-label="Viewpoint">
           {VIEWS.map((v) => (
             <button key={v.id} type="button" class={`segmented-btn ${view === v.id ? 'active' : ''}`} aria-pressed={view === v.id}
@@ -212,6 +216,8 @@ export function StageView({ compact = false } = {}) {
             onInput={(e) => setHaze(Number(e.target.value))} />
         </label>}
         <span class="stage3d-sep" aria-hidden="true" />
+        {connected && !s.armed && !rehearsing && <button type="button" class={`btn sm ${ui.preview ? 'active' : ''}`} aria-pressed={!!ui.preview}
+          title="Draw what arming would send; nothing goes out" onClick={() => setUi({ preview: !ui.preview })}>Preview look</button>}
         <button type="button" class={`btn sm ${rehearsing ? 'active' : ''}`} aria-pressed={rehearsing} disabled={!data}
           title={data ? 'Play the loaded track\'s show here, at any moment of it' : 'Rehearsal needs an analysed track'}
           onClick={() => setUi({ rehearsal: !rehearsing, playing: false })}>{rehearsing ? 'Back to live' : 'Rehearse track'}</button>
@@ -242,7 +248,8 @@ export function StageView({ compact = false } = {}) {
           ? 'Rehearsing: the planned show, as the timeline has it; nothing goes out to the rig.'
           : !connected ? 'Offline: the live output is unavailable.' : s.armed
             ? 'Live: what is going out to the rig now.'
-            : 'Preview: outputs are disarmed; nothing is transmitted to the rig.'}
+            : mode.lit ? 'Preview: outputs are disarmed; nothing is transmitted to the rig.'
+              : 'Outputs off: nothing is transmitted to the rig, so its lights are drawn off. Preview look shows what arming would send.'}
       </p>}
     </div>
   );

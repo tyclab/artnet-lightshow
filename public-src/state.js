@@ -38,7 +38,7 @@ export const autoTimelineSig = signal({ data: null, key: null, status: 'idle', e
 
 // Shared by the stage preview in both views so they never disagree; a drag stays in the component.
 export const stagePreviewSig = signal({
-  edit: false, rehearsal: false, playing: false, position: 0,
+  edit: false, rehearsal: false, playing: false, position: 0, preview: false,
   // So a remount on a view switch is not taken for a new track.
   trackId: undefined,
 });

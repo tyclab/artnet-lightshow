@@ -66,3 +66,19 @@ test('a par reads exactly as it always did', () => {
   const state = barState([128, 200, 100, 50]);
   assert.equal(utils.fixtureOutputColor({ profileId: 'par', address: 1, universe: 0 }, state), 'rgb(100,50,25)');
 });
+
+test('a disarmed stage draws its lights off unless the look is previewed', () => {
+  const at = (patch) => utils.stageMode({ rehearsing: false, connected: true, armed: false, preview: false, ...patch });
+  assert.deepEqual(at({}), { tag: 'Outputs off', lit: false }, 'nothing goes out, so nothing is drawn lit');
+  assert.deepEqual(at({ preview: true }), { tag: 'Preview (disarmed)', lit: true });
+  assert.deepEqual(at({ armed: true }), { tag: 'Live output', lit: true });
+  assert.deepEqual(at({ armed: true, preview: true }), { tag: 'Live output', lit: true }, 'armed, the wire is the picture');
+  assert.deepEqual(at({ rehearsing: true }), { tag: 'Rehearsal', lit: true }, 'a rehearsal draws the planned show');
+  assert.deepEqual(at({ connected: false }), { tag: 'Offline', lit: true });
+});
+
+test('the blackout state a dark stage draws with turns a lit par off', () => {
+  const par = { profileId: 'par', address: 1, universe: 0 };
+  assert.equal(utils.fixtureOutputColor(par, barState([128, 200, 100, 50])), 'rgb(100,50,25)');
+  assert.equal(utils.fixtureOutputColor(par, barState([128, 200, 100, 50], { masterBlackout: true })), '#000');
+});
