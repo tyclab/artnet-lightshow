@@ -127,9 +127,9 @@ const SPATIAL_MATCH: Record<string, string[]> = {
 const INPUT_ONLY = new Set(V2_PRESETS.filter((p) => ['v2.neural', 'v2.visualizer'].includes(p.spec.kind)).map((p) => p.id));
 const PARTICLE_PATHS = new Set(V2_PRESETS.filter((p) => p.spec.kind === 'v2.particles').map((p) => p.id));
 
-// A few whole lamps can miss a particle path entirely; automatic shows need spatial coverage and seekable inputs.
-export const automaticPattern = (id: string, pixels: boolean): boolean => !INPUT_ONLY.has(id) && (pixels || !PARTICLE_PATHS.has(id));
-export const SPATIAL_AUTO_PATTERNS = V2_PRESETS.filter((p) => !p.id.endsWith('.2d') && automaticPattern(p.id, true) && !requiresAcknowledgement(p.spec))
+// Particle eligibility comes from sampled room coverage, independently of fixture count or pixel capability.
+export const automaticPattern = (id: string, particles?: ReadonlySet<string>): boolean => !INPUT_ONLY.has(id) && (!PARTICLE_PATHS.has(id) || !!particles?.has(id));
+export const SPATIAL_AUTO_PATTERNS = V2_PRESETS.filter((p) => !p.id.endsWith('.2d') && !INPUT_ONLY.has(p.id) && !requiresAcknowledgement(p.spec))
   .map(({ id, name, desc }) => ({ id, name, desc }));
 for (const id of [...RHYTHMIC]) for (const spatial of SPATIAL_MATCH[id] ?? []) RHYTHMIC.add(spatial);
 for (const id of [...FLOWY]) for (const spatial of SPATIAL_MATCH[id] ?? []) FLOWY.add(spatial);
@@ -281,7 +281,7 @@ function goldenStep(index: number, length: number): number {
 }
 
 function pickPattern({ character, available, score = null, seed = 0, drive = 0.5,
-  dance = 0.5, pixels = false, pictures = null, avoid = null }: {
+  dance = 0.5, pixels = false, particles, pictures = null, avoid = null }: {
   character?: Character | null;
   available: ReadonlySet<string>;
   score?: Score | null;
@@ -289,10 +289,11 @@ function pickPattern({ character, available, score = null, seed = 0, drive = 0.5
   drive?: number;
   dance?: number;
   pixels?: boolean;
+  particles?: ReadonlySet<string>;
   pictures?: ReadonlySet<string> | null;
   avoid?: ReadonlySet<string> | null;
 }): string {
-  available = new Set([...available].filter((id) => automaticPattern(id, pixels)));
+  available = new Set([...available].filter((id) => automaticPattern(id, particles)));
   const c: Character = character || {};
   const low = unit(c.kick) * 0.6 + unit(c.bassline) * 0.4;
   const voice = unit(c.vocal);
@@ -364,8 +365,8 @@ const PAR_PICTURES: ReadonlySet<string> = new Set(['gradient', 'plasma', 'comet'
 const PAR_PICTURES_WITH_DRUMS: ReadonlySet<string> = new Set([...PAR_PICTURES, 'drums']);
 
 function availableFor(patterns: readonly { id: string }[], analysis: { pulse?: unknown } | null | undefined,
-  { pixels = false }: { pixels?: boolean } = {}): Set<string> {
-  const ids = new Set(patterns.map((p) => p.id).filter((id) => automaticPattern(id, pixels)));
+  { particles }: { particles?: ReadonlySet<string> } = {}): Set<string> {
+  const ids = new Set(patterns.map((p) => p.id).filter((id) => automaticPattern(id, particles)));
   if (!analysis || !analysis.pulse) for (const id of PULSE_PATTERNS) ids.delete(id);
   return ids;
 }

@@ -24,7 +24,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "gen:analysis-types": "node scripts/gen-analysis-types.ts",
     "test": "node --test",
-    "check": "npm run lint && npm run typecheck && npm test",
+    "test:performance": "node --test --test-concurrency=1 tests/performance/*.bench.js",
+    "check": "npm run lint && npm run typecheck && npm test && npm run test:performance",
     "test:e2e": "npm run build:client && playwright test"
   },
   "engines": {

@@ -35,6 +35,7 @@ export interface DirectorOptions {
   intensity?: number;
   blackoutIndex?: number;
   pixels?: boolean;
+  particlePatterns?: ReadonlySet<string>;
   panels?: boolean;
   lamps?: number | null;
   history?: SetHistory | null;
@@ -130,6 +131,7 @@ class ShowDirector {
   declare intensity: number;
   declare blackoutIndex: number;
   declare pixels: boolean;
+  declare particlePatterns: ReadonlySet<string> | undefined;
   declare panels: boolean;
   declare lamps: number | null;
   declare history: SetHistory | null;
@@ -145,7 +147,7 @@ class ShowDirector {
    * @param {number} options.blackoutIndex colour index that means "off"
    */
   constructor({ patterns = [], colorPresets = null, paletteSize = 4,
-    intensity = 50, blackoutIndex = 0, pixels = false, panels = false, lamps = null, history = null,
+    intensity = 50, blackoutIndex = 0, pixels = false, particlePatterns, panels = false, lamps = null, history = null,
     overlay = null }: DirectorOptions = {}) {
     this.patterns = patterns;
     this.colorPresets = colorPresets;
@@ -153,6 +155,7 @@ class ShowDirector {
     this.intensity = intensity;
     this.blackoutIndex = blackoutIndex;
     this.pixels = !!pixels;
+    this.particlePatterns = particlePatterns;
     this.panels = !!panels;
     this.lamps = Number.isFinite(lamps) ? lamps : null;
     this.history = history;
@@ -446,7 +449,7 @@ class ShowDirector {
       trackSeed: trackSeedOf(analysis),
       finalReturns: lastReturns(sections),
       continuous: hasScore(analysis),
-      available: look.availableFor(this.patterns, analysis, { pixels: this.pixels }),
+      available: look.availableFor(this.patterns, analysis, { particles: this.particlePatterns }),
       pixels: this.pixels,
       panels: this.pixels && this.panels,
       pictures: this.pixels ? null
@@ -637,7 +640,7 @@ class ShowDirector {
     const pattern = look.pickPattern({
       character: section.character, available, score,
       seed: section.identity + trackSeed, drive: section.drive,
-      dance: unit(mood.danceability, 0.5), pixels: context.pixels, pictures: context.pictures, avoid,
+      dance: unit(mood.danceability, 0.5), pixels: context.pixels, particles: this.particlePatterns, pictures: context.pictures, avoid,
     });
     patternByIdentity.set(section.identity, pattern);
     return pattern;
@@ -691,7 +694,7 @@ class ShowDirector {
       const candidate = look.pickPattern({
         character: section.character, available, score,
         seed: section.identity * 7 + step * 13 + context.trackSeed, drive: section.drive,
-        dance: unit(mood.danceability, 0.5), pixels: context.pixels, pictures: context.pictures,
+        dance: unit(mood.danceability, 0.5), pixels: context.pixels, particles: this.particlePatterns, pictures: context.pictures,
       });
       if (!seen.has(candidate)) {
         alternates.push(candidate);

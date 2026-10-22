@@ -5,7 +5,7 @@ import { GAP_FRAMES, WINDOW_FRAMES } from './strobe.ts';
 
 export class HdFlashGuard {
   private intervalMs: number;
-  private units = new Map<number, { bright: boolean; lastRise: number | null }>();
+  private units = new Map<number | string, { bright: boolean; lastRise: number | null }>();
   private bright = 0;
 
   constructor(intervalMs: number) { this.intervalMs = intervalMs; }
@@ -20,7 +20,7 @@ export class HdFlashGuard {
     this.intervalMs = intervalMs;
   }
 
-  apply(unit: number, output01: number, nowMs: number): number {
+  apply(unit: number | string, output01: number, nowMs: number): number {
     if (this.intervalMs <= 0) return output01;
     let state = this.units.get(unit);
     if (!state) { state = { bright: false, lastRise: null }; this.units.set(unit, state); }
@@ -39,10 +39,12 @@ export class HdFlashGuard {
   }
 
   // Other layers end held brightness without spending a rise.
-  clear(unit: number): void {
+  clear(unit: number | string): void {
     const state = this.units.get(unit);
     if (state) this.dim(state);
   }
+
+  forget(unit: number | string): void { this.clear(unit); this.units.delete(unit); }
 
   reset(): void { this.units.clear(); this.bright = 0; }
 
@@ -56,12 +58,12 @@ export class HdFlashGuard {
 
 // Keep permits per lamp across strobe handovers so replacements cannot reset the rate limit.
 export class StrobeLampGuard {
-  private units = new Map<number, { raw: number; out: number; rises: number[]; blocked: boolean }>();
+  private units = new Map<number | string, { raw: number; out: number; rises: number[]; blocked: boolean }>();
   private live = 0;
 
   get liveCount(): number { return this.live; }
 
-  apply(unit: number, level01: number, frameIndex: number, continuous = false): number {
+  apply(unit: number | string, level01: number, frameIndex: number, continuous = false): number {
     let s = this.units.get(unit);
     if (!s) { s = { raw: 0, out: 0, rises: [], blocked: false }; this.units.set(unit, s); }
     const was = s.raw > 0 || s.blocked;
@@ -71,7 +73,7 @@ export class StrobeLampGuard {
       const last = s.rises[s.rises.length - 1];
       const fifth = s.rises.length >= HOLD_STROBE_MAX_HZ ? s.rises[s.rises.length - HOLD_STROBE_MAX_HZ] : undefined;
       if (last === frameIndex) s.blocked = false;
-      else if ((last === undefined || frameIndex - last >= GAP_FRAMES) && (fifth === undefined || frameIndex - fifth >= WINDOW_FRAMES)) {
+      else if ((last === undefined || frameIndex - last >= GAP_FRAMES - 1e-9) && (fifth === undefined || frameIndex - fifth >= WINDOW_FRAMES - 1e-9)) {
         s.rises = [...s.rises.slice(1 - HOLD_STROBE_MAX_HZ), frameIndex];
         s.blocked = false;
       } else s.blocked = true;
@@ -86,12 +88,14 @@ export class StrobeLampGuard {
   }
 
   // Clearing output retains rise history so a later strobe cannot bypass the limit.
-  clear(unit: number): void {
+  clear(unit: number | string): void {
     const s = this.units.get(unit);
     if (!s) return;
     if (s.raw > 0 || s.blocked) this.live--;
     s.raw = 0; s.out = 0; s.blocked = false;
   }
+
+  forget(unit: number | string): void { this.clear(unit); this.units.delete(unit); }
 
   reset(): void { this.units.clear(); this.live = 0; }
 

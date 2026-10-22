@@ -4,22 +4,13 @@
 
 import test from 'node:test';
 import assert from 'node:assert';
-import { PATTERN_FUNCS, CELL_PATTERNS, gradientAt } from '../../src/shared/patterns.ts';
+import { CELL_PATTERNS, gradientAt } from '../../src/shared/patterns.ts';
 import { COLOR_PRESETS, PATTERNS } from '../../src/server/presets.ts';
+import { draw, panel, PULSE } from '../helpers/pixel-patterns.js';
 
 const RED = COLOR_PRESETS[0];
 const BLUE = COLOR_PRESETS[5];
-const DUO = [RED, BLUE, RED, BLUE];
 
-/** Run a pattern over `n` evenly spaced cells and return [colour, dim] per cell. */
-function draw(id, { n = 17, colors = DUO, ...ctx } = {}) {
-  const out = [];
-  PATTERN_FUNCS[id]({
-    colors, fixtureCount: n, step: 0, hue: 0, twinkle: new Array(n).fill(0),
-    write: (i, c, d) => { out[i] = [c, d]; }, ...ctx,
-  });
-  return out;
-}
 const dims = (out) => out.map(([, d]) => d);
 const brightest = (out) => dims(out).indexOf(Math.max(...dims(out)));
 
@@ -97,17 +88,6 @@ test('plasma moves and stays inside the look\'s colours', () => {
 
 // ── Panels: after LedFx's and WLED's matrix effects ─────────────────────────
 
-/** A W × H panel laid out per bar: x across it, y down it (0 its top row). */
-function panel(id, w, h, ctx = {}) {
-  const n = w * h;
-  const xs = []; const ys = [];
-  for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) { xs.push(c / (w - 1)); ys.push(r / (h - 1)); }
-  const out = draw(id, { n, xs, ys, ...ctx });
-  return { at: (c, r) => out[r * w + c], out };
-}
-
-const PULSE = { mix: 0.8, drums: 0.7, bass: 0.9, vocals: 0.2, other: 0.5, kick: 1, snare: 0, hats: 0 };
-
 test('bars: each band a column, filled from the bottom as high as it plays', () => {
   const { at } = panel('bars', 7, 10, { pulse: PULSE });
   const lit = (c) => [...Array(10).keys()].filter((r) => at(c, r)[1] >= 170).length;
@@ -147,25 +127,6 @@ test('rain: drops falling down each column in time, the head in the lift colour'
     return best;
   });
   assert.ok(new Set(headRows).size > 4, `each column its own drop: ${headRows}`);
-});
-
-test('panel effects fit the established matrix render budget', () => {
-  // Against Plasma, the costliest of those (see "How much" in the README),
-  // timed alongside them: a machine busy with other tests slows both alike.
-  const cost = (id) => {
-    let best = Infinity;
-    for (let round = 0; round < 5; round++) {
-      const started = performance.now();
-      for (let k = 0; k < 6; k++) panel(id, 64, 32, { stepPos: k * 0.1, pulse: PULSE });
-      best = Math.min(best, (performance.now() - started) / 6);
-    }
-    return best;
-  };
-  const plasma = cost('plasma');
-  for (const id of ['bars', 'fire', 'rain']) {
-    const took = cost(id);
-    assert.ok(took < plasma * 2.5 + 0.5, `${id}: ${took.toFixed(2)} ms a frame, plasma ${plasma.toFixed(2)} ms`);
-  }
 });
 
 // ── Strobe effects ──────────────────────────────────────────────────────────

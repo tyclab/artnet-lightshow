@@ -21,6 +21,7 @@ import { voiceOrder } from '../../src/shared/effects/layer.ts';
 import { HD_MASTER_DEFAULTS } from '../../src/shared/effects/types.ts';
 import { HOLD_STROBE, resolveEnergyOverride } from '../../src/shared/look-math.ts';
 import { resolveDetectors } from '../../src/server/audio-features.ts';
+import { harness as effectHarness, row } from '../helpers/ldj-harness.js';
 
 const fixture = (id, address, profileId = BUILTIN_PROFILE_ID, extra = {}) => ({
   id, address, universe: 0, profileId, maxBrightness: 255, override: null,
@@ -740,7 +741,7 @@ function strobeRises(times, patch, grid) {
   return rises;
 }
 
-test("strobe grid origins retain all flashes under jitter", () => {
+test("strobe grid origins keep playing within the real-time flash limit under jitter", () => {
   for (const phase of [0, 7.3, FRAME_MS / 2 - 1, FRAME_MS / 2 + 1, FRAME_MS - 0.5]) {
     for (const jitter of ['late', 'both']) {
       const origin = 123456.789 + phase;
@@ -749,9 +750,27 @@ test("strobe grid origins retain all flashes under jitter", () => {
       const times = Array.from({ length: 441 }, (_, k) => origin + k * FRAME_MS + (jitter === 'late' ? 2 * rand() : 4 * rand() - 2));
       const launch = times[0];
       const rises = strobeRises(times, () => ({ voices: [voice('strobe', WALL_STROBE, { tier: 'strobe', startedAtMs: launch })], ...SAFETY() }), origin);
-      assert.strictEqual(rises.length, 50, `phase ${phase.toFixed(2)} ms, ${jitter}: ${rises.length} of 50`);
-      for (let i = 1; i < rises.length; i++) assert.ok(rises[i] - rises[i - 1] >= 8, `(a) at phase ${phase}: frames ${rises[i - 1]} → ${rises[i]}`);
-      for (let i = 5; i < rises.length; i++) assert.ok(rises[i] - rises[i - 5] >= 44, `(b) at phase ${phase}`);
+      const gridPhase = ((origin % FRAME_MS) + FRAME_MS) % FRAME_MS;
+      const requested = [], generator = effectHarness('strobe', row(1), { spec: WALL_STROBE, startedAtMs: launch - gridPhase });
+      let prior = false;
+      times.forEach((now, k) => {
+        const on = generator.draw({ nowMs: now - gridPhase, beatPos: now / 500 })[0].level > 0;
+        if (on && !prior) requested.push(k);
+        prior = on;
+      });
+      // Jitter can put a sixth nominal-grid rise inside 1000 real ms; that request must wait.
+      assert.strictEqual(requested.length, 50, 'the generator requests every nominal-grid flash');
+      for (const k of requested) if (!rises.includes(k)) {
+        const before = requested.filter((j) => j < k), gap = times[k] - times[before.at(-1)];
+        const recent = before.filter((j) => times[k] - times[j] < 1000 - 1e-6);
+        assert.ok(gap < 8 * FRAME_MS - 1e-6 || recent.length >= 5, `every withheld candidate has a real-time gap/window reason: phase ${phase}, frame ${k}`);
+      }
+      assert.strictEqual(rises[0], requested[0], 'the first requested flash is emitted');
+      for (let i = 1; i < rises.length; i++) {
+        const gap = times[rises[i]] - times[rises[i - 1]];
+        assert.ok(gap >= 8 * FRAME_MS - 1e-6 && gap < 500, `continuous bounded playback at phase ${phase}: gap ${gap} ms`);
+      }
+      for (let i = 5; i < rises.length; i++) assert.ok(times[rises[i]] - times[rises[i - 5]] >= 1000 - 1e-6, `at most five rises in any real second at phase ${phase}`);
     }
   }
 });

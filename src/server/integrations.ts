@@ -7,6 +7,8 @@ import { encodeDmxFrame } from '../shared/dmx-frame.ts';
 import { setHooks, applyPatch } from './patch.ts';
 import { conductor } from './conductor.ts';
 import { currentRig } from './rig.ts';
+import { currentSpace } from './unit-space.ts';
+import { ParticleCoverage } from './particle-coverage.ts';
 import { guarded } from './guard.ts';
 import PlaybackClock from '../playback-clock.ts';
 import { cues } from './cues.ts';
@@ -276,10 +278,12 @@ function setupIntegrations({ io, midi, spotify, nowPlaying, deezerSource, prolin
 
   const publisher = createPublisher(io);
 
+  const particleCoverage = new ParticleCoverage(() => broadcast());
   function broadcast(): void {
     if (typeof autoShow.setRig === 'function') {
       const rig = currentRig();
-      autoShow.setRig({ hasPixels: rig.hasPixels, hasPanels: rig.hasPanels, lamps: rig.fixtures.length });
+      autoShow.setRig({ hasPixels: rig.hasPixels, hasPanels: rig.hasPanels, lamps: rig.fixtures.length,
+        particlePatterns: particleCoverage.forRig(rig, currentSpace()) });
     }
     publisher.publishState(getLiveState());
     midi.sendFeedback();
@@ -418,6 +422,7 @@ function setupIntegrations({ io, midi, spotify, nowPlaying, deezerSource, prolin
     applyPatch: (patch) => { if (!autoShow.running) applyPatch(patch); },
     patterns: [...PATTERNS, ...SPATIAL_AUTO_PATTERNS],
     pixels: () => currentRig().hasPixels,
+    particlePatterns: () => particleCoverage.allowed,
   }) : null;
   if (liveInput && liveDirector) liveInput.onEvent((e) => liveDirector.onEvent(e));
 

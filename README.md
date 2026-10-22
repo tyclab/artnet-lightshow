@@ -328,8 +328,12 @@ fireworks or colliding orbs. The automatic director and default pads use these
 spatial looks. Strobe overlays select all lights, steps, scattered segments or zones
 over the underlying look. Popcorn is absent from the chooser; its old ids resolve
 to Scatter Fade so saved sequences still load.
-Automatic shows on rigs without pixel surfaces prefer broad room fields over
-particle paths that may miss sparse lamps. Neural and Visualizer looks stay manual
+Automatic shows admit particle looks after sampling their paths against the current
+room geometry: two cycles with a fixed seed, every eighth beat, with no sampled
+all-dark gap longer than one bar. This is a geometric coverage policy, not a
+hardware limit or a guarantee for every later random path. Dense surfaces can still miss a path; well-placed single
+lamps can catch it. While checking, automatic shows use broad fields; manual
+particle selection remains available. Neural and Visualizer looks stay manual
 choices because their live inputs are not guaranteed by track analysis alone.
 
 Room coordinates are metres: **x** runs across the room, **y is height above the
@@ -339,8 +343,15 @@ curtain. A Sweep at 90° elevation climbs vertically. For a diagonal, set its
 **From Point** and **To Point** (or named anchors), for example `(-2, 0.1, -2)`
 to `(2, 2.5, 2)`. The crest travels through that line in all three dimensions;
 Particles can use the same endpoints for an orb path. Choose points in your own
-room's bounds. In the 2D twin, the endpoints project onto the plot; a purely vertical
-path uses plot bottom to top so it still has visible motion.
+room's bounds. In the 2D twin, explicit points map continuously across the room's
+width and depth: `plot x = 0.5 + x / width`, `plot row = 0.5 + z / depth`.
+Named anchors use the nearest lamp's plot position. This floor projection omits
+height on diagonal paths; when both endpoints project to one spot, height maps
+from plot bottom to top (`plot row = 1 - y / room height`). Room mode retains all
+three coordinates, including the diagonal's changing height. Fireworks use a
+vertical 2D projection for an explicit launch point: X runs across the plot,
+Y maps from bottom to top, and Z is ignored; named anchors keep their nearest
+lamp's plot position.
 
 Pixel addressing and effect selection are separate. Waves and particles sample
 every addressable pixel. Scatter first balances occupied places, then fixtures,
@@ -1811,6 +1822,7 @@ npm run lint
 npm run typecheck
 npm ci --prefix companion-module # dependency used by Companion tests
 node --test --test-concurrency=3 tests/unit/*.test.js
+npm run test:performance   # serial render budgets, after other tests finish
 npm run test:e2e
 npm run gen:analysis-types # after changing the analysis document schema
 npm run package            # package this platform into dist/
@@ -1820,6 +1832,33 @@ Server TypeScript runs directly through Node's type stripping. Browser sources
 are in `public-src/`; generated `public/app.bundle.js` and chunks are not
 committed. Playwright uses a temporary server/config with output disabled;
 install its Chromium with `npx playwright install chromium` when needed.
+
+`npm run check` and both Node CI jobs run performance tests separately from the
+parallel correctness tests. The 3,000-unit render budget includes DDP, OpenRGB and
+Hue capabilities, real output guards, synthetic audio/picture inputs and assertions
+that rendered RGB bytes become visible. It includes first frames and averages all
+batches rather than selecting the cheapest. The preset CPU regression target is
+8 ms, scaled by a fixed arithmetic calibration on slower machines. An average CPU
+target does not certify individual frame deadlines or every legal parameter setting.
+
+For a longer trace, run `node scripts/bench-effects-runtime.js --seconds=32`
+(`--all` includes every spatial preset). It reports every frame, the first second
+and later frames separately, with p50/p95/p99, maximum time and counts exceeding
+the 22.7 ms frame budget. `--switches` changes effects in one persistent renderer;
+`--only=v2.scatterFade` isolates one preset in a fresh process. It includes maximum
+particle counts/trails at two radii and accepts fresh cloned control snapshots.
+The inputs advance at 44 Hz in simulated show time; frames run without pacing.
+Timing covers rendering into memory, including hardware policy, but excludes
+snapshot cloning, process startup, network delivery and physical lamp response.
+No frames are discarded.
+
+```mermaid
+flowchart LR
+  Correctness[Parallel correctness tests] --> Budget[Serial render budget tests]
+  Budget --> Build[Client build]
+  Inputs[Synthetic geometry and audio] --> Budget
+  Budget --> Bytes[Visible output bytes and frame timings]
+```
 
 Build packages with Node 24 on the target platform. Package/release workflows
 are in `.github/workflows/`; a version tag matching `package.json` drafts the
