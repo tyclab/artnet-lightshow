@@ -15,6 +15,7 @@ import type { LdjEngine } from './ldj-ids.ts';
 import { LDJ_PALETTES } from './ldj-palettes.ts';
 import type { BuiltinPalette } from './ldj-palettes.ts';
 import { VISUALIZER_PRESETS } from './ldj-visualizer.ts';
+import { V2_PRESETS } from './v2/presets.ts';
 import type { MacroStep } from './macro.ts';
 import type { Ahdsr, Curve, EffectKindDef, EffectSpec, PaletteEntry, RgbEnvelope } from './types.ts';
 
@@ -289,7 +290,7 @@ const GENTLE_ROWS: CataloguePreset[] = [
     }) },
 ];
 
-export const CATALOGUE: readonly CataloguePreset[] = deepFreeze([...LDJ_PRESETS, ...HD_PRESETS, ...DISCO_ROWS, ...OWN_ROWS, ...CONTROL_ROWS, ...GENTLE_ROWS]);
+export const CATALOGUE: readonly CataloguePreset[] = deepFreeze([...LDJ_PRESETS, ...HD_PRESETS, ...DISCO_ROWS, ...OWN_ROWS, ...CONTROL_ROWS, ...GENTLE_ROWS, ...V2_PRESETS]);
 const INDEX = presetIndex(CATALOGUE);
 
 export function presetById(id: string): CataloguePreset | null {

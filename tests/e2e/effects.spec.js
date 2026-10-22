@@ -165,7 +165,9 @@ test.describe('on a touch screen', () => {
 
   test('the deck, the chips, the catalogue and the inspector are all at least 44 px', async ({ page }) => {
     await open(page, 'effects');
+    // Spatial leads the catalogue; Neon Domino, edited below, is under Party & Disco.
     await page.locator('.effects-group summary').first().click();
+    await page.locator('.effects-group summary', { hasText: 'Party & Disco' }).click();
     expect(await small(page, '.card.effects')).toEqual([]);
     await page.getByRole('button', { name: 'Edit Neon Domino' }).first().click();
     await page.locator('.effect-sheet').waitFor();

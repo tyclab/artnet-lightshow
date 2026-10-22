@@ -1,8 +1,10 @@
 # Effects v2
 
 This is a plan to fold the effect engines into a few spatial generators that
-sample one metric room. None of it is implemented yet; the [README](../README.md)
-describes current behaviour. Paths and line numbers refer to `4d4837f`. The plan
+sample one metric room. Status: Phase A built: the unit space (steps 0 and 3), and
+Sweep, Shell, Orbit, Scatter and Neural with the Spatial presets in room and 2D
+forms (step 4 and the operator's list from step 5). The rest waits on the operator's
+review; the [README](../README.md) describes current behaviour. Paths and line numbers refer to `4d4837f`. The plan
 was drawn up for a 41-fixture rig with a metre-accurate room model, but no part
 of it depends on that rig.
 

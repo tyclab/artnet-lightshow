@@ -65,6 +65,9 @@ flowchart LR
   Paths[Surveyed strip paths / corners / LED spans] --> Room
   Room --> RoomAPI[Authenticated Stage room import]
   RoomAPI --> Preview
+  RoomAPI --> Space[Unit space: metres per light / plot fallback]
+  Space --> Engine
+  Space --> Preview
   Engine --> Guard[Output arming / transport gates]
   Guard --> Outputs[Art-Net / sACN / DDP / OpenRGB / Hue]
 ```
@@ -195,8 +198,9 @@ draws the rendered look that arming would send and the label becomes **Preview (
 lasts until the page reloads and is shared by both views.
 They say **Live output** once outputs are armed.
 Import a private floor model and place its lights with the
-[Stage room controls](docs/stage-room.md). Room geometry affects the preview;
-Rig positions still control spatial effects. Private room imports also accept bounded
+[Stage room controls](docs/stage-room.md). Room geometry affects the preview and the
+room form of the [Spatial effects](#spatial-effects); every other effect still reads the Rig
+plot. Private room imports also accept bounded
 inline triangle meshes for detailed objects; their shape and surface colour affect
 only the preview. Furniture objects can reference an existing room light binding with
 `lightBindingId`, so their surface emits its live RGB instead of a separate marker. Optional
@@ -230,8 +234,8 @@ The effect catalogue and show workflows cover the Party & Disco and the
 Entertainment scope. The detailed fields below describe the data contract as
 well as the browser controls. See [feature coverage](docs/feature-coverage.md)
 for deliberate scope decisions and the upstream adoption policy.
-[Effects v2](docs/effects-v2.md) is the open plan to fold the effect engines
-into a few spatial generators.
+[Effects v2](docs/effects-v2.md) is the plan to fold the effect engines
+into a few spatial generators; its first phase is the Spatial group below.
 
 An **effect** draws the lights. A **look** combines the base effect, colours and fixture
 settings. A **pattern** is a reusable sequence of clips. Favourites are quick access
@@ -273,6 +277,38 @@ buttons. Stop all voices also clears latched and off-bank effects.
 Pads with no custom label use the catalogue name on both Perform and the
 command bar. Once, hold and loop are distinct launch modes. Header controls
 select theme, screen wake lock and fullscreen for the current device.
+
+### Spatial effects
+
+The **Spatial** group leads the Effects view. Its presets are parameter sets of
+five generators, and every one comes twice: the room form (`v2.<name>`) samples
+each light's position in metres, and the 2D twin (`v2.<name>.2d`, named "… 2D")
+plays the same parameters across the Rig plot as a picture whose top is "up".
+Both are looks of their own; the 2D twin never needs a room.
+
+| Generator | What moves | Presets |
+|-----------|------------|---------|
+| Sweep | a plane through the room by azimuth and elevation (90° runs floor to ceiling): crest, line, comet, gradient or stripe, looping, bouncing or random | Groove Wave, Big Room Wave, Ascent, Double Wave, Swagger, Beat Accent Wash, Volume Gate Wash |
+| Shell | rings from a speaker anchor, the listener, the centre or a random light, outward or inward, optionally twisted into a vortex | Impact, Vortex, Speaker Shockwave |
+| Orbit | a beam, sectors or a colour wheel turning round the listener from their facing | Rotation, Swirl, Beacon |
+| Scatter | random lights on every step, single or in clusters by radius, optionally only on band hits | Scatter Strobe, Scatter Fade, Scatter Grow, Popcorn, Frequency Burst |
+| Neural | bass, mids and highs placed by height, by distance from the speakers, or by zone round the listener | Neural, Neural Distance |
+
+Every generator shares one trigger: the timeline, a beat accent (a pulse per interval,
+as strong as its band with live audio) or a volume gate (the band above its threshold).
+Positions come from the Stage room: point bindings place their light, a strip path
+spreads its cells along the path, and a weighted mean gives each source the lamp's
+position. A light without a binding keeps its Rig plot position scaled into the room;
+without a room, the generic Stage venue (12 × 8 × 4.6 m) stands in. Optional room
+anchors (`speakerLeft`, `speakerRight`) and listeners (`desk`, …) are described in the
+[room format](docs/stage-room.md); without them a Shell starts at the room centre and
+an Orbit turns round the centre facing the top of the plot. `GET /api/stage/room/report`
+lists the lights without a binding, the ones several bindings share, and the bound
+ones more than a metre from their plot position.
+
+Scatter Strobe and Frequency Burst are rapid flashes: they play only after the
+photosensitivity acknowledgement, every light takes the per-lamp flash permit, and a
+Hue lamp never flashes faster than its hardware cap.
 
 ## Configuration
 
@@ -1267,6 +1303,7 @@ All endpoints return JSON. When a token is configured, send it as an
 |--------|------|-------------|
 | GET | `/api/state` | Full current state (`armed` says whether anything leaves the machine; `wled`, while armed, whether each WLED takes the stream — see [WLED](#wled)) |
 | GET · PUT · DELETE | `/api/stage/room` | Private Stage room model; writes require the current `If-Match` revision. See [room format](docs/stage-room.md) |
+| GET | `/api/stage/room/report` | Read-only: `{ ok, revision, units, unbound, shared, far }`, where the [Spatial effects](#spatial-effects) place each unit against the room bindings and the Rig plot |
 | POST | `/api/set` | Patch state fields (JSON body) |
 | POST | `/api/tap` | Tap tempo |
 | POST | `/api/play` · `/api/stop` | Start / stop the pattern engine |

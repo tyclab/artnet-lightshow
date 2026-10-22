@@ -260,7 +260,7 @@ test('Effects groups presets by source and family', () => {
   givenLibrary({});
   const html = ui.html(ui.h(ui.Effects, {}));
   const groups = [...html.matchAll(/class="effects-group-title">([^<]+)</g)].map((m) => m[1]);
-  assert.deepStrictEqual(groups, ['Party &amp; Disco', 'Entertainment', 'Own', 'Classic effects']);
+  assert.deepStrictEqual(groups, ['Spatial', 'Party &amp; Disco', 'Entertainment', 'Own', 'Classic effects']);
   // A family heads its presets.
   assert.match(html, /Position Chase<\/[^>]+>(?:(?!effects-family-title).)*data-id="hd\.neonDomino"/s);
   assert.match(html, /effects-family-title">Disco<\/[^>]+>(?:(?!effects-family-title).)*data-id="hd\.disco\.pop"/s);
@@ -275,7 +275,7 @@ test('Effects groups presets by source and family', () => {
   assert.match(rowOf(html, 'hd.neonDomino'), /class="pattern-btn active/);
   // Every group is folded until opened; a search opens them.
   assert.strictEqual(count(html, '<details class="effects-group" open'), 0);
-  assert.strictEqual(count(html, '<details class="effects-group"'), 4);
+  assert.strictEqual(count(html, '<details class="effects-group"'), 5);
   // A rapid flash carries its warning; a slow one does not.
   assert.match(rowOf(html, 'hd.voltageConfetti'), /badge-rapid/);
   assert.match(rowOf(html, 'ldj.TrueStrobe'), /badge-rapid/);
@@ -305,9 +305,27 @@ test("Library exposes filter chips with All selected initially", () => {
 
 test("Library groups saved presets before the other custom families", () => {
   const grouped = ui.groupRows([{ id: 'u1', name: 'Mine', user: true, scope: 'measure' }, ...PATTERN_ROWS], ui.FAMILIES);
-  assert.deepStrictEqual(grouped.map((g) => g.app), ['hd', 'ldj', 'own', 'upstream']);
-  assert.deepStrictEqual(grouped[2].families.map((f) => f.name), ['Your presets', 'Party Looks', 'Energy']);
-  assert.deepStrictEqual(grouped[3].families.map((f) => f.name), ['Effects', 'Pixel effects']);
+  assert.deepStrictEqual(grouped.map((g) => g.app), ['spatial', 'hd', 'ldj', 'own', 'upstream']);
+  assert.deepStrictEqual(grouped[3].families.map((f) => f.name), ['Your presets', 'Party Looks', 'Energy']);
+  assert.deepStrictEqual(grouped[4].families.map((f) => f.name), ['Effects', 'Pixel effects']);
+});
+
+test("Spatial leads the catalogue with every preset in the room and in 2D side by side", () => {
+  const grouped = ui.groupRows(PATTERN_ROWS, ui.FAMILIES);
+  assert.equal(grouped[0].name, 'Spatial');
+  const names = grouped[0].families.flatMap((f) => f.rows.map((r) => r.name));
+  assert.deepStrictEqual(names.slice(0, 4), ['Scatter Strobe', 'Scatter Strobe 2D', 'Scatter Fade', 'Scatter Fade 2D']);
+  assert.ok(names.includes('Speaker Shockwave') && names.includes('Speaker Shockwave 2D'));
+  givenLibrary({});
+  const html = ui.html(ui.h(ui.Effects, {}));
+  assert.match(html, /<summary class="effects-group-title">Spatial<\/summary>/);
+});
+
+test("a Spatial preset opens in the inspector", () => {
+  givenLibrary({});
+  const html = ui.html(ui.h(ui.Inspector, { id: 'v2.grooveWave' }));
+  assert.match(html, /Groove Wave/);
+  assert.match(html, /Save as…/);
 });
 
 test("Position Chase inspector exposes ordered envelope controls", () => {

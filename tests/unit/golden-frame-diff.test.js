@@ -33,7 +33,8 @@ test('flat and placed rigs keep their party-look rigs', () => {
 test('every existing id renders the same frames with the room space as without it', async () => {
   const { CATALOGUE } = await import('../../src/shared/effects/catalogue.ts');
   const { PATTERN_IDS } = await import('../../src/server/presets.ts');
-  const ids = [...new Set([...PATTERN_IDS, ...CATALOGUE.map((row) => row.id)])];
+  // The ids that existed before the unit space: the Spatial presets read it on purpose.
+  const ids = [...new Set([...PATTERN_IDS, ...CATALOGUE.filter((row) => row.family !== 'spatial').map((row) => row.id)])];
   const beats = [0, 0.5, 1.25, 3, 7.5];
   const spaced = renderGolden(ids, 'synthetic', beats);
   const plain = renderGolden(ids, 'synthetic', beats, { space: false });

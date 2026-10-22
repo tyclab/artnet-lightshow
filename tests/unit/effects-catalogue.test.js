@@ -205,7 +205,7 @@ test("Simple ADSR staggers red, green and blue", () => {
 
 test("catalogue presets render finite single-lamp output", () => {
   const added = CATALOGUE.filter((p) => !p.legacy && p.app !== 'ldj');
-  assert.strictEqual(added.length, 36);
+  assert.strictEqual(added.length, 76);
   for (const p of added) {
     const spec = { ...p.spec, palette: ['#00FF00'] };
     const inst = { id: p.id, spec, seed: seedFrom(p.id), anchorBeat: 0, startedAtMs: 0, targets: null };
@@ -291,10 +291,11 @@ test("control presets resolve to energy and strobe kinds", () => {
 });
 
 test("catalogue ids are unique across apps and legacy patterns", () => {
-  assert.strictEqual(CATALOGUE.length, 216);
-  assert.strictEqual(CATALOGUE.filter((p) => !p.legacy).length, 198);
+  assert.strictEqual(CATALOGUE.length, 256);
+  assert.strictEqual(CATALOGUE.filter((p) => !p.legacy).length, 238);
   const count = (app) => CATALOGUE.filter((p) => p.app === app).length;
-  assert.deepStrictEqual([count('ldj'), count('hd'), count('own')], [162, 27, 27]);
+  assert.deepStrictEqual([count('ldj'), count('hd'), count('own')], [162, 27, 67]);
+  assert.strictEqual(CATALOGUE.filter((p) => p.family === 'spatial').length, 40, 'twenty Spatial presets in the room and in 2D');
   const keys = CATALOGUE.flatMap((p) => [p.id, ...(p.aliases ?? [])]);
   assert.strictEqual(new Set(keys).size, keys.length);
   for (const p of CATALOGUE.filter((c) => !c.legacy)) {

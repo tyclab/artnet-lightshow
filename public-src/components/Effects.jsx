@@ -18,10 +18,11 @@ import { Photosensitivity as PhotosensitivityConfirm, acknowledgeThen } from './
  * the inspector for it, in a sheet over the page.
  */
 
-const APP_NAMES = { hd: 'Party & Disco', ldj: 'Entertainment', own: 'Own', upstream: 'Classic effects' };
-const APP_BADGES = { hd: 'Party & Disco', ldj: 'Entertainment', own: 'Own', upstream: 'Classic' };
-const APP_ORDER = ['hd', 'ldj', 'own', 'upstream'];
-const APP_ICONS = { hd: '◆', ldj: '♪', own: '◉', upstream: '·' };
+// Spatial (the v2 generators, each in the room and in 2D) leads: it is the one system the others fold into.
+const APP_NAMES = { spatial: 'Spatial', hd: 'Party & Disco', ldj: 'Entertainment', own: 'Own', upstream: 'Classic effects' };
+const APP_BADGES = { spatial: 'Spatial', hd: 'Party & Disco', ldj: 'Entertainment', own: 'Own', upstream: 'Classic' };
+const APP_ORDER = ['spatial', 'hd', 'ldj', 'own', 'upstream'];
+const APP_ICONS = { spatial: '◎', hd: '◆', ldj: '♪', own: '◉', upstream: '·' };
 const FLAG_CHIPS = [
   ['party', 'Party', 'Across the room, where the lamps stand'], ['pixel', 'Pixel', 'Drawn for LED bars'],
   ['rapid', 'Rapid flash', 'Needs the photosensitivity acknowledgement'],
@@ -78,6 +79,7 @@ function hasPanels(s) {
 /** Which group a row belongs to: a saved preset and a party look are the fork's own; a row with no app is upstream. */
 export function appOf(row) {
   if (row.user) return 'own';
+  if (row.family === 'spatial') return 'spatial';
   if (row.app) return row.app;
   return row.party ? 'own' : 'upstream';
 }
@@ -340,7 +342,7 @@ export function Effects() {
             <summary class="effects-group-title">{group.name}</summary>
             {group.families.map((family) => (
               <div key={family.id} class="effects-family">
-                <div class="effects-family-title">{family.name}</div>
+                {family.name !== group.name && <div class="effects-family-title">{family.name}</div>}
                 <div class="pattern-grid">
                   {family.rows.map((row) => (
                     <Row key={row.id} {...rowProps(row)} onBars={onBars === row.id} onPanels={onPanels === row.id} />
