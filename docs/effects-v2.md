@@ -145,7 +145,7 @@ preset.
 
 ## Target
 
-There will be eight field generators and one strobe overlay. Each generator
+There will be nine field generators and one strobe overlay. Each generator
 combines a space selector, motion, an envelope, a colour mapping, modulation
 and a background. Every one of these parameters is shared by all generators.
 
@@ -159,6 +159,7 @@ and a background. Every one of these parameters is shared by all generators.
 | Zones | a partition: left/right, front/back, floor/ceiling, near/far from the listener, technology or object role. Alternates, fills or rotates | split, sections, halves, flip, anchor-fill; ldj Split, Flip, FrontBack, RotatingHalfs, TwoCorners, FillCycle, DoubleFill, DoubleDrip |
 | Scatter | random units with a density, an envelope (flash, ramp up, ramp down, swell), a cluster radius in metres and optional band triggers | twinkle, sparkle, random-flash, starlight, confetti, flashes, flash-scatter, ramp-scatter, decay-scatter; `hd.twinkle`, `hd.frequencyBurst`; ldj matrix modes, Popcorn; Disco Spectrum and Peak |
 | Noise | a 3D noise field drifting through the room | plasma; ldj Perlin, NorthernLights; Fire and Ice |
+| Particles | objects in continuous space: sparks on ballistic paths under gravity, drops falling from the ceiling, soft light orbs on splines with trails. Units light by distance to each particle through the spatial hash, so an object moves across every technology in the room | new; fireworks and rain stop being per-unit tricks |
 | Strobe overlay | not a look: a deck voice over any base. Selection is all, step, scatter or zone; rate is a beat fraction or Hz under the device cap; shape is flash, ramp, random or burst; colour is palette or white | the eight strobe implementations; the `flash-*` strobe looks; ldj TrueStrobe, PaletteTrueStrobe |
 
 Fill is a profile, not a ninth space: Sweep, Shell and Step fill up to a
@@ -183,6 +184,41 @@ v2 generator parameters, tested on a stored library file.
 Macro (Scene Maker), bundle (pad pattern) and sequence remain the show layer.
 The Entertainment Visualizer and Studio become a base and accent voice pair and
 a pad launch mode instead of kinds.
+
+## Next level
+
+Consolidation is the floor, not the goal. v2 exists for effects the 2D plan
+cannot draw, where light behaves like a physical thing in the room and every
+technology is one canvas. The showpieces define done for the framework:
+
+- **Shockwave from the speakers.** On a kick, a shell expands from each
+  speaker's anchor at a visible speed (a few metres a second), so the lamps
+  next to the speakers fire first and the wave crosses lamps, strips, the pixel
+  wall and small devices in turn. On a drop, both speakers fire together and
+  the strobe overlay takes the crest.
+- **The rising wall.** A build-up fills the room from the floor to the ceiling
+  with section progress, tightening the step rate as it climbs. The drop
+  releases it from the ceiling down, with a palette flip.
+- **Light objects.** Soft orbs fly tempo-locked paths through the room with
+  trails and hand over seamlessly from one device to the next. They circle the
+  listener on a groove, and collide and burst into particles on a drop.
+- **Fireworks and rain in 3D.** Sparks launch from an anchor, arc under
+  gravity and fade as they fall; drops run down vertical strips and pixel
+  columns and splash on the floor-level lamps.
+- **Surround.** Orbit around the listener with a facing: front, sides and back
+  answer each other, and a chase can circle the listener on the beat.
+- **Stems in space.** Where the analysis provides stems, each gets a place:
+  bass at floor level and at the speakers, drums as shockwaves, vocals on the
+  front display area, hats as sparkle near the ceiling.
+- **The pixel wall as a window.** A 2D pixel surface samples the 3D field at
+  its real position, so a wave visibly passes through it and stays continuous
+  with the strips around it.
+
+Choreography uses them by section: a build rises, a drop detonates, a breakdown
+drifts on noise at low level, and the director keeps contrast between
+consecutive sections instead of cycling looks. Quality is part of done: output
+alignment across technologies, sampling by emitter size, and every flash
+inside the limits.
 
 ## 3D space
 
@@ -246,11 +282,11 @@ photosensitivity acknowledgement, output shutdown and preview/output parity.
 | 1 | Byte-identical dedupe: one body for solid/fade/hit/strobe; `ldj.PartyStrobe` becomes an alias of `ldj.MatrixPulse`; `ramp-scatter`, `decay-scatter` and `flash-burst` call the strobe programs; the 32 non-effect rows leave the runtime catalogue | none while golden output is equal | frame diff is zero |
 | 2 | One flash limiter in the output path, replacing the four. A large-area flash is counted by the share of the room lit, so any selection that lights most of the room stays at three flashes a second when enabled | timing; safety-relevant | golden; a rise-count probe shows no lamp exceeds today's admitted rate (5 Hz Hue cap, every fourth flash at full speed; 20 Hz RGB default; `hd.*` per-lamp interval; three large-area flashes a second when enabled); preview while disarmed |
 | 3 | Space plumbing, unused by effects: binding resolver in `src/shared/`, plan fallback, optional listener and anchors in the room schema with a show override, sampling by emitter size, preview parity, disagreement report | none | unit tests; the report on a real room through a read-only GET |
-| 4 | Vertical slice: Sweep alone, end to end, in `plan` and room modes. wave, ribbon, gradient and room-wave become its presets beside the old ids | none (additive) | golden for the new ids; Stage preview while disarmed; the operator on the rig; a frame-time check on a rig of a few thousand lights |
-| 5 | The other seven generators as new ids beside the old ones, each with a `plan` mode | none (additive) | golden for the new ids; Stage preview while disarmed |
+| 4 | Vertical slice and first showpieces: Sweep and Shell, end to end, in `plan` and room modes, delivering the shockwave from the speakers and the rising wall. wave, ribbon, gradient and room-wave become Sweep presets beside the old ids | none (additive) | golden for the new ids; Stage preview while disarmed; the operator on the rig; a frame-time check on a rig of a few thousand lights |
+| 5 | The other seven generators as new ids beside the old ones, each with a `plan` mode, and the remaining showpieces: light objects, 3D fireworks and rain, surround, stems in space, the pixel wall as a window | none (additive) | golden for the new ids; Stage preview while disarmed; the operator on the rig |
 | 6 | One strobe overlay kind over the generators' selection spaces. Energy strobes, `palette-strobe` and the hold strobe become overlay presets, and the overlay's rate cap follows step 2's lit-area count | timing; safety-relevant | golden; the step 2 rise-count probe; preview while disarmed |
 | 7 | Re-express old ids as v2 presets in `plan` mode. Ids within the step 0 tolerance become aliases, the REST routes resolve them, and the effect library migrates stored specs; the rest are listed | none for aliases; listed ids need an operator decision | frame diff report per id; migration test on a stored library file |
-| 8 | 3D defaults: the look picker, director pools and default pads move to height, listener and orbit presets. Waits on the decision whether the room is authoritative for effect sampling | look change | Stage preview while disarmed, then the operator on the rig |
+| 8 | 3D defaults and choreography: the look picker, director pools and default pads move to the showpieces and the height, listener and orbit presets; the director plays build, drop and breakdown arcs with contrast between sections. Waits on the decision whether the room is authoritative for effect sampling | look change | Stage preview while disarmed, then the operator on the rig |
 | 9 | Retire the `hd.*`, `ldj.*` and legacy engines and their clocks onto the conductor's beat clock; about forty named presets remain | look change for any id that is not aliased | golden for aliases, preview for the rest |
 | 10 | Palettes: 54 built-ins to a curated set plus a hue-pair generator, in step with the Home Assistant palette selection | depends on the Home Assistant integration | catalogue check against the integration; palette golden |
 
