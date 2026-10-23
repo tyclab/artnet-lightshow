@@ -222,10 +222,10 @@ export function StageView({ compact = false } = {}) {
       {!compact && <Audition />}
       <div class="stage3d-tools" role="toolbar" aria-label="Stage view">
         <span class="panel-tag">{auditioning ? 'Audition · browser only' : mode.tag}</span>
-        {!compact && <div class="segmented" role="group" aria-label="Stage format">
+        <div class="segmented" role="group" aria-label="Stage format">
           <button type="button" class="btn sm" aria-pressed={format === '3d'} onClick={() => setFormat('3d')}>3D room</button>
           <button type="button" class="btn sm" aria-pressed={format === 'plot'} onClick={() => setFormat('plot')}>2D plot</button>
-        </div>}
+        </div>
         <div class="segmented" role="group" aria-label="Viewpoint">
           {VIEWS.map((v) => (
             <button key={v.id} type="button" class={`segmented-btn ${view === v.id ? 'active' : ''}`} aria-pressed={view === v.id}
