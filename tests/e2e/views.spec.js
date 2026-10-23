@@ -29,6 +29,18 @@ test('the app opens on Show: the room, the looks and the switches', async ({ pag
   await expect(page.locator('.command-bar')).toHaveCount(0);
 });
 
+test('the Show room offers the 2D plot beside the 3D room', async ({ page }) => {
+  await open(page, 'show');
+  const room = page.locator('.show-room');
+  const format = room.getByRole('group', { name: 'Stage format' });
+  await expect(format.getByRole('button', { name: '3D room', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await format.getByRole('button', { name: '2D plot', exact: true }).click();
+  await expect(room.locator('.stage3d-canvas')).toBeHidden();
+  await expect(room.locator('section').filter({ has: page.getByRole('heading', { name: 'Stage preview' } ) })).toBeVisible();
+  await format.getByRole('button', { name: '3D room', exact: true }).click();
+  await expect(room.locator('.stage3d-canvas')).toBeVisible();
+});
+
 test('the same strip sits above every live view and none of the setup views', async ({ page }) => {
   for (const view of ['effects', 'perform', 'stage', 'auto', 'sequence']) {
     await open(page, view);
