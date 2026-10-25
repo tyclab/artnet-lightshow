@@ -29,7 +29,7 @@ async function load() {
         export { SHORTCUTS } from './public-src/components/Shortcuts.jsx';
         export { VIEWS } from './public-src/views.js';
         export { CommandBar } from './public-src/components/CommandBar.jsx';
-        export { Effects, PhotosensitivityConfirm, editingSig, filterByLibrary, groupRows, quickDeck, tapRow, usePress } from './public-src/components/Effects.jsx';
+        export { Effects, PhotosensitivityConfirm, editingSig, filterByFamily, filterBySpace, spaceOf, groupRows, quickDeck, tapRow, usePress } from './public-src/components/Effects.jsx';
         export { Inspector, SingleColourField, readRecommendedPreference, savePreset, withRecommended } from './public-src/components/Inspector.jsx';
         export { PaletteEditor, isHexColour, normaliseHex, savePalette } from './public-src/components/PaletteEditor.jsx';
         export { librarySig, socket, followMusic } from './public-src/state.js';
@@ -274,7 +274,7 @@ test('Effects groups presets by source and family', () => {
   assert.match(html, /effects-family-title">Energy<\/[^>]+>(?:(?!effects-family-title).)*data-id="energy\.blinder"/s);
   assert.ok(rowOf(html, 'chase') && rowOf(html, 'gradient'), 'the upstream patterns are listed');
   // The one playing is pressed, and only it.
-  assert.strictEqual(count(html, 'aria-pressed="true"'), 1 + 1, 'the row on stage, and the Library chip All');
+  assert.strictEqual(count(html, 'aria-pressed="true"'), 1 + 2, 'the row on stage, and the chips All and Any');
   assert.match(rowOf(html, 'hd.neonDomino'), /class="pattern-btn active/);
   // Every group is folded until opened; a search opens them.
   assert.strictEqual(count(html, '<details class="effects-group" open'), 0);
@@ -286,23 +286,34 @@ test('Effects groups presets by source and family', () => {
   assert.match(html, /type="search"[^>]*aria-label="Search effects"/);
 });
 
-test("Library filters presets by ownership only: a scope no engine but Hue Dynamics declares splits nothing", () => {
+test("The family chip splits Spatial, Own and Classic by app", () => {
   const rows = [
-    { id: 'a', scope: 'singleBeat' }, { id: 'b', scope: 'measure' }, { id: 'u', scope: 'measure', user: true }, { id: 'c' },
+    { id: 'v2.wave', family: 'spatial' }, { id: 'u', user: true }, { id: 'p', party: true }, { id: 'hd.x', app: 'hd' }, { id: 'up' },
   ];
-  const ids = (mode) => ui.filterByLibrary(rows, mode).map((r) => r.id);
-  assert.deepStrictEqual(ids('custom'), ['u']);
-  assert.deepStrictEqual(ids('all'), ['a', 'b', 'u', 'c']);
-  assert.deepStrictEqual(ids('single'), ['a', 'b', 'u', 'c']);
+  const ids = (family) => ui.filterByFamily(rows, family).map((r) => r.id);
+  assert.deepStrictEqual(ids('all'), ['v2.wave', 'u', 'p', 'hd.x', 'up']);
+  assert.deepStrictEqual(ids('spatial'), ['v2.wave']);
+  assert.deepStrictEqual(ids('own'), ['u', 'p']);
+  assert.deepStrictEqual(ids('classic'), ['hd.x', 'up']);
 });
 
-test("Library exposes filter chips with All selected initially", () => {
+test("The space chip keeps the room looks for 3D and the plot twins for 2D; a flat pattern matches neither", () => {
+  const rows = [
+    { id: 'v2.wave' }, { id: 'v2.wave.2d' }, { id: 'overlay.all', spec: { params: { space: 'room' } } }, { id: 'u', user: true, spec: { params: { space: 'plan' } } }, { id: 'flat' },
+  ];
+  const ids = (space) => ui.filterBySpace(rows, space).map((r) => r.id);
+  assert.deepStrictEqual(ids('any'), rows.map((r) => r.id));
+  assert.deepStrictEqual(ids('room'), ['v2.wave', 'overlay.all']);
+  assert.deepStrictEqual(ids('plan'), ['v2.wave.2d', 'u']);
+  assert.strictEqual(ui.spaceOf({ id: 'flat' }, new Set(['flat'])), null);
+});
+
+test("The deck opens on every family and any space", () => {
   givenLibrary({});
   const html = ui.html(ui.h(ui.Effects, {}));
-  const labels = [...html.matchAll(/class="effects-chip library[^"]*"[^>]*aria-pressed="(true|false)"[^>]*>([^<]+)</g)].map((m) => `${m[2]}:${m[1]}`);
-  assert.deepStrictEqual(labels, ['Custom:false', 'All:true']);
-  const chips = [...html.matchAll(/class="effects-chip ?[^"]*"[^>]*aria-pressed="false"[^>]*>([^<]+)</g)].map((m) => m[1]);
-  assert.deepStrictEqual(chips.slice(0, 3), ['Party', 'Pixel', 'Rapid flash'], 'the filters are chips');
+  const chips = (kind) => [...html.matchAll(new RegExp(`class="effects-chip ${kind}[^"]*"[^>]*aria-pressed="(true|false)"[^>]*>([^<]+)<`, 'g'))].map((m) => `${m[2]}:${m[1]}`);
+  assert.deepStrictEqual(chips('family'), ['All:true', 'Spatial:false', 'Own:false', 'Classic:false']);
+  assert.deepStrictEqual(chips('space'), ['Any:true', '3D:false', '2D:false']);
 });
 
 test("Library groups saved presets before the other custom families", () => {

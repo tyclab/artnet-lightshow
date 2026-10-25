@@ -23,15 +23,13 @@ const APP_NAMES = { spatial: 'Spatial', hd: 'Party & Disco', ldj: 'Entertainment
 const APP_BADGES = { spatial: 'Spatial', hd: 'Party & Disco', ldj: 'Entertainment', own: 'Own', upstream: 'Classic' };
 const APP_ORDER = ['spatial', 'hd', 'ldj', 'own', 'upstream'];
 const APP_ICONS = { spatial: '◎', hd: '◆', ldj: '♪', own: '◉', upstream: '·' };
-const FLAG_CHIPS = [
-  ['party', 'Party', 'Across the room, where the lamps stand'], ['pixel', 'Pixel', 'Drawn for LED bars'],
-  ['rapid', 'Rapid flash', 'Needs the photosensitivity acknowledgement'],
+// The chips follow how a look is picked: by engine family, and for the room looks by the space
+// they animate in. Rapid-flash looks keep their ⚡ badge on the card.
+const FAMILY_CHIPS = [
+  ['all', 'All', 'Every look'], ['spatial', 'Spatial', 'Room looks, in 3D or on the plot'],
+  ['own', 'Own', "The fork's own looks and the presets saved here"], ['classic', 'Classic', 'Hue Dynamics, Light DJ and the upstream patterns'],
 ];
-// Only the Hue Dynamics presets declare a scope, so a Single/Multi split by scope left the other
-// engines' looks out of both; the library splits by ownership alone.
-const LIBRARY_MODES = [
-  ['custom', 'Custom', 'The presets saved on this server'], ['all', 'All', 'Everything'],
-];
+const SPACE_CHIPS = [['any', 'Any', 'Room and plot looks alike'], ['room', '3D', 'Looks that animate the room in metres'], ['plan', '2D', 'Looks drawn across the Rig plot']];
 const FAVOURITES_KEY = 'lightshow.effects.favourites';
 const LONG_PRESS_MS = 500;
 
@@ -85,9 +83,25 @@ export function appOf(row) {
   return row.party ? 'own' : 'upstream';
 }
 
-/** The Library filter: Custom the presets saved here, All everything. */
-export function filterByLibrary(rows, mode) {
-  return mode === 'custom' ? rows.filter((r) => r.user) : rows;
+/** The family chip: Spatial and Own are apps of their own, everything else is a classic engine. */
+export function filterByFamily(rows, family) {
+  if (family === 'all') return rows;
+  return rows.filter((r) => { const app = appOf(r); return family === 'classic' ? app !== 'spatial' && app !== 'own' : app === family; });
+}
+
+/** A look's space: the plot twin carries `.2d`, a room look declares `space: 'room'` or has a plot twin. */
+export function spaceOf(row, ids) {
+  if (row.id.endsWith('.2d')) return 'plan';
+  const declared = row.spec?.params?.space;
+  if (declared === 'room' || declared === 'plan') return declared;
+  return ids.has(`${row.id}.2d`) ? 'room' : null;
+}
+
+/** The space chip: 3D keeps the room looks, 2D the plot looks; a look without a space matches neither. */
+export function filterBySpace(rows, space) {
+  if (space === 'any') return rows;
+  const ids = new Set(rows.map((r) => r.id));
+  return rows.filter((r) => spaceOf(r, ids) === space);
 }
 
 /** The rows by app, each app by family, in the catalogue's order; the saved presets lead the fork's own. */
@@ -251,8 +265,8 @@ export function Effects() {
   const editing = editingSig.value;
   const families = s.families || lib.families || [];
   const [q, setQ] = useState('');
-  const [flags, setFlags] = useState({ party: false, pixel: false, rapid: false });
-  const [library, setLibrary] = useState('all');
+  const [family, setFamily] = useState('all');
+  const [space, setSpace] = useState('any');
   const [favourites, setFavourites] = useState(readFavourites);
   const [confirm, setConfirm] = useState(null);
   const acknowledged = !!(s.safety && s.safety.photosensitivityAcknowledged);
@@ -267,9 +281,7 @@ export function Effects() {
   const playingId = canonicalId(s.pattern);
   const pins = [...new Set(favourites.map(canonicalId))];
   const query = q.trim().toLowerCase();
-  const visible = filterByLibrary(rows, library)
-    .filter((r) => (!flags.party || r.party) && (!flags.pixel || r.pixel) && (!flags.rapid || r.rapidFlash))
-    .filter((r) => matches(r, query, families));
+  const visible = filterBySpace(filterByFamily(rows, family), space).filter((r) => matches(r, query, families));
   const deck = quickDeck(visible, pins);
   const groups = groupRows(visible, families);
 
@@ -289,7 +301,6 @@ export function Effects() {
     setFavourites(next);
     writeFavourites(next);
   };
-  const toggleFlag = (flag) => setFlags((f) => ({ ...f, [flag]: !f[flag] }));
 
   const bars = hasBars(s);
   // The auto show gives the pars and the bars a look each, and the panels
@@ -318,15 +329,19 @@ export function Effects() {
         </div>
         <input class="effects-search" type="search" aria-label="Search effects" placeholder="Search effects" value={q} onInput={(e) => setQ(e.target.value)} />
         <div class="effects-chips" role="group" aria-label="Filters">
-          {FLAG_CHIPS.map(([flag, label, desc]) => (
-            <button key={flag} class={`effects-chip ${flags[flag] ? 'active' : ''}`} aria-pressed={flags[flag]} type="button" title={desc}
-              onClick={() => toggleFlag(flag)}>{label}</button>
-          ))}
+          <div class="effects-chip-set" role="group" aria-label="Family">
+            {FAMILY_CHIPS.map(([id, label, desc]) => (
+              <button key={id} class={`effects-chip family ${family === id ? 'active' : ''}`} aria-pressed={family === id} type="button" title={desc}
+                onClick={() => setFamily(id)}>{label}</button>
+            ))}
+          </div>
           <span class="effects-chip-sep" role="presentation" />
-          {LIBRARY_MODES.map(([id, label, desc]) => (
-            <button key={id} class={`effects-chip library ${library === id ? 'active' : ''}`} aria-pressed={library === id} type="button" title={desc}
-              onClick={() => setLibrary(id)}>{label}</button>
-          ))}
+          <div class="effects-chip-set" role="group" aria-label="Space">
+            {SPACE_CHIPS.map(([id, label, desc]) => (
+              <button key={id} class={`effects-chip space ${space === id ? 'active' : ''}`} aria-pressed={space === id} type="button" title={desc}
+                onClick={() => setSpace(id)}>{label}</button>
+            ))}
+          </div>
         </div>
       </div>
       <PlayingVoices stopAll />

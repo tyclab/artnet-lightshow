@@ -1507,6 +1507,7 @@ input[type=range]::-moz-range-thumb {
 }
 .effects-search:focus { outline: .125rem solid var(--accent); outline-offset: .1875rem; border-color: var(--accent); }
 .effects-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.effects-chip-set { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .effects-chip {
   appearance: none;
   padding: 3px 10px;
