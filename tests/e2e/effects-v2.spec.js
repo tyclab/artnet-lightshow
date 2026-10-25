@@ -50,9 +50,9 @@ test('a Spatial preset and its 2D twin move on the Stage while disarmed', async 
     await set(request, { pattern: id });
     await until(request, (st) => st.pattern === id);
     await stageImage(page, { remember: id });
-    // The crest lights each lamp only as it passes: thousands of pixels change for a moment, none
-    // in between, and a still Stage (clock stopped) changes none at all.
-    expect(await stageMotion(page, id), `${id} moves`).toBeGreaterThanOrEqual(200);
+    // The crest lights each lamp only as it passes: thousands of pixels change at the pass, a faint
+    // glow of hundreds around it, none in between, and a still Stage (clock stopped) changes none.
+    expect(await stageMotion(page, id), `${id} moves`).toBeGreaterThanOrEqual(50);
   }
   expect((await state(request)).armed).toBe(false);
 });

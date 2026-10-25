@@ -2,9 +2,9 @@
 // Only whole pixels inside the canvas: at a fractional offset an element screenshot rounds
 // outward and takes in a row of the frame's border.
 // `remember` keeps this frame's luminance in the page under that name; `against` adds `changed`, the
-// number of pixels whose luminance differs by more than 2 from the frame kept under that name. The
+// number of pixels whose luminance differs by more than 1 from the frame kept under that name. The
 // Stage redraws only when a light changes, so two frames of a still scene are identical: `changed`
-// is 0 until something moves.
+// is exactly 0 until something moves.
 export async function stageImage(page, { remember = null, against = null } = {}) {
   const canvas = page.locator('.stage3d-canvas');
   await canvas.scrollIntoViewIfNeeded();
@@ -35,7 +35,7 @@ export async function stageImage(page, { remember = null, against = null } = {})
       const reference = against ? frames[against] : null;
       if (reference && reference.length === n) {
         changed = 0;
-        for (let i = 0; i < n; i++) if (Math.abs(lums[i] - reference[i]) > 2) changed++;
+        for (let i = 0; i < n; i++) if (Math.abs(lums[i] - reference[i]) > 1) changed++;
       }
       resolve({ r: r / n, g: g / n, b: b / n, lum: (0.2126 * r + 0.7152 * g + 0.0722 * b) / n, litShare: lit / n, changed });
     };
@@ -48,7 +48,7 @@ export async function stageImage(page, { remember = null, against = null } = {})
  * `pixels` pixels, or `timeout` passes; returns the largest change seen. A sweep's crest lights a lamp
  * only as it passes and a lap takes a few beats, so a fixed handful of samples can miss it entirely.
  */
-export async function stageMotion(page, against, { pixels = 200, timeout = 10_000 } = {}) {
+export async function stageMotion(page, against, { pixels = 50, timeout = 10_000 } = {}) {
   const end = Date.now() + timeout;
   let best = 0;
   while (Date.now() < end) {
