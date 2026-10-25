@@ -3,7 +3,7 @@
 
 import { test, expect } from '@playwright/test';
 import { open, previewLook, reset, set, state, until } from './helpers.js';
-import { stageImage } from './stage-image.js';
+import { stageImage, stageMotion } from './stage-image.js';
 
 const NAMES = ['Scatter Strobe', 'Scatter Fade', 'Scatter Grow', 'Groove Wave', 'Big Room Wave', 'Ascent', 'Double Wave', 'Swagger',
   'Impact', 'Vortex', 'Speaker Shockwave', 'Rotation', 'Swirl', 'Beacon', 'Neural', 'Neural Distance',
@@ -49,15 +49,10 @@ test('a Spatial preset and its 2D twin move on the Stage while disarmed', async 
   for (const id of ['v2.grooveWave', 'v2.grooveWave.2d']) {
     await set(request, { pattern: id });
     await until(request, (st) => st.pattern === id);
-    const frames = [];
-    for (let k = 0; k < 8; k++) {
-      frames.push(await stageImage(page));
-      await page.waitForTimeout(150);
-    }
-    expect(Math.max(...frames.map((f) => f.lum)), `${id} lights the stage`).toBeGreaterThan(2);
-    const spread = Math.max(...frames.map((f) => f.r)) - Math.min(...frames.map((f) => f.r))
-      + Math.max(...frames.map((f) => f.b)) - Math.min(...frames.map((f) => f.b));
-    expect(spread, `${id} moves`).toBeGreaterThan(0.3);
+    await stageImage(page, { remember: id });
+    // The crest lights each lamp only as it passes: thousands of pixels change for a moment, none
+    // in between, and a still Stage (clock stopped) changes none at all.
+    expect(await stageMotion(page, id), `${id} moves`).toBeGreaterThanOrEqual(200);
   }
   expect((await state(request)).armed).toBe(false);
 });
