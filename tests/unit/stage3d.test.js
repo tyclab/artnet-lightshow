@@ -252,7 +252,9 @@ test('the room box stops a beam at its floor, its ceiling or any of its four wal
 test('a beam that meets nothing within its range has no surface; the generic venue has a floor and a roof only', () => {
   assert.equal(world.surfaceHit({ x: 0, y: 1, z: 0 }, ray(1, 0, 0), { width: 40, depth: 40, height: 3 }), null, 'the wall is out of range');
   assert.equal(world.surfaceHit({ x: 0, y: world.TRUSS_H, z: 0 }, ray(0, 0, 1)), null, 'no walls without a room');
-  near(world.surfaceHit({ x: 0, y: world.FLOOR_H, z: 0 }, ray(0, 1, 0)).length, world.TRUSS_H + 2.5 - world.FLOOR_H, 'an uplighter reaches the roof');
+  const roof = world.surfaceHit({ x: 0, y: world.FLOOR_H, z: 0 }, ray(0, 1, 0));
+  near(roof.length, world.TRUSS_H + 2.5 - world.FLOOR_H, 'an uplighter reaches the roof');
+  assert.equal(roof.normal, null, 'which is drawn nowhere, so it has no face to take a pool');
   near(world.surfaceHit({ x: 0, y: world.TRUSS_H, z: 0 }, ray(0, -1, 0)).length, world.TRUSS_H, 'a downlighter the floor');
 });
 
@@ -312,6 +314,19 @@ test('a pool lies on its surface facing the lamp, an ellipse stretched along the
   }
   const slant = world.poolOn(end, wall, ray(0.5, -Math.sqrt(3) / 2, 0), 1);
   nearVec(slant.along, { x: 0, y: -1, z: 0 }, 'a beam slanting down the wall stretches its pool down the wall');
+});
+
+// scene.js draws the generic venue's floor, deck and back wall but no ceiling.
+test('an uplighter in the generic venue stops at the roof without a pool, and leaves one on a room\'s ceiling', () => {
+  const up = fixture(0, PAR.id, { position: { x: 50, y: 50 }, group: 'floor', emission: { kind: 'beam' } });
+  const venue = placed([up]).room.lamps[0];
+  near(venue.end.y, world.TRUSS_H + 2.5, 'the beam ends at the roof');
+  assert.equal(venue.pool, null, 'no pool floats where nothing is drawn');
+
+  const room = { bounds: { width: 4, depth: 4, height: 3 }, bindings: [{ fixtureId: 0, position: { x: 0, y: world.FLOOR_H, z: 0 } }] };
+  const ceiling = world.roomRig([up], buildRig([up], () => PAR), room).lamps[0];
+  near(ceiling.end.y, 3, 'the same lamp meets the room\'s ceiling');
+  nearVec(ceiling.pool.normal, { x: 0, y: -1, z: 0 }, 'and leaves its pool there, facing down');
 });
 
 test('multi-cell fixtures can emit separate beams without changing the rendered cell layout', () => {

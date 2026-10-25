@@ -21,7 +21,7 @@ export function planToWorld(p) {
 export const hasBeams = (placed) => placed.lamps.some((lamp) => lamp.kind === 'par');
 
 const EPS = 1e-6;
-// The generic venue has no walls; its roof sits this far above the truss.
+// The generic venue has no walls; its roof, drawn nowhere, stops beams this far above the truss.
 const ROOF = TRUSS_H + 2.5;
 // A pool lies just off its surface so it does not fight the floor or a wall for depth.
 const POOL_LIFT = 0.006;
@@ -62,12 +62,12 @@ function wallHit(from, aim, wall) {
   return enter <= exit && enter > EPS ? { length: enter, normal } : null;
 }
 
-/** The first surface a beam meets within its range: the room box (generic venue: floor and roof) or a box wall. */
+/** The first surface a beam meets within its range: the room box (generic venue: floor, and a roof with no `normal`) or a box wall. */
 export function surfaceHit(from, aim, bounds = null, walls = []) {
   let best = null;
   const meet = (length, normal) => { if (length <= MAX_BEAM && (!best || length < best.length)) best = { length, normal }; };
   if (aim.y < -EPS) meet(Math.max(0, from.y / -aim.y), { x: 0, y: 1, z: 0 });
-  if (aim.y > EPS) meet(Math.max(0, ((bounds?.height ?? ROOF) - from.y) / aim.y), { x: 0, y: -1, z: 0 });
+  if (aim.y > EPS) meet(Math.max(0, ((bounds?.height ?? ROOF) - from.y) / aim.y), bounds ? { x: 0, y: -1, z: 0 } : null);
   if (bounds) for (const [axis, size] of [['x', bounds.width], ['z', bounds.depth]]) {
     const side = Math.sign(aim[axis]);
     if (Math.abs(aim[axis]) > EPS) meet(Math.max(0, (side * size / 2 - from[axis]) / aim[axis]), { x: 0, y: 0, z: 0, [axis]: -side });
@@ -94,7 +94,7 @@ function beamLight(light, emission, floor = false, bounds = null, walls = []) {
   const length = hit ? hit.length : MAX_BEAM;
   const end = { x: from.x + aim.x * length, y: from.y + aim.y * length, z: from.z + aim.z * length };
   const radius = Math.tan((emission.beamAngle ?? 22) * Math.PI / 360) * length;
-  return { ...light, kind: 'par', aim, length, end, radius, pool: hit && radius > 0 ? poolOn(end, hit.normal, aim, radius) : null };
+  return { ...light, kind: 'par', aim, length, end, radius, pool: hit?.normal && radius > 0 ? poolOn(end, hit.normal, aim, radius) : null };
 }
 
 export function placeRig(fixtures, profiles, rig) {
