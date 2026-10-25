@@ -174,3 +174,26 @@ test.describe('on a touch screen', () => {
     expect(await small(page, '.effect-sheet')).toEqual([]);
   });
 });
+
+test('the deck chips split the catalogue by family and by space', async ({ page }) => {
+  await open(page, 'effects');
+  const chips = page.getByRole('group', { name: 'Filters' });
+  await chips.getByRole('button', { name: 'Spatial', exact: true }).click();
+  const groups = page.locator('details.effects-group');
+  await expect(groups).toHaveCount(1);
+  await expect(groups.first().locator('summary')).toHaveText('Spatial');
+  await groups.first().locator('summary').click();
+  await chips.getByRole('button', { name: '2D', exact: true }).click();
+  const names = async () => (await groups.first().locator('.pattern-grid button.pattern-btn').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
+  const plot = await names();
+  expect(plot.length).toBeGreaterThan(0);
+  for (const name of plot) expect(name).toContain('2D');
+  await chips.getByRole('button', { name: '3D', exact: true }).click();
+  const room = await names();
+  expect(room.length).toBe(plot.length);
+  for (const name of room) expect(name).not.toContain('2D');
+  await chips.getByRole('button', { name: 'Own', exact: true }).click();
+  await chips.getByRole('button', { name: 'Any', exact: true }).click();
+  await expect(groups.first().locator('summary')).toHaveText('Own');
+});
+
