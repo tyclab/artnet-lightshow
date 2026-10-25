@@ -506,8 +506,9 @@ shape is chosen, except that a Hue lamp whose bridge names a spot, pendant,
 ceiling or wall fitting defaults to a beam: spots 36° straight down (55° for
 spots combined on one channel), pendants and ceiling fittings 120° down, wall
 lanterns and washers 90° level. A beam's pool lies on the first surface it
-meets within 14 m (the floor or ceiling, and in an imported room a wall of its
-bounds or a box wall), stretched along the angle the beam strikes at. Show
+meets within 14 m (the floor, and in an imported room its ceiling, a wall of its
+bounds or a box wall), stretched along the angle the beam strikes at; the
+generic venue draws no ceiling, so a beam stops at its roof without one. Show
 export/import and fixture undo preserve `emission` (`kind`, optional `pan`,
 `tilt`, `beamAngle`) separately from cell geometry.
 
