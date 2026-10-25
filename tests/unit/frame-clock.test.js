@@ -68,43 +68,65 @@ test('a frame a hair early does not make the next one earlier', () => {
   assert.deepStrictEqual(ticks.slice(0, 3).map((x) => x.due), [1000, 1010, 1020]);
 });
 
-// Mocked timers in a test move while the clock the ticker reads stands still:
-// each frame is then a whole period ahead of it, and the next is armed a full
-// period on, as an interval would be, rather than further and further out.
-test('on a clock that does not move with the timers, the frames come a period apart', () => {
+// A real timer comes due on libuv's loop clock, whole milliseconds that can
+// trail hrtime, and on a loaded runner it went off more than the slack before
+// its deadline: the frame must still wait for it, once, and not count as early.
+test('a timer three milliseconds early waits for its deadline', () => {
+  const { ticks, stats } = drive({ firings: 4, lateBy: (k) => (k === 1 ? -3 : 0) });
+  assert.deepStrictEqual(ticks.map((x) => x.now), [1000, 1010, 1020]);
+  assert.deepStrictEqual(ticks.map((x) => x.due), [1000, 1010, 1020]);
+  assert.strictEqual(stats.totalFrames, 3, 'the early wake-up is not a frame');
+  assert.strictEqual(stats.summary().lateMs.max, 0);
+});
+
+test('a timer inside the slack still serves its frame at once', () => {
+  const { ticks, stats } = drive({ firings: 3, lateBy: (k) => (k === 1 ? -1 : 0) });
+  assert.deepStrictEqual(ticks.map((x) => x.now), [1000, 1009, 1020]);
+  assert.deepStrictEqual(ticks.map((x) => x.due), [1000, 1010, 1020]);
+  assert.strictEqual(stats.totalFrames, 3);
+});
+
+// A test that mocks the timers hands the ticker a `now` that moves with them:
+// each wake-up is then a frame on its deadline, a whole period after the last.
+test('on a clock that moves with mocked timers, the frames come a period apart', () => {
   const delays = [];
+  const ticks = [];
+  let mock = 1000;
   const realSetTimeout = globalThis.setTimeout;
   const realClearTimeout = globalThis.clearTimeout;
   const pending = [];
-  globalThis.setTimeout = (fn, delay) => { delays.push(delay); const h = { fn }; pending.push(h); return h; };
+  globalThis.setTimeout = (fn, delay) => { delays.push(delay); const h = { fn, at: mock + delay }; pending.push(h); return h; };
   globalThis.clearTimeout = () => {};
   try {
-    const ticker = createTicker({ periodMs: 10, epochMs: 1000, now: () => 1000, onTick: () => {} });
+    const ticker = createTicker({ periodMs: 10, epochMs: 1000, now: () => mock, onTick: (due, now) => ticks.push({ due, now }) });
     ticker.start();
-    for (let k = 0; k < 6; k++) pending.shift().fn();
+    for (let k = 0; k < 6; k++) { const h = pending.shift(); mock = h.at; h.fn(); }
     ticker.stop();
   } finally {
     globalThis.setTimeout = realSetTimeout;
     globalThis.clearTimeout = realClearTimeout;
   }
   assert.deepStrictEqual(delays, [0, 10, 10, 10, 10, 10, 10]);
+  assert.deepStrictEqual(ticks.map((x) => x.due), [1000, 1010, 1020, 1030, 1040, 1050]);
+  assert.deepStrictEqual(ticks.map((x) => x.now), [1000, 1010, 1020, 1030, 1040, 1050]);
 });
 
-// Mocked timers while some real time still passes — a test on a busy runner:
-// whatever the clock does between the two, no frame is armed further out than
-// a period and the timer slack, so a test stepping the mock a frame at a time
-// still sees one.
-test('on a clock that moves slower than the timers, a frame is never armed far out', () => {
-  for (const rate of [0, 0.1, 0.5, 0.8, 0.9, 0.95, 0.99, 1]) {
+// On that clock a frame's own work moves time on too, as on a busy runner:
+// however long a frame takes, up to a period, the next is armed no further
+// out than a period, so a test stepping the mock a frame at a time sees one.
+test('on a clock that moves with mocked timers, a slow frame never pushes the next far out', () => {
+  for (const work of [0, 0.1, 0.5, 0.8, 0.9, 0.95, 0.99, 1]) {
     const delays = [];
-    let mock = 0;
+    const dues = [];
+    let mock = 1000;
     const pending = [];
     const realSetTimeout = globalThis.setTimeout;
     const realClearTimeout = globalThis.clearTimeout;
     globalThis.setTimeout = (fn, delay) => { delays.push(delay); pending.push({ fn, at: mock + delay }); return pending.at(-1); };
     globalThis.clearTimeout = () => {};
     try {
-      const ticker = createTicker({ periodMs: FRAME_MS, epochMs: 1000, now: () => 1000 + rate * mock, onTick: () => {} });
+      const ticker = createTicker({ periodMs: FRAME_MS, epochMs: 1000, now: () => mock,
+        onTick: (due) => { dues.push(due); mock += work * FRAME_MS; } });
       ticker.start();
       for (let k = 0; k < 200; k++) {
         const h = pending.shift();
@@ -117,7 +139,9 @@ test('on a clock that moves slower than the timers, a frame is never armed far o
       globalThis.clearTimeout = realClearTimeout;
     }
     const longest = Math.max(...delays);
-    assert.ok(longest <= FRAME_MS + 2 + 1e-9, `clock at ${rate} of the timers: a frame armed ${longest.toFixed(2)} ms out`);
+    assert.ok(longest <= FRAME_MS + 1e-9, `${work} of a period per frame: a frame armed ${longest.toFixed(2)} ms out`);
+    assert.strictEqual(dues.length, 200, `${work} of a period per frame: every wake-up a frame`);
+    dues.forEach((due, i) => assert.ok(Math.abs(due - (1000 + i * FRAME_MS)) < 1e-6, `${work} of a period per frame: frame ${i} due at ${due}`));
   }
 });
 
@@ -219,8 +243,8 @@ test('a real ticker keeps time against the wall', async () => {
     assert.ok(Math.abs(step - Math.round(step)) < 1e-6, `frame ${i} off the grid: ${step}`);
     if (i) assert.ok(due > ticks[i - 1].due, `frame ${i} served a deadline twice`);
     // Node keeps its timers in whole milliseconds of its loop clock, so a
-    // frame can go out up to two of them before its deadline (one truncated
-    // when it is armed, one when the frame before also went early). Never
+    // timer can go off early; the ticker waits out any more than its two
+    // milliseconds of slack, so no frame goes out earlier than that. Never
     // more than MAX_BEHIND_FRAMES periods after it: further behind, the
     // ticker skips to the latest deadline instead of running late.
     assert.ok(now - due > -2, `frame ${i} ${(due - now).toFixed(2)} ms early`);

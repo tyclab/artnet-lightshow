@@ -15,6 +15,9 @@ test('music expression scales scenes and master scales overrides', t => {
   t.mock.timers.enable({ apis: ['setInterval', 'setTimeout', 'Date'], now: Date.now() });
   const realNow = performance.now;
   performance.now = () => Date.now();
+  // The ticker reads hrtime: every clock the engine reads has to move with the mock.
+  const realHr = process.hrtime.bigint;
+  process.hrtime.bigint = () => BigInt(Date.now()) * 1000000n;
   const fixture = state.fixtures[0];
   const channel = getProfile(fixture).channelMap;
   const read = name => universes.getBuffer(state.artnet.universe)[fixture.address - 1 + channel[name]];
@@ -37,5 +40,5 @@ test('music expression scales scenes and master scales overrides', t => {
     t.mock.timers.tick(25);
     assert.equal(state.masterDimmer, 128);
     assert.ok(read('dimmer') > 0);
-  } finally { stopEngine(); performance.now = realNow; t.mock.timers.reset(); }
+  } finally { stopEngine(); performance.now = realNow; process.hrtime.bigint = realHr; t.mock.timers.reset(); }
 });

@@ -167,6 +167,11 @@ function createTicker({
     timer = null;
     let due = epoch + phaseMs + index * periodMs;
     const t = now();
+    // The loop clock can trail hrtime past the slack, so an early timer waits out the rest.
+    if (due - t > TIMER_SLACK_MS) {
+      arm(t);
+      return;
+    }
     if (t - due > MAX_BEHIND_FRAMES * periodMs) {
       const caughtUp = Math.floor((t - epoch - phaseMs) / periodMs);
       stats.skip(caughtUp - index, t);
@@ -178,7 +183,8 @@ function createTicker({
     } finally {
       stats.record(t - due, now() - t);
       index++;
-      if (running) arm(t < due - periodMs / 2 ? due : Math.max(now(), due - TIMER_SLACK_MS));
+      // A frame runs no earlier than the slack before its deadline, so arming from now cannot run ahead.
+      if (running) arm(now());
     }
   }
 
