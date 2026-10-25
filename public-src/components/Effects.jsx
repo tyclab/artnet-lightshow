@@ -12,7 +12,7 @@ import { Photosensitivity as PhotosensitivityConfirm, acknowledgeThen } from './
  * The Effects view: an instrument first, an editor second. At the top a deck
  * of big pads — the favourites, the presets saved here and the party looks —
  * with the one on stage marked; under a sticky search and the filter chips,
- * the whole catalogue by scope and family (Party & Disco, Entertainment, the
+ * the whole catalogue by family (Party & Disco, Entertainment, the
  * fork's own, the upstream patterns), each group folded until opened. A plain tap
  * puts a row on stage and nothing else; its pencil, or a long press, opens
  * the inspector for it, in a sheet over the page.
@@ -27,8 +27,9 @@ const FLAG_CHIPS = [
   ['party', 'Party', 'Across the room, where the lamps stand'], ['pixel', 'Pixel', 'Drawn for LED bars'],
   ['rapid', 'Rapid flash', 'Needs the photosensitivity acknowledgement'],
 ];
+// Only the Hue Dynamics presets declare a scope, so a Single/Multi split by scope left the other
+// engines' looks out of both; the library splits by ownership alone.
 const LIBRARY_MODES = [
-  ['single', 'Single', 'The one-beat presets'], ['multi', 'Multi', 'The presets that play over a bar or longer'],
   ['custom', 'Custom', 'The presets saved on this server'], ['all', 'All', 'Everything'],
 ];
 const FAVOURITES_KEY = 'lightshow.effects.favourites';
@@ -84,14 +85,9 @@ export function appOf(row) {
   return row.party ? 'own' : 'upstream';
 }
 
-/** The Library filter: Single and Multi by scope, Custom the presets saved here, All everything. */
+/** The Library filter: Custom the presets saved here, All everything. */
 export function filterByLibrary(rows, mode) {
-  switch (mode) {
-    case 'single': return rows.filter((r) => r.scope === 'singleBeat');
-    case 'multi': return rows.filter((r) => r.scope === 'measure');
-    case 'custom': return rows.filter((r) => r.user);
-    default: return rows;
-  }
+  return mode === 'custom' ? rows.filter((r) => r.user) : rows;
 }
 
 /** The rows by app, each app by family, in the catalogue's order; the saved presets lead the fork's own. */

@@ -286,22 +286,21 @@ test('Effects groups presets by source and family', () => {
   assert.match(html, /type="search"[^>]*aria-label="Search effects"/);
 });
 
-test("Library filters presets by duration and ownership", () => {
+test("Library filters presets by ownership only: a scope no engine but Hue Dynamics declares splits nothing", () => {
   const rows = [
     { id: 'a', scope: 'singleBeat' }, { id: 'b', scope: 'measure' }, { id: 'u', scope: 'measure', user: true }, { id: 'c' },
   ];
   const ids = (mode) => ui.filterByLibrary(rows, mode).map((r) => r.id);
-  assert.deepStrictEqual(ids('single'), ['a']);
-  assert.deepStrictEqual(ids('multi'), ['b', 'u']);
   assert.deepStrictEqual(ids('custom'), ['u']);
   assert.deepStrictEqual(ids('all'), ['a', 'b', 'u', 'c']);
+  assert.deepStrictEqual(ids('single'), ['a', 'b', 'u', 'c']);
 });
 
 test("Library exposes filter chips with All selected initially", () => {
   givenLibrary({});
   const html = ui.html(ui.h(ui.Effects, {}));
   const labels = [...html.matchAll(/class="effects-chip library[^"]*"[^>]*aria-pressed="(true|false)"[^>]*>([^<]+)</g)].map((m) => `${m[2]}:${m[1]}`);
-  assert.deepStrictEqual(labels, ['Single:false', 'Multi:false', 'Custom:false', 'All:true']);
+  assert.deepStrictEqual(labels, ['Custom:false', 'All:true']);
   const chips = [...html.matchAll(/class="effects-chip ?[^"]*"[^>]*aria-pressed="false"[^>]*>([^<]+)</g)].map((m) => m[1]);
   assert.deepStrictEqual(chips.slice(0, 3), ['Party', 'Pixel', 'Rapid flash'], 'the filters are chips');
 });
