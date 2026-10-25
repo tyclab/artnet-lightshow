@@ -2,6 +2,7 @@ import https from 'node:https';
 import type { IncomingHttpHeaders } from 'node:http';
 import { dtls } from 'node-dtls-client';
 import { messageOf } from '../errors.ts';
+import type { HueLight } from '../types/rig.ts';
 
 export interface HueBridgeConfig {
   id: string;
@@ -49,6 +50,7 @@ export interface AreaChannel {
   position: unknown;
   devices: string[];
   product: string;
+  archetype: string;
   kind: LampKind | null;
   members?: HueChannelMember[];
 }
@@ -79,7 +81,7 @@ interface ClipList<T> {
 
 interface ClipDevice {
   id: string;
-  metadata?: { name?: string };
+  metadata?: { name?: string; archetype?: unknown };
   product_data?: { product_name?: string };
 }
 
@@ -98,7 +100,7 @@ interface ClipLight {
 
   color_temperature?: { mirek_schema?: { mirek_minimum?: unknown; mirek_maximum?: unknown } } | null;
 
-  metadata?: { fixed_mired?: unknown };
+  metadata?: { fixed_mired?: unknown; archetype?: unknown };
 }
 
 interface ClipChannel {
@@ -123,6 +125,7 @@ type PairReply = {
 interface Lamp {
   name: string;
   product: string;
+  archetype: string | null;
   device: string;
   kind: LampKind | null;
   capabilities: LampCapabilities | null;
@@ -294,6 +297,7 @@ async function fetchLampNames(host: string, key: string): Promise<Map<string, La
       deviceById.set(device.id, {
         name: (device.metadata && device.metadata.name) || '',
         product: (device.product_data && device.product_data.product_name) || '',
+        archetype: archetypeOf(device.metadata?.archetype),
         device: device.id,
       });
     }
@@ -311,13 +315,20 @@ async function fetchLampNames(host: string, key: string): Promise<Map<string, La
       if (!device || !device.name) continue;
       const ref = service.renderer_reference && service.renderer_reference.rid;
       const light = (ref && lightById.get(ref)) || (owner && lightByDevice.get(owner)) || null;
-      names.set(service.id, { ...device, kind: light ? kindOf(light) : null, capabilities: light ? capabilitiesOf(light) : null,
+      // CLIP v2 deprecates a light's archetype for its device's, so the light's only fills a gap.
+      names.set(service.id, { ...device, archetype: device.archetype ?? archetypeOf(light?.metadata?.archetype),
+        kind: light ? kindOf(light) : null, capabilities: light ? capabilitiesOf(light) : null,
         segmentLengths: service.segments?.segments?.map((segment) => segment.length) });
     }
   } catch (_) {
     return new Map();
   }
   return names;
+}
+
+// The fitting chosen in the Hue app; the bridge's catch-all value says nothing.
+function archetypeOf(value: unknown): string | null {
+  return typeof value === 'string' && /^[a-z0-9_]{1,64}$/.test(value) && value !== 'unknown_archetype' ? value : null;
 }
 
 function kindOf(light: Pick<ClipLight, 'color' | 'color_temperature'>): LampKind {
@@ -399,6 +410,7 @@ async function listEntertainmentConfigs(host: string, key: string): Promise<Ente
           position: ch.position || null,
           devices: [...new Set(lamps.map((l) => l.device))],
           product: [...new Set(lamps.map((l) => l.product).filter(Boolean))].join(' + '),
+          archetype: [...new Set(lamps.map((l) => l.archetype).filter(Boolean))].join(' + '),
           kind: kindOfChannel(ch, names),
           members: channelMembers(ch, names),
         };
@@ -800,6 +812,7 @@ export {
   listEntertainmentConfigs,
   fetchLampNames,
   nameChannel,
+  archetypeOf,
   kindOf,
   kindOfChannel,
   capabilitiesOf,
@@ -839,6 +852,9 @@ export interface AreaLamp {
   name: string;
 
   product: string;
+  archetype?: string | null;
+  /** Every light the lamp drives, lead first; a channel combining several lights is still one lamp. */
+  lights?: HueLight[];
 
   devices: string[];
 
@@ -891,6 +907,8 @@ function lampsOf(channels: readonly ClipChannel[], names: Map<string, Lamp>): Ar
 
       name: [...new Set(lamps.map((l) => l.name).filter(Boolean))].join(' + '),
       product: lead ? lead.product : '',
+      archetype: lead?.archetype ?? null,
+      lights: lamps.map((l) => ({ product: l.product || '', archetype: l.archetype ?? null })),
       devices: [...new Set(lamps.map((l) => l.device))],
       channels: group.channels.map((c) => c.id),
       kind: lead ? lead.kind : null,

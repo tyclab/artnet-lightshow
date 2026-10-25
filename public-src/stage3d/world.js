@@ -1,4 +1,4 @@
-import { emissionOf, beamDirection } from '../../src/shared/emission.ts';
+import { emissionOf, hueEmission, beamDirection } from '../../src/shared/emission.ts';
 import { stagePositions } from '../../src/shared/stage.ts';
 import { lineOf } from '../../src/shared/rig.ts';
 import { bindingSources, resolveBindings } from '../../src/shared/space.ts';
@@ -189,7 +189,7 @@ export function placeRig(fixtures, profiles, rig) {
 
 export { bindingSources };
 
-export function roomRig(fixtures, rig, model) {
+export function roomRig(fixtures, rig, model, profiles = {}) {
   const lamps = [];
   const cells = [];
   const unresolved = [];
@@ -216,6 +216,8 @@ export function roomRig(fixtures, rig, model) {
       continue;
     }
     const fixture = fixtures[indices.get(binding.fixtureId ?? binding.sources?.[0]?.fixtureId)];
+    // A room draws unshaped lamps as bulbs, except a Hue fitting its bridge names (emission.ts).
+    const emission = fixture && (fixture.emission ?? hueEmission(fixture, profiles[fixture.profileId]));
     if (binding.path) {
       for (let index = 1; index < binding.path.length; index++) {
         const from = binding.path[index - 1], to = binding.path[index];
@@ -223,8 +225,8 @@ export function roomRig(fixtures, rig, model) {
         if (length > 1e-6) cells.push({ ...light, size: 0.025, length, from, to,
           position: { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2, z: (from.z + to.z) / 2 } });
       }
-    } else if (fixture?.emission?.kind === 'beam') lamps.push(beamLight(light, fixture.emission, fixture.group === 'floor', model.bounds, walls));
-    else if (fixture?.emission?.kind === 'strip' || !fixture?.emission && !binding.sources && rig.cellMaps[indices.get(binding.fixtureId)]) cells.push({ ...light, size: 0.08 });
+    } else if (emission?.kind === 'beam') lamps.push(beamLight(light, emission, fixture.group === 'floor', model.bounds, walls));
+    else if (emission?.kind === 'strip' || !emission && !binding.sources && rig.cellMaps[indices.get(binding.fixtureId)]) cells.push({ ...light, size: 0.08 });
     else lamps.push({ ...light, kind: 'bulb', aim: null, length: 0 });
   }
   const missing = fixtures.filter((fixture) => !mapped.has(fixture.id));

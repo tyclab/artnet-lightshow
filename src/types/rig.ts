@@ -263,4 +263,12 @@ export interface HueLampTraits {
         warm: number;
         cool: number;
     } | null;
+    /** Each light the lamp is made of, lead first: several when one channel drives several lights. */
+    lights?: HueLight[];
+}
+
+/** A light as the bridge describes it: its product name and the CLIP v2 archetype (the fitting), null when unknown. */
+export interface HueLight {
+    product: string;
+    archetype: string | null;
 }

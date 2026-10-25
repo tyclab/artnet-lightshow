@@ -502,11 +502,14 @@ horizontal, positive tilt points upward, and spread is the full cone angle.
 Single-zone strips use the same output colour along their length; segmented
 strips keep their individual cells. Stage and imported room bindings use the
 selected shape and aim. Existing shows keep their default appearance until a
-shape is chosen. A beam's pool lies on the first surface it meets within 14 m
-(the floor or ceiling, and in an imported room a wall of its bounds or a box
-wall), stretched along the angle the beam strikes at. Show export/import and
-fixture undo preserve `emission` (`kind`, optional `pan`, `tilt`, `beamAngle`)
-separately from cell geometry.
+shape is chosen, except that a Hue lamp whose bridge names a spot, pendant,
+ceiling or wall fitting defaults to a beam: spots 36° straight down (55° for
+spots combined on one channel), pendants and ceiling fittings 120° down, wall
+lanterns and washers 90° level. A beam's pool lies on the first surface it
+meets within 14 m (the floor or ceiling, and in an imported room a wall of its
+bounds or a box wall), stretched along the angle the beam strikes at. Show
+export/import and fixture undo preserve `emission` (`kind`, optional `pan`,
+`tilt`, `beamAngle`) separately from cell geometry.
 
 **Maximum brightness** is a fixture trim, 0–255, applied after looks and
 masters; it is not a temporary override. A fixture override can set colour,
@@ -855,7 +858,10 @@ are stored as secrets. Disconnect refuses while lamps remain patched unless
 `removeFixtures: true` is supplied.
 
 Each physical lamp gets a profile built from its bridge capabilities: colour gamut,
-its warm/cool white temperatures, or the fixed white it dims. Gradient strips and
+its warm/cool white temperatures, or the fixed white it dims. It also keeps each
+light's product name and CLIP v2 archetype (the fitting chosen in the Hue app, read
+from the device, else the light); **Refresh lamp profiles** adds them for lamps
+patched earlier. Gradient strips and
 Play gradients are one fixture with ordered cells, one per entertainment section.
 The profile travels with the saved show. Hue profiles are selected by discovery,
 not imported or changed manually; UV is represented as visible violet.
@@ -1638,7 +1644,7 @@ Transport routes answer `{ ok, status }`; with no sequence loaded they answer
 | GET | `/api/hue/discover` | Bridges Philips' cloud service has seen on this network |
 | POST | `/api/hue/pair` | Pair with `{ host, label? }` — the bridge link button must have been pressed in the last 30 seconds. Answers `409` with `pressLink: true` if it has not. A new address is added to `hue.bridges` (as `bridge-1`, `bridge-2`…, on, with no area yet); one already there gets fresh keys. Answers the bridge and its areas |
 | GET | `/api/hue/:bridge/areas` | Entertainment areas on that bridge, with their channel ids and lamp names |
-| GET | `/api/hue/:bridge/lamps` | Its chosen area's physical `lamps` (id, name, product, devices, ordered `channels`, capabilities and `shows`) plus authoritative `channels` with device/segment membership for room exporters |
+| GET | `/api/hue/:bridge/lamps` | Its chosen area's physical `lamps` (id, name, product, archetype, `lights` with each member light's product and archetype, devices, ordered `channels`, capabilities and `shows`) plus authoritative `channels` with product, archetype and device/segment membership for room exporters |
 | POST | `/api/hue/:bridge/add` | `{ lamps? }`: patch those lamp ids, or every unpatched lamp, with a bridge-derived profile and `output: { protocol: 'hue', bridge, channels }`. Legacy `{ channels? }` selects the lamps containing those channels |
 | POST | `/api/hue/:bridge/refresh` | Refresh existing lamp capabilities without replacing fixture IDs or channel order; returns `refreshed` fixture IDs and `skipped` entries with reasons |
 | POST | `/api/hue/:bridge/disconnect` | Forget that bridge, keys and all. `409` while its lamps are in the patch unless `{ removeFixtures: true }` takes them along |

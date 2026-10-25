@@ -61,7 +61,7 @@ export function StageView({ compact = false } = {}) {
   // A profile refresh can change cells without changing its ID or the fixtures.
   const signature = rigSignature(fixtures);
   const rig = useMemo(() => buildRig(fixtures, (f) => profiles[f.profileId] || null), [signature, profiles]);
-  const placed = useMemo(() => room ? roomRig(fixtures, rig, room) : placeRig(fixtures, profiles, rig), [rig, room, fixtures, profiles]);
+  const placed = useMemo(() => room ? roomRig(fixtures, rig, room, profiles) : placeRig(fixtures, profiles, rig), [rig, room, fixtures, profiles]);
   const space = useUnitSpace(rig, [rig], room);
   const sample = useRehearsalSampler(data, space, rehearsing && format === '3d');
   const auditionSample = useAuditionSampler(space, auditioning && format === '3d');
