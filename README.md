@@ -1693,8 +1693,8 @@ the state in one of two forms, chosen when the client connects:
   `{ d, v, set, del? }`. A client that sees a gap in a domain's numbers sends
   `sync` (with an ack) for a new snapshot. DMX goes out as `dmx-frame`, binary
   (`src/shared/dmx-frame.ts`: per universe its number, its length and its
-  bytes), thirty times a second while it changes — volatile, and only to
-  clients that sent `subscribe: ['dmx']` (and until `unsubscribe`). The
+  bytes), at the engine's frame rate while it changes — volatile, and only
+  to clients that sent `subscribe: ['dmx']` (and until `unsubscribe`). The
   `audio` topic works the same way: after `subscribe: ['audio']` the client
   gets `audio` events, volatile, up to thirty a second and only when they
   change — `{ t, party: { full, bass, mid, high }, disco: { gate, level, hit }, spl: { db, level, beat, section, eventT? } }`

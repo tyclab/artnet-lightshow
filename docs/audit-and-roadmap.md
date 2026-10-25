@@ -458,7 +458,7 @@ Every phase is its own PR, keeps `npm run check` and the Python suite green, and
 > **Status.** Done, delivered in three parts: 6a, 6b and 6c. **6a — the live surface — done:**
 > - **Protocol v2:**
 >   - an opt-in handshake gives the live page a snapshot, then per-domain versioned key diffs, resynced on a gap;
->   - binary DMX frames go out at 30 Hz, volatile, only to subscribed sockets;
+>   - binary DMX frames go out at the engine's frame rate, volatile, only to subscribed sockets;
 >   - the page holds one signal per key, and faders keep drafts sent once per animation frame;
 >   - protocol 1 is unchanged for Companion (and, until 6b, the settings page).
 > - **Perform view:** pads for blackout and the six energy effects (held or latched), tap, palettes, master and intensity
@@ -506,7 +506,7 @@ Every phase is its own PR, keeps `npm run check` and the Python suite green, and
 - **One SPA.** Settings move into `public-src`, and `public/settings.js` and its duplicate API/auth/socket code are deleted.
 - **Protocol v2:**
   - domain-scoped signals with versioned diffs;
-  - binary preview frames at 30 Hz, volatile, sent only to subscribed rooms;
+  - binary preview frames at the engine's frame rate, volatile, sent only to subscribed rooms;
   - slider emits throttled to one per animation frame, with local drafts.
 - **Views:**
   - **Perform:** tablet-first pads for blackout, kill, blinder, strobe, UV and palettes, plus intensity, now/next and sync health.

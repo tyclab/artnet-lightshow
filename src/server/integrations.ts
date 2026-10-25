@@ -10,6 +10,7 @@ import { currentRig } from './rig.ts';
 import { currentSpace } from './unit-space.ts';
 import { ParticleCoverage } from './particle-coverage.ts';
 import { guarded } from './guard.ts';
+import { FRAME_MS } from './frame-clock.ts';
 import PlaybackClock from '../playback-clock.ts';
 import { cues } from './cues.ts';
 import { Warmer } from './warm.ts';
@@ -955,10 +956,11 @@ function setupIntegrations({ io, midi, spotify, nowPlaying, deezerSource, prolin
   }), 100);
   if (dmxTimer.unref) dmxTimer.unref();
 
+  // Sample at the engine's frame period so the Stage preview sees every frame Art-Net sends.
   const dmxFrameTimer = setInterval(guarded('dmx-frame', () => {
     if (!publisher.wants(ROOM.dmx)) { publisher.resetDmx(); return; }
     publisher.sendDmxFrame(encodeDmxFrame(getDmxUniverses()));
-  }), 1000 / 30);
+  }), FRAME_MS);
   if (dmxFrameTimer.unref) dmxFrameTimer.unref();
 
   const audioTimer = setInterval(guarded('audio-feed', () => {

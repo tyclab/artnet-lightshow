@@ -21,7 +21,7 @@ export const connectedSig = signal(false);
 // 'unauthorized' apart from 'reconnecting': a refused handshake is never retried; auth.js asks for the token.
 export const connectionSig = signal({ status: 'connecting' });
 
-// Its own signal, so 30 frames a second wake only the DMX views that subscribed (wantDmx).
+// Its own signal, so frames at the engine's rate wake only the DMX views that subscribed (wantDmx).
 export const dmxSig = signal({});
 
 // Changes only when the rig does, so the monitor lays out once rather than every frame.
