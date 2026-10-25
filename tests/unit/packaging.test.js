@@ -20,14 +20,14 @@ test('unzipped with its portable file, the data stays beside the app', () => {
 test('installed, the data goes where the user\'s applications keep theirs', () => {
   const none = () => false;
   assert.equal(dataDirFor({ root: 'C:\\Programs\\LS', platform: 'win32', env: { LOCALAPPDATA: 'C:\\Users\\op\\AppData\\Local' }, home: 'C:\\Users\\op', exists: none }),
-    'C:\\Users\\op\\AppData\\Local\\ArtNet Lightshow');
+    'C:\\Users\\op\\AppData\\Local\\TycStation Lightshow');
   assert.equal(dataDirFor({ root: 'C:\\LS', platform: 'win32', env: {}, home: 'C:\\Users\\op', exists: none }),
-    'C:\\Users\\op\\AppData\\Local\\ArtNet Lightshow', 'without LOCALAPPDATA, where it would be');
-  assert.equal(dataDirFor({ root: '/opt/ls', platform: 'linux', env: {}, home: '/home/op', exists: none }), '/home/op/.local/share/artnet-lightshow');
+    'C:\\Users\\op\\AppData\\Local\\TycStation Lightshow', 'without LOCALAPPDATA, where it would be');
+  assert.equal(dataDirFor({ root: '/opt/ls', platform: 'linux', env: {}, home: '/home/op', exists: none }), '/home/op/.local/share/tycstation-lightshow');
   assert.equal(dataDirFor({ root: '/opt/ls', platform: 'linux', env: { XDG_DATA_HOME: '/data/op' }, home: '/home/op', exists: none }),
-    '/data/op/artnet-lightshow');
+    '/data/op/tycstation-lightshow');
   assert.equal(dataDirFor({ root: '/Applications/LS', platform: 'darwin', env: {}, home: '/Users/op', exists: none }),
-    '/Users/op/Library/Application Support/ArtNet Lightshow');
+    '/Users/op/Library/Application Support/TycStation Lightshow');
 });
 
 test('LIGHTSHOW_DATA_DIR wins over both', () => {
@@ -64,3 +64,13 @@ test('browser launch uses each platform\'s detached URL opener', () => {
   ]);
   assert.equal(openBrowser(url, { platform: 'linux', spawner: () => { throw new Error('ENOENT'); } }), false);
 });
+
+test('an install from before the rename keeps its data folder until the new one exists', () => {
+  const only = (f) => f === 'C:\\Users\\op\\AppData\\Local\\ArtNet Lightshow' || f === '/home/op/.local/share/artnet-lightshow';
+  assert.equal(dataDirFor({ root: 'C:\\LS', platform: 'win32', env: { LOCALAPPDATA: 'C:\\Users\\op\\AppData\\Local' }, home: 'C:\\Users\\op', exists: only }),
+    'C:\\Users\\op\\AppData\\Local\\ArtNet Lightshow');
+  assert.equal(dataDirFor({ root: '/opt/ls', platform: 'linux', env: {}, home: '/home/op', exists: only }), '/home/op/.local/share/artnet-lightshow');
+  const both = () => true;
+  assert.equal(dataDirFor({ root: '/opt/ls', platform: 'linux', env: {}, home: '/home/op', exists: (f) => both(f) && !f.endsWith('portable') }), '/home/op/.local/share/tycstation-lightshow');
+});
+

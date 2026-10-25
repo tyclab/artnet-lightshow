@@ -1,14 +1,14 @@
 {
 	"$schema": "../node_modules/@companion-module/base/assets/manifest.schema.json",
 	"type": "connection",
-	"id": "artnet-lightshow",
-	"name": "artnet-lightshow",
+	"id": "tycstation-lightshow",
+	"name": "tycstation-lightshow",
 	"shortname": "lightshow",
 	"description": "Busk the TycStation Lightshow server: palettes, patterns and pixel effects, momentary holds, cues, tempo and the auto show",
 	"version": "0.0.0",
 	"license": "MIT",
-	"repository": "git+https://github.com/tyclab/artnet-lightshow.git",
-	"bugs": "https://github.com/tyclab/artnet-lightshow/issues",
+	"repository": "git+https://github.com/tyclab/lightshow.git",
+	"bugs": "https://github.com/tyclab/lightshow/issues",
 	"maintainers": [
 		{
 			"name": "Tyclab",

@@ -10,7 +10,7 @@ real music.
 The music is SALAMI's Internet Archive subset (Smith et al., 2011): live
 recordings that are free to download, each annotated by one or two people with
 where the sections change and what each one is. The audio and the annotations
-are fetched at run time into ~/.cache/artnet-lightshow/eval and never
+are fetched at run time into ~/.cache/tycstation-lightshow/eval and never
 redistributed. Synthetic tracks can prove the plumbing; only this can say
 whether the answers are right.
 
@@ -49,9 +49,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 from analysis import (bands, dynamics, features, preprocess, rhythm,  # noqa: E402
                       songformer, structure)
+from analysis.cache_dirs import eval_dir  # noqa: E402
 
 SALAMI = 'https://raw.githubusercontent.com/DDMAL/salami-data-public/master'
-CACHE = Path(os.environ.get('ARTNET_EVAL_DIR', Path.home() / '.cache' / 'artnet-lightshow' / 'eval' / 'salami'))
+CACHE = eval_dir() / 'salami'
 
 # SALAMI's function labels, and SongFormer's, in one vocabulary.
 CANON = {
@@ -73,7 +74,7 @@ ROLES = {'intro': 'intro', 'verse': 'verse', 'prechorus': 'prechorus', 'chorus':
 
 def fetch(url):
     request = urllib.request.Request(url.replace('http://', 'https://'),
-                                     headers={'User-Agent': 'artnet-lightshow eval-structure'})
+                                     headers={'User-Agent': 'tycstation-lightshow eval-structure'})
     with urllib.request.urlopen(request, timeout=120) as response:
         return response.read()
 

@@ -5,8 +5,8 @@ Entertainment. Control it from the browser, MIDI, Bitfocus Companion or REST.
 Manual looks, effects, pads and sequences work without Python; analysed shows
 and live audio use the optional analysis environment.
 
-[TycStation Lightshow](https://github.com/tyclab/artnet-lightshow) builds on
-[LightD31’s ArtNet Lightshow](https://github.com/LightD31/artnet-lightshow) under
+[TycStation Lightshow](https://github.com/tyclab/lightshow) builds on
+[LightD31’s TycStation Lightshow](https://github.com/LightD31/artnet-lightshow) under
 the [MIT license](LICENSE). It combines reviewed upstream improvements with
 Tyclab’s own workflows and deployment revisions. An upstream release is not
 a TycStation Lightshow release.
@@ -96,15 +96,15 @@ start the pattern engine.
 
 TycStation Lightshow has no published release packages yet. Use a pinned source checkout,
 or build a package on the target operating system with `npm run package`.
-The [CI workflows](https://github.com/tyclab/artnet-lightshow/actions) test Windows
+The [CI workflows](https://github.com/tyclab/lightshow/actions) test Windows
 and Linux packaging. Packages include Node; install the analysis environment
 separately from the app when needed.
 
 | Package | Start and data location |
 |---------|-------------------------|
-| Windows installer, `*-win32-x64-setup.exe` | Start menu → Tyclab Lightshow; new installs in `%LOCALAPPDATA%\Programs\Tyclab Lightshow`, data in `%LOCALAPPDATA%\ArtNet Lightshow` |
-| Windows portable, `*-win32-x64.zip` | Run `Tyclab Lightshow.exe`; data in the adjacent `data` folder while the `portable` marker exists |
-| Linux archive, `*-linux-x64.tar.gz` | Run `./tyclab-lightshow`; portable data as above, otherwise `~/.local/share/artnet-lightshow` |
+| Windows installer, `*-win32-x64-setup.exe` | Start menu → TycStation Lightshow; new installs in `%LOCALAPPDATA%\Programs\TycStation Lightshow`, data in `%LOCALAPPDATA%\TycStation Lightshow` |
+| Windows portable, `*-win32-x64.zip` | Run `TycStation Lightshow.exe`; data in the adjacent `data` folder while the `portable` marker exists |
+| Linux archive, `*-linux-x64.tar.gz` | Run `./tycstation-lightshow`; portable data as above, otherwise `~/.local/share/tycstation-lightshow` |
 
 Closing the server console stops the show. `--version` prints the version.
 `--no-supervisor` disables the built-in process supervisor.
@@ -115,7 +115,7 @@ keep their installation directory when upgraded.
 The rebrand preserves existing data and model-cache paths, `ARTNET_*` and
 `LIGHTSHOW_*` environment variables, browser storage keys, API/authentication
 headers, analysis schema identifiers, Hue registration names and Companion and
-browser-extension IDs. The Python package remains `artnet-lightshow-analysis`.
+browser-extension IDs. The Python package remains `tycstation-lightshow-analysis`.
 Existing shows, pairings and integrations continue to
 use those identifiers; no manual data migration is required.
 
@@ -1783,7 +1783,7 @@ The existing Docker log collector can query these records without another
 endpoint or credential. For example, in Loki:
 
 ```logql
-{container_name="artnet-lightshow"} | json | component="performance"
+{container_name="lightshow"} | json | component="performance"
 ```
 
 The UI shows server refusals as toasts and blocks controls while disconnected.

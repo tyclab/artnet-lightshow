@@ -25,9 +25,9 @@ import path from 'node:path';
 
 const ROOT = path.join(import.meta.dirname, '..');
 const { version } = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-const dir = path.resolve(process.argv[2] || path.join(ROOT, 'dist', `Tyclab-Lightshow-${version}-${process.platform}-${process.arch}`));
+const dir = path.resolve(process.argv[2] || path.join(ROOT, 'dist', `TycStation-Lightshow-${version}-${process.platform}-${process.arch}`));
 const windows = process.platform === 'win32';
-const EXE = path.join(dir, windows ? 'Tyclab Lightshow.exe' : 'tyclab-lightshow');
+const EXE = path.join(dir, windows ? 'TycStation Lightshow.exe' : 'tycstation-lightshow');
 const PORT = 3996;
 const BASE = `http://127.0.0.1:${PORT}`;
 

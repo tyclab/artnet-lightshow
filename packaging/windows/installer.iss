@@ -1,8 +1,8 @@
-; Per-user install. Data stays in %LOCALAPPDATA%\ArtNet Lightshow across updates and uninstall.
+; Per-user install. Data stays in %LOCALAPPDATA%\TycStation Lightshow across updates and uninstall.
 ; CI passes /DAppVersion, /DSourceDir and /DOutputDir to ISCC.exe.
 
-#define AppName "Tyclab Lightshow"
-#define AppExe "Tyclab Lightshow.exe"
+#define AppName "TycStation Lightshow"
+#define AppExe "TycStation Lightshow.exe"
 #ifndef AppVersion
   #error Pass /DAppVersion=<version>
 #endif
@@ -20,8 +20,8 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher=Tyclab
-AppPublisherURL=https://github.com/tyclab/artnet-lightshow
-AppSupportURL=https://github.com/tyclab/artnet-lightshow/issues
+AppPublisherURL=https://github.com/tyclab/lightshow
+AppSupportURL=https://github.com/tyclab/lightshow/issues
 DefaultDirName={autopf}\{#AppName}
 UsePreviousAppDir=yes
 DisableProgramGroupPage=yes
@@ -34,7 +34,7 @@ SetupIconFile={#SourceDir}\app\public\favicon.ico
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
 OutputDir={#OutputDir}
-OutputBaseFilename=Tyclab-Lightshow-{#AppVersion}-win32-x64-setup
+OutputBaseFilename=TycStation-Lightshow-{#AppVersion}-win32-x64-setup
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -50,9 +50,9 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Type: filesandordirs; Name: "{app}\app"
 Type: filesandordirs; Name: "{app}\tools"
 ; Remove old branding when upgrading an existing install with the same AppId.
-Type: files; Name: "{app}\ArtNet Lightshow.exe"
-Type: files; Name: "{autoprograms}\ArtNet Lightshow.lnk"
-Type: files; Name: "{autodesktop}\ArtNet Lightshow.lnk"
+Type: files; Name: "{app}\TycStation Lightshow.exe"
+Type: files; Name: "{autoprograms}\TycStation Lightshow.lnk"
+Type: files; Name: "{autodesktop}\TycStation Lightshow.lnk"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "\portable,\data"; Flags: recursesubdirs createallsubdirs ignoreversion

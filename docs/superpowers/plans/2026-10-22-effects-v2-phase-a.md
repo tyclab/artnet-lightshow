@@ -241,8 +241,8 @@
 
 - [ ] **Step 1:** Record golden frames for every v2 preset on the synthetic room with `scripts/golden-frames.js`; the test compares with `frameDiff` and fails on any `maxChannel` > 0.
 - [ ] **Step 2:** Run the render budget test with each v2 preset as base — expected within the existing budget.
-- [ ] **Step 3:** Open one pull request per task group (Tasks 1–4, 5–9, 10–11) on `tyclab/artnet-lightshow`, merge each when all CI jobs pass. Commits use the repository's noreply identity.
-- [ ] **Step 4:** Deploy: bump the commit and image tag in tycpve `ansible/roles/docker_vm/files/voice/artnet-lightshow/docker-compose.yml` by MR, merge when green, play `deploy:lightshow` (it leaves outputs disarmed). Do not arm. Verify on the live Stage, disarmed, with Preview look pressed, that the Spatial group plays.
+- [ ] **Step 3:** Open one pull request per task group (Tasks 1–4, 5–9, 10–11) on `tyclab/lightshow`, merge each when all CI jobs pass. Commits use the repository's noreply identity.
+- [ ] **Step 4:** Deploy: bump the commit and image tag in tycpve `ansible/roles/docker_vm/files/voice/lightshow/docker-compose.yml` by MR, merge when green, play `deploy:lightshow` (it leaves outputs disarmed). Do not arm. Verify on the live Stage, disarmed, with Preview look pressed, that the Spatial group plays.
 - [ ] **Step 5:** Upload anchors (`speakerLeft`, `speakerRight`) and listeners (`desk`, `couch`) into the private Stage room only through the room's own `PUT /api/stage/room` with `If-Match`, values from the operator's house model; never commit them.
 
 ## Gate: the operator's review

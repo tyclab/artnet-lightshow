@@ -42,9 +42,10 @@ from typing import Callable
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
+from analysis.cache_dirs import model_dir  # noqa: E402
 from analysis.songformer import CONFORMER
 
-ROOT = Path(os.environ.get("ARTNET_MODEL_DIR", Path.home() / ".cache" / "artnet-lightshow" / "models"))
+ROOT = model_dir()
 READY = ".ready"
 _OUT = sys.stdout
 _JSON = False

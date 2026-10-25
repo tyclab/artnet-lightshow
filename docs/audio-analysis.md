@@ -77,7 +77,7 @@ python scripts/download-models.py --only songformer,panns
 The pre-show check (`npm run preflight`, or the button in the UI) runs the same
 download in the background when something the show needs is missing. It also
 imports the torch stack for real, which is what catches a mismatched build.
-Set `ARTNET_MODEL_DIR` to move the model directory, or `ARTNET_PYTHON` to choose
+Set `LIGHTSHOW_MODEL_DIR` (the former `ARTNET_MODEL_DIR` still counts) to move the model directory, or `ARTNET_PYTHON` to choose
 the interpreter.
 
 Licences: MuQ and MuQ-MuLan weights are CC BY-NC 4.0, fine for evaluation and
@@ -569,7 +569,7 @@ counts them in music that has none:
   country, with its Dance/Electronic tracks left out. None of it has a drop.
 
 The annotations are fetched once and the audio comes from YouTube, into
-`~/.cache/artnet-lightshow/eval`, never redistributed. Every stage before
+`~/.cache/tycstation-lightshow/eval` (or the former `~/.cache/artnet-lightshow` while only that exists), never redistributed. Every stage before
 dynamics is cached per track, so a change to `dynamics.py` or `DynamicsConfig`
 re-scores in about a minute:
 
@@ -1103,7 +1103,7 @@ Fetch MuQ, MuQ-MuLan and its XLM-RoBERTa text encoder before playback (Settings
 → Analysis models, or `scripts/download-models.py`).
 
 The adapters reuse models between tracks and follow `ARTNET_ANALYSIS_DEVICE`
-(or automatic CUDA selection). They read `ARTNET_MODEL_DIR`; individual local
+(or automatic CUDA selection). They read `LIGHTSHOW_MODEL_DIR` (or `ARTNET_MODEL_DIR`); individual local
 checkpoint paths can be set with `ARTNET_MUQ_MODEL`, `ARTNET_MUQ_MULAN_MODEL`,
 and `ARTNET_MUQ_TEXT_MODEL` (retain `xlm-roberta` in the text directory name,
 as the upstream loader uses it to select the architecture).
