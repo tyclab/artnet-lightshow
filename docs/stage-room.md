@@ -54,6 +54,8 @@ revision and measurement confidence can be retained in the model.
 
 Objects are `box`, `cylinder`, `prism` or `mesh`, with role `wall` or `furniture`.
 Position is the object's centre; size is its local width, height and depth.
+A `box` wall stops a directional beam and takes its pool; beams pass other
+shapes and stop at the bounds' floor, ceiling and walls.
 Optional `rotation` contains `x`, `y`, `z` Euler angles in radians. A cylinder's
 local axis is Y; X/Z sizes are diameters. A prism also needs a local X/Z polygon
 within its width/depth. Room polygons use world X/Z coordinates. Colours are

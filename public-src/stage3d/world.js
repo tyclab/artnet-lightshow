@@ -20,18 +20,81 @@ export function planToWorld(p) {
 /** Haze shows only in a beam: a room of bulbs and strips has nothing for the slider to thicken. */
 export const hasBeams = (placed) => placed.lamps.some((lamp) => lamp.kind === 'par');
 
-function beamLight(light, emission, floor = false, bounds = null) {
-  const from = light.position, aim = beamDirection(emission, floor);
-  let length = MAX_BEAM;
-  if (aim.y < -1e-6) length = Math.min(length, Math.max(0, from.y / -aim.y));
-  if (aim.y > 1e-6) length = Math.min(length, Math.max(0, ((bounds?.height ?? TRUSS_H + 2.5) - from.y) / aim.y));
-  if (bounds) for (const [axis, size] of [['x', bounds.width], ['z', bounds.depth]]) {
-    if (Math.abs(aim[axis]) > 1e-6) length = Math.min(length, Math.max(0, (Math.sign(aim[axis]) * size / 2 - from[axis]) / aim[axis]));
+const EPS = 1e-6;
+// The generic venue has no walls; its roof sits this far above the truss.
+const ROOF = TRUSS_H + 2.5;
+// A pool lies just off its surface so it does not fight the floor or a wall for depth.
+const POOL_LIFT = 0.006;
+// The cone's footprint stretches by 1/cos of the angle it strikes at; this cos caps a grazing hit.
+const GRAZE = 0.35;
+
+const dot = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;
+const cross = (a, b) => ({ x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x });
+const scaled = (v, k) => ({ x: v.x * k, y: v.y * k, z: v.z * k });
+const unit = (v) => scaled(v, 1 / Math.hypot(v.x, v.y, v.z));
+const turn = (v, axis, angle) => {
+  const c = Math.cos(angle), s = Math.sin(angle);
+  if (axis === 'x') return { x: v.x, y: c * v.y - s * v.z, z: s * v.y + c * v.z };
+  if (axis === 'y') return { x: c * v.x + s * v.z, y: v.y, z: c * v.z - s * v.x };
+  return { x: c * v.x - s * v.y, y: s * v.x + c * v.y, z: v.z };
+};
+
+/** A room's box walls with their axes in world space (three.js Euler XYZ); other shapes leave the room box to stop beams. */
+export function boxWalls(objects = []) {
+  return objects.filter((object) => object.role === 'wall' && object.kind === 'box').map(({ position, size, rotation }) => {
+    const r = rotation || { x: 0, y: 0, z: 0 };
+    const axes = [{ x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: 1 }].map((v) => turn(turn(turn(v, 'z', r.z), 'y', r.y), 'x', r.x));
+    return { centre: position, half: [size.x / 2, size.y / 2, size.z / 2], axes };
+  });
+}
+
+function wallHit(from, aim, wall) {
+  const offset = { x: from.x - wall.centre.x, y: from.y - wall.centre.y, z: from.z - wall.centre.z };
+  let enter = -Infinity, exit = Infinity, normal = null;
+  for (let i = 0; i < 3; i++) {
+    const axis = wall.axes[i], at = dot(offset, axis), along = dot(aim, axis), half = wall.half[i];
+    if (Math.abs(along) < EPS) { if (Math.abs(at) > half) return null; continue; }
+    const a = (-half - at) / along, b = (half - at) / along;
+    if (Math.min(a, b) > enter) { enter = Math.min(a, b); normal = scaled(axis, -Math.sign(along)); }
+    exit = Math.min(exit, Math.max(a, b));
   }
+  // A lamp set into the wall (enter behind it) shines out of it rather than stopping at its far face.
+  return enter <= exit && enter > EPS ? { length: enter, normal } : null;
+}
+
+/** The first surface a beam meets within its range: the room box (generic venue: floor and roof) or a box wall. */
+export function surfaceHit(from, aim, bounds = null, walls = []) {
+  let best = null;
+  const meet = (length, normal) => { if (length <= MAX_BEAM && (!best || length < best.length)) best = { length, normal }; };
+  if (aim.y < -EPS) meet(Math.max(0, from.y / -aim.y), { x: 0, y: 1, z: 0 });
+  if (aim.y > EPS) meet(Math.max(0, ((bounds?.height ?? ROOF) - from.y) / aim.y), { x: 0, y: -1, z: 0 });
+  if (bounds) for (const [axis, size] of [['x', bounds.width], ['z', bounds.depth]]) {
+    const side = Math.sign(aim[axis]);
+    if (Math.abs(aim[axis]) > EPS) meet(Math.max(0, (side * size / 2 - from[axis]) / aim[axis]), { x: 0, y: 0, z: 0, [axis]: -side });
+  }
+  for (const wall of walls) { const hit = wallHit(from, aim, wall); if (hit) meet(hit.length, hit.normal); }
+  return best;
+}
+
+/** Where a cone of `radius` lands on a surface: an ellipse, `along` the beam's slant on it and `across` that. */
+export function poolOn(end, normal, aim, radius) {
+  const into = dot(aim, normal), cos = Math.abs(into);
+  const slant = { x: aim.x - normal.x * into, y: aim.y - normal.y * into, z: aim.z - normal.z * into };
+  // Square on, any line in the surface will do: the pool is round.
+  const along = Math.hypot(slant.x, slant.y, slant.z) > EPS ? unit(slant)
+    : unit(cross(normal, Math.abs(normal.x) < 0.9 ? { x: 1, y: 0, z: 0 } : { x: 0, y: 0, z: 1 }));
+  const minor = radius * 1.35;
+  return { at: { x: end.x + normal.x * POOL_LIFT, y: end.y + normal.y * POOL_LIFT, z: end.z + normal.z * POOL_LIFT },
+    normal, along, across: cross(along, normal), major: minor / Math.max(GRAZE, cos), minor };
+}
+
+function beamLight(light, emission, floor = false, bounds = null, walls = []) {
+  const from = light.position, aim = beamDirection(emission, floor);
+  const hit = surfaceHit(from, aim, bounds, walls);
+  const length = hit ? hit.length : MAX_BEAM;
   const end = { x: from.x + aim.x * length, y: from.y + aim.y * length, z: from.z + aim.z * length };
   const radius = Math.tan((emission.beamAngle ?? 22) * Math.PI / 360) * length;
-  const poolRadius = aim.y < 0 && Math.abs(end.y) < 1e-6 ? radius * 1.35 / Math.max(0.35, -aim.y) : 0;
-  return { ...light, kind: 'par', aim, length, end, radius, poolRadius };
+  return { ...light, kind: 'par', aim, length, end, radius, pool: hit && radius > 0 ? poolOn(end, hit.normal, aim, radius) : null };
 }
 
 export function placeRig(fixtures, profiles, rig) {
@@ -139,6 +202,7 @@ export function roomRig(fixtures, rig, model) {
     lightObjects.get(object.lightBindingId).push(object.id);
   }
   const indices = new Map(fixtures.map((fixture, index) => [fixture.id, index]));
+  const walls = boxWalls(model.objects);
   const { resolved, mapped, outputs } = resolveBindings(fixtures, rig, model.bindings);
   let estimated = 0;
   for (const { binding, sources, missingSources } of resolved) {
@@ -159,7 +223,7 @@ export function roomRig(fixtures, rig, model) {
         if (length > 1e-6) cells.push({ ...light, size: 0.025, length, from, to,
           position: { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2, z: (from.z + to.z) / 2 } });
       }
-    } else if (fixture?.emission?.kind === 'beam') lamps.push(beamLight(light, fixture.emission, fixture.group === 'floor', model.bounds));
+    } else if (fixture?.emission?.kind === 'beam') lamps.push(beamLight(light, fixture.emission, fixture.group === 'floor', model.bounds, walls));
     else if (fixture?.emission?.kind === 'strip' || !fixture?.emission && !binding.sources && rig.cellMaps[indices.get(binding.fixtureId)]) cells.push({ ...light, size: 0.08 });
     else lamps.push({ ...light, kind: 'bulb', aim: null, length: 0 });
   }

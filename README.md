@@ -502,8 +502,11 @@ horizontal, positive tilt points upward, and spread is the full cone angle.
 Single-zone strips use the same output colour along their length; segmented
 strips keep their individual cells. Stage and imported room bindings use the
 selected shape and aim. Existing shows keep their default appearance until a
-shape is chosen. Show export/import and fixture undo preserve `emission`
-(`kind`, optional `pan`, `tilt`, `beamAngle`) separately from cell geometry.
+shape is chosen. A beam's pool lies on the first surface it meets within 14 m
+(the floor or ceiling, and in an imported room a wall of its bounds or a box
+wall), stretched along the angle the beam strikes at. Show export/import and
+fixture undo preserve `emission` (`kind`, optional `pan`, `tilt`, `beamAngle`)
+separately from cell geometry.
 
 **Maximum brightness** is a fixture trim, 0–255, applied after looks and
 masters; it is not a temporary override. A fixture override can set colour,

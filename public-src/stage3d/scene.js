@@ -12,8 +12,8 @@ import { meanLightRGB, roomViews, STAGE_FOV } from './world.js';
  * lights (dozens of spotlights would not keep that rate): a lamp's lens, a
  * cell and a bulb glow in their own colour, a par's beam is a cone of light in
  * the haze, soft at its edges and fading along its length, and where a beam
- * meets the floor it leaves a pool. The haze setting thickens the beams and
- * the fog.
+ * meets the floor, the ceiling or a wall it leaves a pool lying on that
+ * surface. The haze setting thickens the beams and the fog.
  *
  * Loaded on its own (three.js is most of it), the first time the Stage view
  * opens. `createStageScene` throws when the browser has no WebGL.
@@ -300,6 +300,9 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
   const tmpM = new THREE.Matrix4();
   const tmpV = new THREE.Vector3();
   const tmpS = new THREE.Vector3();
+  const tmpX = new THREE.Vector3();
+  const tmpY = new THREE.Vector3();
+  const tmpZ = new THREE.Vector3();
 
   function instanced(geometry, material, count) {
     const mesh = new THREE.InstancedMesh(geometry, material, Math.max(1, count));
@@ -359,8 +362,12 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
       lenses.setMatrixAt(k, tmpM);
       tmpM.compose(new THREE.Vector3(par.position.x, par.position.y, par.position.z), tmpQ, tmpS.set(par.radius, par.length, par.radius));
       beams.setMatrixAt(k, tmpM);
-      const poolRadius = par.poolRadius;
-      tmpM.compose(new THREE.Vector3(par.end.x, 0.006, par.end.z), new THREE.Quaternion(), tmpS.set(poolRadius || 0.0001, 1, poolRadius || 0.0001));
+      // The flat pool turned onto its surface (world.poolOn): x along the slant, y out of the surface, z across.
+      const { pool } = par;
+      if (pool) tmpM.makeBasis(tmpX.set(pool.along.x, pool.along.y, pool.along.z).multiplyScalar(pool.major),
+        tmpY.set(pool.normal.x, pool.normal.y, pool.normal.z), tmpZ.set(pool.across.x, pool.across.y, pool.across.z).multiplyScalar(pool.minor))
+        .setPosition(pool.at.x, pool.at.y, pool.at.z);
+      else tmpM.makeScale(0, 0, 0);
       pools.setMatrixAt(k, tmpM);
       lampGlow.geometry.attributes.position.setXYZ(k, par.position.x + aim.x * 0.05, par.position.y + aim.y * 0.05, par.position.z + aim.z * 0.05);
     });
