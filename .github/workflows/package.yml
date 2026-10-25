@@ -42,7 +42,7 @@ jobs:
       - name: The analysis environment would install here
         shell: bash
         run: |
-          dir="dist/Tyclab-Lightshow-$(node -p "require('./package.json').version")-$(node -p "process.platform + '-' + process.arch")"
+          dir="dist/TycStation-Lightshow-$(node -p "require('./package.json').version")-$(node -p "process.platform + '-' + process.arch")"
           UV_PROJECT_ENVIRONMENT="$RUNNER_TEMP/dry-venv" UV_PYTHON_PREFERENCE=only-managed \
             "$dir/tools/uv" sync --locked --extra cpu --python 3.12 --project "$dir/app" --dry-run
 
@@ -53,7 +53,7 @@ jobs:
           choco install innosetup --no-progress -y
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Qp "/DAppVersion=$version" `
-            "/DSourceDir=$PWD\dist\Tyclab-Lightshow-$version-win32-x64" "/DOutputDir=$PWD\dist" `
+            "/DSourceDir=$PWD\dist\TycStation-Lightshow-$version-win32-x64" "/DOutputDir=$PWD\dist" `
             packaging\windows\installer.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -62,8 +62,8 @@ jobs:
         shell: pwsh
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $dir = Join-Path $env:RUNNER_TEMP 'Tyclab Lightshow'
-          $setup = Start-Process -Wait -PassThru -FilePath "dist\Tyclab-Lightshow-$version-win32-x64-setup.exe" `
+          $dir = Join-Path $env:RUNNER_TEMP 'TycStation Lightshow'
+          $setup = Start-Process -Wait -PassThru -FilePath "dist\TycStation-Lightshow-$version-win32-x64-setup.exe" `
             -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', "/DIR=`"$dir`""
           if ($setup.ExitCode -ne 0) { throw "the installer exited with $($setup.ExitCode)" }
           if (Test-Path (Join-Path $dir 'portable')) { throw 'an installed copy must not be portable' }
@@ -74,7 +74,7 @@ jobs:
           if ($uninstall.ExitCode -ne 0) { throw "the uninstaller exited with $($uninstall.ExitCode)" }
           # The uninstaller finishes from a copy of itself; give it a moment.
           Start-Sleep -Seconds 5
-          if (Test-Path (Join-Path $dir 'Tyclab Lightshow.exe')) { throw 'the uninstaller left the app behind' }
+          if (Test-Path (Join-Path $dir 'TycStation Lightshow.exe')) { throw 'the uninstaller left the app behind' }
 
       - uses: actions/upload-artifact@v4
         with:

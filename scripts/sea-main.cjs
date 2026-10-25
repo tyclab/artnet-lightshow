@@ -11,9 +11,14 @@ function dataDirFor({ root, platform = process.platform, env = process.env, home
   const p = platform === 'win32' ? path.win32 : path.posix;
   if (env.LIGHTSHOW_DATA_DIR && env.LIGHTSHOW_DATA_DIR.trim()) return env.LIGHTSHOW_DATA_DIR;
   if (exists(p.join(root, 'portable'))) return p.join(root, 'data');
-  if (platform === 'win32') return p.join(env.LOCALAPPDATA || p.join(home, 'AppData', 'Local'), 'ArtNet Lightshow');
-  if (platform === 'darwin') return p.join(home, 'Library', 'Application Support', 'ArtNet Lightshow');
-  return p.join(env.XDG_DATA_HOME || p.join(home, '.local', 'share'), 'artnet-lightshow');
+  // An install from before the rename keeps its data where it is until the new folder exists.
+  const base = platform === 'win32' ? (env.LOCALAPPDATA || p.join(home, 'AppData', 'Local'))
+    : platform === 'darwin' ? p.join(home, 'Library', 'Application Support')
+    : (env.XDG_DATA_HOME || p.join(home, '.local', 'share'));
+  const [fresh, former] = platform === 'linux' ? ['tycstation-lightshow', 'artnet-lightshow'] : ['TycStation Lightshow', 'ArtNet Lightshow'];
+  const data = p.join(base, fresh);
+  const old = p.join(base, former);
+  return !exists(data) && exists(old) ? old : data;
 }
 
 function main() {

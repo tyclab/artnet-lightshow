@@ -8,6 +8,8 @@ import json
 import sys
 import os
 from pathlib import Path
+
+from .cache_dirs import model_dir
 from dataclasses import dataclass
 from typing import Any
 
@@ -30,7 +32,7 @@ def _optional(name):
 
 
 def _model_path(name, variable):
-    root = Path(os.environ.get("ARTNET_MODEL_DIR", Path.home() / ".cache" / "artnet-lightshow" / "models"))
+    root = model_dir()
     return os.environ.get(variable) or str(root / name)
 
 

@@ -6,10 +6,10 @@
  *   npm run package                   for this machine
  *   npm run package -- --no-archive   the folder only
  *
- * dist/Tyclab-Lightshow-<version>-<platform>-<arch>/
- *   Tyclab Lightshow.exe   Node (the one running this script), made a single
+ * dist/TycStation-Lightshow-<version>-<platform>-<arch>/
+ *   TycStation Lightshow.exe   Node (the one running this script), made a single
  *                          executable application whose script is
- *                          scripts/sea-main.cjs; `tyclab-lightshow` on Linux
+ *                          scripts/sea-main.cjs; `tycstation-lightshow` on Linux
  *   app/                   server.js, src/, the built public/, the production
  *                          node_modules, the Python lockfile
  *   tools/uv(.exe)         uv, which sets the analysis environment up
@@ -60,10 +60,10 @@ const DIST = path.resolve(outAt >= 0 ? args[outAt + 1] : path.join(ROOT, 'dist')
 
 const target = `${process.platform}-${process.arch}`;
 const windows = process.platform === 'win32';
-const name = `Tyclab-Lightshow-${PKG.version}-${target}`;
+const name = `TycStation-Lightshow-${PKG.version}-${target}`;
 const OUT = path.join(DIST, name);
 const APP = path.join(OUT, 'app');
-const EXE = path.join(OUT, windows ? 'Tyclab Lightshow.exe' : 'tyclab-lightshow');
+const EXE = path.join(OUT, windows ? 'TycStation Lightshow.exe' : 'tycstation-lightshow');
 
 function step(what) { console.log(`\n▸ ${what}`); }
 
@@ -124,7 +124,7 @@ function brandWindowsExe(file) {
     ProductName: 'TycStation Lightshow',
     FileDescription: 'TycStation Lightshow',
     InternalName: 'TycStation Lightshow',
-    OriginalFilename: 'Tyclab Lightshow.exe',
+    OriginalFilename: 'TycStation Lightshow.exe',
     CompanyName: 'Tyclab',
     LegalCopyright: 'Copyright (c) 2026 Tom DARONDOVAS. MIT license.',
     ProductVersion: PKG.version,
@@ -137,7 +137,7 @@ function brandWindowsExe(file) {
 
 const README = `TycStation Lightshow ${PKG.version}
 
-Start it: ${windows ? 'double-click "Tyclab Lightshow.exe"' : 'run ./tyclab-lightshow'}. It opens the app in your
+Start it: ${windows ? 'double-click "TycStation Lightshow.exe"' : 'run ./tycstation-lightshow'}. It opens the app in your
 browser (http://localhost:3000); closing its ${windows ? 'window' : 'terminal'} stops it, blacking the rig out first.
 A fresh install opens the setup, which walks through the outputs, the fixtures and the music.
 
@@ -148,14 +148,14 @@ Sources -> Analysis models.
 
 Your settings, show, analysis cache, logs and the analysis environment are kept
 in the "data" folder beside this file, because of the file called "portable".
-Delete "portable" to keep them in your user folder instead${windows ? ' (%LOCALAPPDATA%\\ArtNet Lightshow)' : ' (~/.local/share/artnet-lightshow)'}.
+Delete "portable" to keep them in your user folder instead${windows ? ' (%LOCALAPPDATA%\\TycStation Lightshow)' : ' (~/.local/share/tycstation-lightshow)'}.
 
 browser-extension/ is the Firefox Deezer extension: open
 about:debugging#/runtime/this-firefox, choose Load Temporary Add-on and select
 its manifest.json. See browser-extension/README.md for permanent installation.
 
-The full manual: https://github.com/tyclab/artnet-lightshow#readme
-Based on LightD31's ArtNet Lightshow; upstream copyright and MIT license are in app/LICENSE.
+The full manual: https://github.com/tyclab/lightshow#readme
+Based on LightD31's TycStation Lightshow; upstream copyright and MIT license are in app/LICENSE.
 `;
 
 async function main() {

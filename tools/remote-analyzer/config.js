@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-export const DEFAULT_REPO = 'https://github.com/tyclab/artnet-lightshow.git';
+export const DEFAULT_REPO = 'https://github.com/tyclab/lightshow.git';
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const KEYS = ['server', 'tokenFile', 'name', 'dataDir', 'modelData', 'source', 'repo', 'image', 'memory', 'gpuMemory',
   'maxOtherVramMiB', 'allowFullscreen', 'idleStopMin', 'searchCommits'];

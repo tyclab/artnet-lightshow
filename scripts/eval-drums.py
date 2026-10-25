@@ -4,7 +4,7 @@ How well the pulse's drum lanes find the kick, the snare and the hats in real
 drumming, scored against hand-marked hits.
 
 MDB Drums (Southall et al., 2017), CC BY-NC-SA 4.0: downloaded at runtime
-to ~/.cache/artnet-lightshow/eval/mdb-drums and never redistributed.
+to ~/.cache/tycstation-lightshow/eval/mdb-drums and never redistributed.
 """
 
 import argparse
@@ -19,9 +19,10 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 from analysis import preprocess, pulse  # noqa: E402
+from analysis.cache_dirs import eval_dir  # noqa: E402
 
 RAW = 'https://raw.githubusercontent.com/CarlSouthall/MDBDrums/master/MDB%20Drums'
-CACHE = Path(os.environ.get('ARTNET_EVAL_DIR', Path.home() / '.cache' / 'artnet-lightshow' / 'eval')) / 'mdb-drums'
+CACHE = eval_dir() / 'mdb-drums'
 
 TRAIN = ['80sRock', 'BebopJazz', 'Britpop', 'CoolJazz', 'Disco', 'FunkJazz', 'FusionJazz',
          'Reggae', 'Rock', 'Rockabilly', 'Shadows', 'Zeppelin']
@@ -36,7 +37,7 @@ def fetch(url, path):
     if path.exists():
         return path
     path.parent.mkdir(parents=True, exist_ok=True)
-    request = urllib.request.Request(url, headers={'User-Agent': 'artnet-lightshow eval-drums'})
+    request = urllib.request.Request(url, headers={'User-Agent': 'tycstation-lightshow eval-drums'})
     with urllib.request.urlopen(request, timeout=300) as response:
         data = response.read()
     path.write_bytes(data)

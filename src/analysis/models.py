@@ -2,6 +2,8 @@
 
 import contextlib
 import os
+
+from . import cache_dirs
 import sys
 import threading
 import warnings
@@ -683,8 +685,7 @@ def bs_roformer_checkpoint():
     ARTNET_BS_ROFORMER_MODEL is either a model name audio-separator knows,
     looked for in the model directory, or the path to a checkpoint anywhere.
     """
-    model_dir = os.environ.get(
-        'ARTNET_MODEL_DIR', os.path.expanduser('~/.cache/artnet-lightshow/models'))
+    model_dir = str(cache_dirs.model_dir())
     filename = os.environ.get('ARTNET_BS_ROFORMER_MODEL', '').strip()
     if not filename:
         return model_dir, 'BS-Roformer-SW.ckpt'

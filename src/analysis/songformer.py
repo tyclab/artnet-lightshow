@@ -9,6 +9,7 @@ import types
 from pathlib import Path
 
 from . import models
+from . import cache_dirs
 
 RATE = 24000
 WINDOW_SEC = 420
@@ -31,8 +32,7 @@ def _log(message):
 
 
 def model_dir():
-    root = Path(os.environ.get('ARTNET_MODEL_DIR',
-                               Path.home() / '.cache' / 'artnet-lightshow' / 'models'))
+    root = cache_dirs.model_dir()
     return Path(os.environ.get('ARTNET_SONGFORMER_MODEL') or root / 'songformer')
 
 

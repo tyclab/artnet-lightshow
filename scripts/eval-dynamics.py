@@ -27,7 +27,7 @@ Two sets of music, for two different questions:
 The annotations are fetched once: Raveform's `segments.json` out of its
 480 MB archive by HTTP range requests (about 9 MB of traffic), Harmonix's
 files from GitHub. The audio comes from YouTube through yt-dlp, as the show's
-own search does, into ~/.cache/artnet-lightshow/eval, and is never
+own search does, into ~/.cache/tycstation-lightshow/eval, and is never
 redistributed. A video that has gone, or is another version of the track
 than the one annotated (its length differs), is noted and skipped on every
 later run, and the next track in the draw takes its place.
@@ -88,12 +88,13 @@ sys.path.insert(0, str(ROOT / 'src'))
 
 from analysis import bands, dynamics, features, models, preprocess, rhythm  # noqa: E402
 from analysis.config import DEFAULT  # noqa: E402
+from analysis.cache_dirs import eval_dir  # noqa: E402
 
-EVAL = Path(os.environ.get('ARTNET_EVAL_DIR', Path.home() / '.cache' / 'artnet-lightshow' / 'eval'))
+EVAL = eval_dir()
 RAVEFORM_ZIP = 'https://huggingface.co/datasets/taejunkim/raveform/resolve/main/raveform.zip'
 RAVEFORM_SEGMENTS = 'raveform/structures/segments.json'
 HARMONIX = 'https://raw.githubusercontent.com/urinieto/harmonixset/main/dataset'
-USER_AGENT = 'artnet-lightshow eval-dynamics'
+USER_AGENT = 'tycstation-lightshow eval-dynamics'
 
 # Raveform's own eight folds: two held out, six to tune on. Harmonix has no
 # folds, so a quarter of it by track number.

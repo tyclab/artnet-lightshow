@@ -142,7 +142,7 @@ const HANDSHAKE_TRIES = 5;
 
 const DISCOVERY_URL = 'https://discovery.meethue.com/';
 
-const DEVICE_TYPE = 'artnet-lightshow';
+const DEVICE_TYPE = 'tycstation-lightshow';
 const DEVICE_NAME_MAX = 19;
 
 function deviceType(label: string): string {

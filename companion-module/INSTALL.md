@@ -28,7 +28,7 @@ The chosen folder must **contain** module folders (it is not the module folder i
 ```bash
 # Linux / macOS example
 mkdir -p ~/companion-dev-modules
-ln -s /path/to/artnet-lightshow/companion-module ~/companion-dev-modules/companion-module-artnet-lightshow
+ln -s /path/to/lightshow/companion-module ~/companion-dev-modules/companion-module-tycstation-lightshow
 ```
 
 Companion watches the folder: when you edit module files it restarts just that module automatically.

@@ -30,7 +30,7 @@ flowchart LR
 
 - **Code.** The server names its analysis version, `<schema>+<digest>`
   (`src/analysis-version.ts`). The worker finds the commit of
-  `github.com/tyclab/artnet-lightshow` with exactly those files, checks them
+  `github.com/tyclab/lightshow` with exactly those files, checks them
   out under its data folder and verifies the digest before it runs them. The
   code never comes from the server. A `source` folder in the configuration
   replaces the lookup (for a development server); its own digest must match.
@@ -73,7 +73,7 @@ configuration in `~/.config/lightshow-remote-analyzer`.
 
    ```bash
    D=~/.local/share/lightshow-remote-analyzer
-   git clone https://github.com/tyclab/artnet-lightshow.git "$D/agent"
+   git clone https://github.com/tyclab/lightshow.git "$D/agent"
    (cd "$D/agent/tools/remote-analyzer" && npm ci --omit=dev)
    ```
 
@@ -105,11 +105,11 @@ configuration in `~/.config/lightshow-remote-analyzer`.
    | `searchCommits` | `400` | How far back to look for the server's version |
 
 4. **The models**, the server's exact weights: copy them from the server, e.g.
-   from tychome (`/opt/artnet-lightshow/data` on the host):
+   from tychome (`/opt/lightshow/data` on the host):
 
    ```bash
    M=~/.local/share/lightshow-remote-analyzer/model-data; mkdir -p "$M"
-   ssh root@tychome.internal.tycstation.com 'tar -C /opt/artnet-lightshow/data -c models .cache/torch .cache/huggingface' | tar -x -C "$M"
+   ssh root@tychome.internal.tycstation.com 'tar -C /opt/lightshow/data -c models .cache/torch .cache/huggingface' | tar -x -C "$M"
    ```
 
    `node cli.js prepare --fetch-models` downloads what is missing instead, with

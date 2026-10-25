@@ -329,9 +329,9 @@ test('Hue channels inherit their strongest lamp capability', () => {
 // pairing impossible.
 
 test('the devicetype fits what the bridge takes, however long the hostname', () => {
-  assert.strictEqual(hue.deviceType('studio-pc'), 'artnet-lightshow#studio-pc');
-  assert.strictEqual(hue.deviceType('front-of-house-laptop-2.local'), 'artnet-lightshow#front-of-house-lapt');
-  assert.strictEqual(hue.deviceType('Régie (Salle 1)'), 'artnet-lightshow#Rgie Salle 1');
+  assert.strictEqual(hue.deviceType('studio-pc'), 'tycstation-lightshow#studio-pc');
+  assert.strictEqual(hue.deviceType('front-of-house-laptop-2.local'), 'tycstation-lightshow#front-of-house-lapt');
+  assert.strictEqual(hue.deviceType('Régie (Salle 1)'), 'tycstation-lightshow#Rgie Salle 1');
   for (const name of ['a'.repeat(200), 'x.y.z', '', '___']) {
     const type = hue.deviceType(name);
     assert.ok(type.length <= 40 && type.split('#')[1].length <= 19, type);
@@ -339,7 +339,7 @@ test('the devicetype fits what the bridge takes, however long the hostname', () 
 });
 
 test('a hostname that is only an address pairs as "lightshow"', () => {
-  assert.strictEqual(hue.deviceType('2a02-842a-00aa-ce01-cbc8-3a3d-ba2d-06d9.rev.sfr.net'), 'artnet-lightshow#lightshow');
-  assert.strictEqual(hue.deviceType('192-168-1-20.lan'), 'artnet-lightshow#lightshow');
-  assert.strictEqual(hue.deviceType(''), 'artnet-lightshow#lightshow');
+  assert.strictEqual(hue.deviceType('2a02-842a-00aa-ce01-cbc8-3a3d-ba2d-06d9.rev.sfr.net'), 'tycstation-lightshow#lightshow');
+  assert.strictEqual(hue.deviceType('192-168-1-20.lan'), 'tycstation-lightshow#lightshow');
+  assert.strictEqual(hue.deviceType(''), 'tycstation-lightshow#lightshow');
 });
