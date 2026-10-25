@@ -2,15 +2,18 @@ import { profileSchema, validate } from './validation.ts';
 import type { ProfileInput } from './validation.ts';
 import type { AreaLamp } from './hue.ts';
 import type { ChannelListEntry, ChannelMap, HueLampTraits, ProfileCell } from '../types/rig.ts';
+const MAX_LIGHTS = 64;
 function hueProfileId(lampId: string, bridgeId = ''): string {
     return `hue-${bridgeId ? `${bridgeId}-` : ''}${lampId}`.slice(0, 128);
 }
-function traitsOf(lamp: Pick<AreaLamp, 'capabilities'>): HueLampTraits | null {
+// The lights' products and fittings ride along so the Stage can aim a lamp nobody has shaped (emission.ts).
+function traitsOf(lamp: Pick<AreaLamp, 'capabilities' | 'lights'>): HueLampTraits | null {
     const caps = lamp.capabilities;
     if (!caps)
         return null;
     const fixed = caps.fixedWhite !== null ? { warm: caps.fixedWhite, cool: caps.fixedWhite } : null;
-    return { gamut: caps.gamut, whites: caps.whites || fixed };
+    const lights = (lamp.lights || []).slice(0, MAX_LIGHTS).map((light) => ({ product: light.product.slice(0, 128), archetype: light.archetype }));
+    return { gamut: caps.gamut, whites: caps.whites || fixed, ...(lights.length ? { lights } : {}) };
 }
 function kelvinLabel(kelvin: number): string {
     return `${Math.round(kelvin / 100) * 100} K`;

@@ -3,9 +3,12 @@
 
 import test from 'node:test';
 import assert from 'node:assert';
+import https from 'node:https';
+import { EventEmitter } from 'node:events';
 
 import { hueProfile, hueProfileId } from '../../src/server/hue-profile.ts';
-import { capabilitiesOf, lampsOf } from '../../src/server/hue.ts';
+import { capabilitiesOf, lampsOf, listEntertainmentConfigs } from '../../src/server/hue.ts';
+import { profileSchema, validate } from '../../src/server/validation.ts';
 import { isHueProfile, hueSections, hueChannelsLabel, kelvinColour } from '../../src/shared/hue-lamp.ts';
 import { isBuiltinProfile } from '../../src/server/profiles.ts';
 import { areaLamp, HUE_COLOR, HUE_AMBIANCE, HUE_WHITE, HUE_GRADIENT } from './hue-test-lamps.js';
@@ -58,6 +61,55 @@ test('a channel the bridge says nothing about is a lamp of its own, unread', () 
   const [lamp] = lampsOf([{ channel_id: 6, members: [] }], NAMES);
   assert.deepStrictEqual([lamp.id, lamp.name, lamp.channels, lamp.capabilities], ['channel-6', '', [6], null]);
   assert.strictEqual(hueProfile(lamp), null, 'and gets no profile until it can be read');
+});
+
+// The bridge's CLIP v2 resources, answered by path as the bridge would.
+function fakeBridge(t, resources) {
+  t.mock.method(https, 'request', (options, onResponse) => {
+    const req = new EventEmitter();
+    req.write = () => {};
+    req.destroy = (err) => { if (err) setImmediate(() => req.emit('error', err)); };
+    req.end = () => setImmediate(() => {
+      const res = new EventEmitter();
+      res.statusCode = 200;
+      res.headers = {};
+      onResponse(res);
+      res.emit('data', Buffer.from(JSON.stringify({ data: resources[options.path.split('/').pop()] || [] })));
+      res.emit('end');
+    });
+    return req;
+  });
+}
+
+test('each light\'s archetype is read off its device, else its light, and rides on its lamp, channel and profile', async (t) => {
+  const GU10 = 'Hue White and Color Ambiance GU10';
+  const devices = [
+    ['d1', 'Spot 1', GU10, 'spot_bulb'], ['d2', 'Spot 2', GU10, 'spot_bulb'], ['d3', 'Spot 3', GU10, undefined],
+    ['d4', 'Pendant', 'Hue white ambiance E27', 'unknown_archetype'], ['d5', 'Lantern', 'Hue Lucca', 'wall_lantern'],
+  ];
+  const lightArchetypes = { d3: 'spot_bulb', d4: 'pendant_round', d5: 'classic_bulb' };
+  fakeBridge(t, {
+    device: devices.map(([id, name, product, archetype]) => ({ id, metadata: { name, archetype }, product_data: { product_name: product } })),
+    light: devices.map(([id]) => ({ id: `l-${id}`, owner: { rid: id }, color: { gamut_type: 'C' }, metadata: { archetype: lightArchetypes[id] } })),
+    entertainment: devices.map(([id]) => ({ id: `e-${id}`, owner: { rid: id }, renderer_reference: { rid: `l-${id}` } })),
+    entertainment_configuration: [{ id: 'area', metadata: { name: 'Lounge' }, channels: [
+      { channel_id: 0, members: ['d1', 'd2', 'd3'].map((id) => ({ service: { rid: `e-${id}` }, index: 0 })) },
+      { channel_id: 1, members: [{ service: { rid: 'e-d4' }, index: 0 }] },
+      { channel_id: 2, members: [{ service: { rid: 'e-d5' }, index: 0 }] },
+    ] }],
+  });
+  const [area] = await listEntertainmentConfigs('bridge.test', 'key');
+  const spot = { product: GU10, archetype: 'spot_bulb' };
+  assert.deepStrictEqual(area.lamps.map((lamp) => [lamp.channels, lamp.archetype, lamp.lights]), [
+    [[0], 'spot_bulb', [spot, spot, spot]],
+    [[1], 'pendant_round', [{ product: 'Hue white ambiance E27', archetype: 'pendant_round' }]],
+    [[2], 'wall_lantern', [{ product: 'Hue Lucca', archetype: 'wall_lantern' }]],
+  ], 'a light fills in for a device without one; the bridge\'s catch-all is no archetype; a device\'s own wins');
+  assert.deepStrictEqual(area.channels.map((channel) => [channel.product, channel.archetype]),
+    [[GU10, 'spot_bulb'], ['Hue white ambiance E27', 'pendant_round'], ['Hue Lucca', 'wall_lantern']]);
+  const profile = hueProfile(area.lamps[0], 'b1');
+  assert.deepStrictEqual(profile.hue.lights, [spot, spot, spot], 'one fixture, every light it is made of');
+  assert.deepStrictEqual(validate(profileSchema, profile, 'saved profile').hue.lights, profile.hue.lights, 'and a saved show keeps them');
 });
 
 // ── The profile ──────────────────────────────────────────────────────────────

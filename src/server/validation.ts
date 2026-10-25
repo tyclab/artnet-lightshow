@@ -237,6 +237,7 @@ const profileSchema = z.object({
       .strict().refine((w) => w.warm <= w.cool).nullable(),
     legacy: z.boolean().optional(),
     partial: z.boolean().optional(),
+    lights: z.array(z.object({ product: z.string().max(128), archetype: z.string().max(64).nullable() }).strict()).max(64).optional(),
   }).strict().optional(),
   hardware: rateOverrideSchema.optional(),
   strobeHz: z.object({ min: z.number().nonnegative().max(100), max: z.number().positive().max(100) }).strict().refine((v) => v.min <= v.max).optional(),

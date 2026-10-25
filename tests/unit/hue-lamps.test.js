@@ -206,6 +206,23 @@ async function withApp(fixtures, fn, areas = areaOf(LAMPS)) {
   });
 }
 
+test('a lamp\'s lights, each with its product and fitting, go into its profile when added and when refreshed', async () => {
+  const lights = Array.from({ length: 3 }, () => ({ product: 'Hue GU10', archetype: 'spot_bulb' }));
+  const spots = [{ ...areaLamp({ id: 'spots', name: 'Spots', product: 'Hue GU10', channels: [6] }), lights }];
+  await withApp([par(0, 1)], async (call) => {
+    const added = await call('POST', '/api/hue/b1/add', { lamps: ['spots'] });
+    assert.strictEqual(added.body.ok, true, added.body.error);
+    assert.deepStrictEqual(getProfile(added.body.fixtures[0]).hue.lights, lights, 'one fixture, the three spots it is made of');
+  }, areaOf(spots));
+  // Patched before archetypes were read: its profile knows only what the lamp can show.
+  await withApp([par(0, 1), lamp(5, [6])], async (call) => {
+    assert.strictEqual(getProfile(state.fixtures[1]).hue.lights, undefined);
+    const refreshed = await call('POST', '/api/hue/b1/refresh', {});
+    assert.deepStrictEqual(refreshed.body.refreshed, [5], JSON.stringify(refreshed.body.skipped));
+    assert.deepStrictEqual(getProfile(state.fixtures[1]).hue.lights, lights);
+  }, areaOf(spots));
+});
+
 test('lamp discovery retains physical channel members for room exporters', async () => {
   const areas = await areaOf(LAMPS)();
   areas[0].channels[3].members = [{ deviceId: 'tv', serviceId: 'gradient-service', segmentIndex: 0, segmentLength: 3, segmentCount: 3 }];
