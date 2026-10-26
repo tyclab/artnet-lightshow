@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Dedicated Music Assistant browser display and optional leased curtain pixels",
   "engines": {
-    "node": ">=22.18"
+    "node": ">=24"
   },
   "scripts": {
     "start": "node cli.js",

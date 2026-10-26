@@ -63,7 +63,7 @@ numpy work around the models ten times slower.
 ## Install on the PC
 
 Needs Docker inside the WSL distro, the Windows NVIDIA driver (WSL2 sees the
-card as `/dev/dxg`; `nvidia-smi` is `/usr/lib/wsl/lib/nvidia-smi`), Node 22.18+
+card as `/dev/dxg`; `nvidia-smi` is `/usr/lib/wsl/lib/nvidia-smi`), Node 24+
 and git. Nothing is installed system-wide: the worker keeps everything under
 `~/.local/share/lightshow-remote-analyzer` (the data folder) and its
 configuration in `~/.config/lightshow-remote-analyzer`.
