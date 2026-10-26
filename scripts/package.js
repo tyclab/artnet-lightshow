@@ -155,7 +155,7 @@ about:debugging#/runtime/this-firefox, choose Load Temporary Add-on and select
 its manifest.json. See browser-extension/README.md for permanent installation.
 
 The full manual: https://github.com/tyclab/lightshow#readme
-Based on LightD31's TycStation Lightshow; upstream copyright and MIT license are in app/LICENSE.
+Based on LightD31's ArtNet Lightshow; upstream copyright and MIT license are in app/LICENSE.
 `;
 
 async function main() {

@@ -6,20 +6,17 @@ Manual looks, effects, pads and sequences work without Python; analysed shows
 and live audio use the optional analysis environment.
 
 [TycStation Lightshow](https://github.com/tyclab/lightshow) builds on
-[LightD31’s TycStation Lightshow](https://github.com/LightD31/artnet-lightshow) under
-the [MIT license](LICENSE). It combines reviewed upstream improvements with
-Tyclab’s own workflows and deployment revisions. An upstream release is not
-a TycStation Lightshow release.
+[LightD31’s ArtNet Lightshow](https://github.com/LightD31/artnet-lightshow) under
+the [MIT license](LICENSE) and is developed independently. Upstream is no
+longer tracked; an upstream release is not a TycStation Lightshow release.
 
-## Upstream integration
+## Upstream origin
 
-This consolidation was reviewed against LightD31's
+The last upstream consolidation was reviewed against LightD31's
 [`b6f7f28`](https://github.com/LightD31/artnet-lightshow/commit/b6f7f2812d28ef1e0d40b19c64d9c59a8ea23a6f)
 (8 October 2026). Tyclab retains its Music Assistant pixel input, Stage rooms
 and screens, hardware capability/admission policies, saved sequences and
-Fire/Ice effect catalogue. New upstream work is reviewed by behavior and
-regression tests before integration; a different commit history does not mean
-a performance fix is missing.
+Fire/Ice effect catalogue. Later upstream work is not reviewed or adopted.
 
 | Upstream work | Consolidated behavior |
 |---------------|-----------------------|
@@ -36,15 +33,6 @@ are not adopted. Existing shows keep their references; legacy lamp profiles
 remain available until the operator refreshes capabilities. Emission geometry
 is explicit: bulbs, strips and directional beams can use any output protocol.
 Every startup remains disarmed.
-
-```mermaid
-flowchart LR
-  Upstream[Incoming upstream commits] --> Review[Behavior and performance review]
-  Fork[Tyclab workflows and saved shows] --> Review
-  Review --> Adapt[Integrate improvements and preserve migrations]
-  Adapt --> Tests[Safety / protocol / browser regressions]
-  Tests --> Release[TycStation Lightshow build]
-```
 
 ## Signal flow
 
@@ -254,7 +242,7 @@ Fire and Ice are slow, strobe-free Party looks.
 The effect catalogue and show workflows cover the Party & Disco and the
 Entertainment scope. The detailed fields below describe the data contract as
 well as the browser controls. See [feature coverage](docs/feature-coverage.md)
-for deliberate scope decisions and the upstream adoption policy.
+for deliberate scope decisions and the fork policy.
 [Effects v2](docs/effects-v2.md) records the spatial framework and compatibility
 decisions. The Spatial group is the default catalogue for new shows; old effect
 and palette ids remain available to saved shows and integrations.
