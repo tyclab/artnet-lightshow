@@ -8,7 +8,10 @@ inventory and line numbers below refer to `4d4837f`; they are not the current ca
 
 The operator authorized the full build after reviewing Phase A. There are now 39
 named spatial looks, each in room and plan forms, over eleven generators (the nine
-planned fields plus Neural and visualizer-derived animation). The additions include
+planned fields plus Neural and visualizer-derived animation). Pickers show one entry
+per look; the plan form (`v2.<name>.2d`) is a hidden variant that saved shows, aliases
+and the editor's Mapping choice (Across layout / Through room, offered only when the
+settings use positions) still reach. The additions include
 particles, stems in space, diagonal endpoints, build/drop/breakdown choreography,
 local Audition and colour sliders. All new-show workflows hide retired rows.
 

@@ -1,6 +1,7 @@
 import { CATALOGUE, presetById } from '../shared/effects/index.ts';
 import { ENERGY_KIND_BY_ID } from '../shared/effects/energy.ts';
 import { requiresAcknowledgement } from '../shared/effects/registry.ts';
+import { mappingOf } from '../shared/effects/mapping.ts';
 
 interface StrobeFunction {
   id: string;
@@ -106,7 +107,8 @@ const PATTERN_IDS = PATTERNS.map((p) => p.id);
 // Use the effective rapid-flash requirement so pickers match renderer admission.
 const PRESET_ROWS = CATALOGUE.flatMap((p) => p.legacy ? [] : [{
   id: p.id, name: p.name, desc: p.desc, ...(p.party ? { party: true } : {}), ...(p.pixel ? { pixel: true } : {}),
-  ...(p.retired ? { retired: true } : {}), app: p.app, family: p.family, rapidFlash: requiresAcknowledgement(p.spec), scope: p.spec.scope ?? null,
+  ...(p.retired ? { retired: true } : {}), ...(p.variantOf ? { variantOf: p.variantOf } : {}),
+  mapping: mappingOf(p.spec), app: p.app, family: p.family, rapidFlash: requiresAcknowledgement(p.spec), scope: p.spec.scope ?? null,
 }]);
 
 const ENERGY_EFFECTS = [...Object.keys(ENERGY_KIND_BY_ID), 'palette-strobe'].map((id) => {

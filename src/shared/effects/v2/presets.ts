@@ -12,11 +12,11 @@ import './visualizer.ts';
 import { validateSpec } from '../registry.ts';
 import type { EffectSpec } from '../types.ts';
 
-// Presets are parameter sets of the shared generators. Each has a room form (`v2.<name>`, metres)
-// and a classic 2D twin (`v2.<name>.2d`) whose spec differs only in `space`.
+// Keep plot variants addressable for saved shows and the mapping control, outside the picker.
 
 export interface V2Preset {
   id: string; name: string; desc: string; app: 'own'; family: 'spatial'; spec: EffectSpec;
+  retired?: boolean; variantOf?: string;
 }
 
 const FLASH = { curve: 'linear', attack: 0, hold: 0.06, release: 0.04 } as const;
@@ -110,5 +110,6 @@ export const V2_PRESETS: readonly V2Preset[] = RAW.flatMap(([id, name, desc, kin
   { id: `v2.${id}`, name, desc: `${desc}.`, app: 'own' as const, family: 'spatial' as const,
     spec: validateSpec({ kind, ...extra, params: { ...params, space: 'room' } }) },
   { id: `v2.${id}.2d`, name: `${name} 2D`, desc: `${desc}, drawn across the Rig plot.`, app: 'own' as const, family: 'spatial' as const,
+    retired: true, variantOf: `v2.${id}`,
     spec: validateSpec({ kind, ...extra, params: { ...params, space: 'plan' } }) },
 ]);

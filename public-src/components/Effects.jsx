@@ -7,6 +7,7 @@ import { librarySig, pick, send } from '../state.js';
 import { useFocusTrap } from '../focus-trap.js';
 import { Inspector, familyOf } from './Inspector.jsx';
 import { Photosensitivity as PhotosensitivityConfirm, acknowledgeThen } from './Photosensitivity.jsx';
+import { mappingOf, MAPPING_LABELS } from '../../src/shared/effects/mapping.ts';
 
 /**
  * The Effects view: an instrument first, an editor second. At the top a deck
@@ -18,18 +19,15 @@ import { Photosensitivity as PhotosensitivityConfirm, acknowledgeThen } from './
  * the inspector for it, in a sheet over the page.
  */
 
-// Spatial (the v2 generators, each in the room and in 2D) leads: it is the one system the others fold into.
+// Spatial leads; coordinate variants share one entry.
 const APP_NAMES = { spatial: 'Spatial', hd: 'Party & Disco', ldj: 'Entertainment', own: 'Own', upstream: 'Classic effects' };
 const APP_BADGES = { spatial: 'Spatial', hd: 'Party & Disco', ldj: 'Entertainment', own: 'Own', upstream: 'Classic' };
 const APP_ORDER = ['spatial', 'hd', 'ldj', 'own', 'upstream'];
 const APP_ICONS = { spatial: '◎', hd: '◆', ldj: '♪', own: '◉', upstream: '·' };
-// The chips follow how a look is picked: by engine family, and for the room looks by the space
-// they animate in. Rapid-flash looks keep their ⚡ badge on the card.
 const FAMILY_CHIPS = [
-  ['all', 'All', 'Every look'], ['spatial', 'Spatial', 'Room looks, in 3D or on the plot'],
+  ['all', 'All', 'Every look'], ['spatial', 'Spatial', 'Waves, washes, chases and room effects'],
   ['own', 'Own', "The fork's own looks and the presets saved here"], ['classic', 'Classic', 'Hue Dynamics, Light DJ and the upstream patterns'],
 ];
-const SPACE_CHIPS = [['any', 'Any', 'Room and plot looks alike'], ['room', '3D', 'Looks that animate the room in metres'], ['plan', '2D', 'Looks drawn across the Rig plot']];
 const FAVOURITES_KEY = 'lightshow.effects.favourites';
 const LONG_PRESS_MS = 500;
 
@@ -89,19 +87,18 @@ export function filterByFamily(rows, family) {
   return rows.filter((r) => { const app = appOf(r); return family === 'classic' ? app !== 'spatial' && app !== 'own' : app === family; });
 }
 
-/** A look's space: the plot twin carries `.2d`, a room look declares `space: 'room'` or has a plot twin. */
-export function spaceOf(row, ids) {
-  if (row.id.endsWith('.2d')) return 'plan';
-  const declared = row.spec?.params?.space;
-  if (declared === 'room' || declared === 'plan') return declared;
-  return ids.has(`${row.id}.2d`) ? 'room' : null;
-}
-
-/** The space chip: 3D keeps the room looks, 2D the plot looks; a look without a space matches neither. */
-export function filterBySpace(rows, space) {
-  if (space === 'any') return rows;
-  const ids = new Set(rows.map((r) => r.id));
-  return rows.filter((r) => spaceOf(r, ids) === space);
+/** One card per look, retaining the playing or pinned variant's playback id. */
+export function catalogueRows(rows, playingId, favourites = []) {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const preferred = new Map();
+  for (const id of [playingId, ...favourites]) {
+    const row = byId.get(id);
+    if (row && !preferred.has(row.variantOf || id)) preferred.set(row.variantOf || id, row);
+  }
+  return rows.filter((r) => !r.retired).map((row) => {
+    const selected = preferred.get(row.id);
+    return selected?.variantOf === row.id ? { ...selected, name: row.name } : row;
+  });
 }
 
 /** The rows by app, each app by family, in the catalogue's order; the saved presets lead the fork's own. */
@@ -227,6 +224,7 @@ function Pad({ row, active, favourite, onTap, onEdit, onToggleFavourite }) {
     <div class={`effect-pad ${active ? 'active' : ''}`} data-id={row.id} data-layer={active ? 'base' : undefined}>
       <button type="button" class="effect-pad-tap" aria-pressed={active} title={row.desc || row.name} {...press}>
         <span class="effect-pad-name">{row.name}</span>
+        {row.mapping && <span class="effect-mapping">{MAPPING_LABELS[row.mapping]}</span>}
         <span class="effect-pad-app">{APP_BADGES[row.user ? row.kindApp || 'own' : appOf(row)]}{row.user && <span class="effect-pad-yours"> · Yours</span>}</span>
         {active && <span class="effect-pad-now">Base</span>}
         {row.rapidFlash && <Rapid />}
@@ -250,6 +248,8 @@ function Row({ row, active, onBars, onPanels, favourite, onTap, onEdit, onToggle
         <span class="icon" aria-hidden="true">{PATTERN_ICONS[row.id] || APP_ICONS[appOf(row)]}</span>
         <span class="body">
           <span class="name">{row.name}{active && <span class="layer-tag" data-layer="base"> · Base</span>}{where && <span class="layer-tag"> · on {where}</span>}</span>
+          {row.mapping && <span class="effect-mapping">{MAPPING_LABELS[row.mapping]}</span>}
+          {row.desc && <span class="effect-row-desc">{row.desc}</span>}
         </span>
         {row.rapidFlash && <Rapid />}
       </button>
@@ -266,7 +266,6 @@ export function Effects() {
   const families = s.families || lib.families || [];
   const [q, setQ] = useState('');
   const [family, setFamily] = useState('all');
-  const [space, setSpace] = useState('any');
   const [favourites, setFavourites] = useState(readFavourites);
   const [confirm, setConfirm] = useState(null);
   const acknowledged = !!(s.safety && s.safety.photosensitivityAcknowledged);
@@ -274,14 +273,21 @@ export function Effects() {
   // The presets saved here ride the live state as summaries; they list like the built-ins.
   const userRows = (s.effects || []).map((e) => {
     const family = familyOf(e.kind, families);
-    return { ...e, user: true, app: 'own', kindApp: family?.app, family: family?.id || 'user', desc: 'A preset saved on this server' };
+    const spec = lib.user?.find((p) => p.id === e.id)?.spec;
+    return { ...e, user: true, app: 'own', kindApp: family?.app, family: family?.id || 'user', mapping: spec ? mappingOf(spec) : null, desc: 'A preset saved on this server' };
   });
-  const rows = [...userRows, ...(s.patterns || []).filter((p) => !p.retired)];
-  const canonicalId = (id) => rows.some((row) => row.id === id) ? id : (lib.builtin || []).find((row) => row.aliases?.includes(id))?.id || id;
+  const allRows = [...userRows, ...(s.patterns || [])];
+  const canonicalId = (id) => allRows.some((row) => row.id === id) ? id : (lib.builtin || []).find((row) => row.aliases?.includes(id))?.id || id;
   const playingId = canonicalId(s.pattern);
-  const pins = [...new Set(favourites.map(canonicalId))];
+  const savedPins = favourites.map(canonicalId);
+  const rows = catalogueRows(allRows, playingId, savedPins);
+  const familyId = (id) => allRows.find((row) => row.id === id)?.variantOf || id;
+  const pins = [...new Set(savedPins.flatMap((id) => {
+    const row = rows.find((r) => familyId(r.id) === familyId(id));
+    return row ? [row.id] : [];
+  }))];
   const query = q.trim().toLowerCase();
-  const visible = filterBySpace(filterByFamily(rows, family), space).filter((r) => matches(r, query, families));
+  const visible = filterByFamily(rows, family).filter((r) => matches(r, query, families));
   const deck = quickDeck(visible, pins);
   const groups = groupRows(visible, families);
 
@@ -292,12 +298,12 @@ export function Effects() {
     await acknowledgeThen(() => send({ pattern: row.id }));
   };
   const playById = (id) => {
-    const row = rows.find((r) => r.id === id);
+    const row = allRows.find((r) => r.id === id);
     if (row) tap(row); else send({ pattern: id });
   };
   const edit = (id) => { editingSig.value = id; };
   const toggleFavourite = (id) => {
-    const next = pins.includes(id) ? pins.filter((x) => x !== id) : [...pins, id];
+    const next = pins.includes(id) ? savedPins.filter((x) => familyId(x) !== familyId(id)) : [...savedPins, id];
     setFavourites(next);
     writeFavourites(next);
   };
@@ -308,7 +314,7 @@ export function Effects() {
   const onBars = bars && s.pixelPattern ? s.pixelPattern : null;
   const panels = hasPanels(s);
   const onPanels = panels && s.panelPattern ? s.panelPattern : null;
-  const playing = s.pattern ? rows.find((r) => r.id === playingId) || { id: s.pattern, name: s.pattern } : null;
+  const playing = s.pattern ? rows.find((r) => r.id === playingId) || allRows.find((r) => r.id === playingId) || { id: s.pattern, name: s.pattern } : null;
   const activePreset = [...(lib.builtin || []), ...(lib.user || [])].find((p) => p.id === playingId);
   const activeKind = activePreset?.spec?.kind || playing?.kind;
   const lampLevel = LAMP_PATTERNS.has(s.pattern) || families.some((f) => f.kinds?.some((k) => k.kind === activeKind && k.level === 'lamp'));
@@ -333,13 +339,6 @@ export function Effects() {
             {FAMILY_CHIPS.map(([id, label, desc]) => (
               <button key={id} class={`effects-chip family ${family === id ? 'active' : ''}`} aria-pressed={family === id} type="button" title={desc}
                 onClick={() => setFamily(id)}>{label}</button>
-            ))}
-          </div>
-          <span class="effects-chip-sep" role="presentation" />
-          <div class="effects-chip-set" role="group" aria-label="Space">
-            {SPACE_CHIPS.map(([id, label, desc]) => (
-              <button key={id} class={`effects-chip space ${space === id ? 'active' : ''}`} aria-pressed={space === id} type="button" title={desc}
-                onClick={() => setSpace(id)}>{label}</button>
             ))}
           </div>
         </div>

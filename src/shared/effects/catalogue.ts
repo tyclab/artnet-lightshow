@@ -21,7 +21,7 @@ import type { Ahdsr, Curve, EffectKindDef, EffectSpec, PaletteEntry, RgbEnvelope
 
 interface CatalogueMetadata {
   id: string; name: string; desc: string; app: 'hd' | 'ldj' | 'own'; family: string;
-  party?: boolean; pixel?: boolean; aliases?: string[]; retired?: boolean;
+  party?: boolean; pixel?: boolean; aliases?: string[]; retired?: boolean; variantOf?: string;
   lengthBeats?: number;
 }
 // Legacy ids keep their pattern function; preset links must not redirect playback.
@@ -286,6 +286,7 @@ const OVERLAY_ROWS: CataloguePreset[] = (['all', 'step', 'scatter', 'zone'] as c
     id: `overlay.${selection}${space === 'plan' ? '.2d' : ''}`, name: `${selection[0].toUpperCase()}${selection.slice(1)} Strobe${space === 'plan' ? ' 2D' : ''}`,
     desc: `A strobe voice over the running look, selecting ${selection === 'all' ? 'every lamp' : selection === 'step' ? 'lamps in spatial order' : selection === 'scatter' ? 'lamps and compact patches across the room' : 'alternating halves'}; ${space === 'room' ? 'room positions' : 'classic plot'}.`,
     app: 'own' as const, family: 'own.energy',
+    ...(space === 'plan' ? { retired: true, variantOf: `overlay.${selection}` } : {}),
     spec: validateSpec({ kind: 'strobe', palette: null, params: { selection, space, density: selection === 'step' ? 0.1 : 0.25,
       flashesPerSecond: 5, continueBetween: true, clock: 'beat' } }),
   })));
