@@ -3,7 +3,7 @@ import { startAudition } from '../audition.js';
 import { HardwareFit } from './HardwareFit.jsx';
 import { ADMISSION_LABELS } from './setup/Hardware.jsx';
 import { gradientSettings } from './GradientEditor.jsx';
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useLayoutEffect, useMemo, useState } from 'preact/hooks';
 import { api, librarySig, patchLibrary, pick } from '../state.js';
 import { PaletteEditor, isHexColour, normaliseHex, pickerValue } from './PaletteEditor.jsx';
 import { parseHex, toHex, HEX_COLOUR } from '../../src/shared/palette-model.ts';
@@ -465,7 +465,8 @@ export function Inspector({ id, onSelect, onPlay, onClose, inline = null, onAppl
   const audition = useVoicePads();
   const gate = useSafetyGate();
   const auditionKey = JSON.stringify(auditionTargets);
-  useEffect(() => { audition.releaseAll(); }, [key, draft?.spec, auditionKey, auditionUnavailable]);
+  // In the edit's own commit: after paint it would release a hold pressed just after the edit.
+  useLayoutEffect(() => { audition.releaseAll(); }, [key, draft?.spec, auditionKey, auditionUnavailable]);
 
   const title = (
     <div class="card-title">
