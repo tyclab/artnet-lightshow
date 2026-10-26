@@ -3,12 +3,15 @@ import { api } from '../state.js';
 import { z } from 'zod';
 import { ColourSliders } from './ColourSliders.jsx';
 import { kindOf } from '../../src/shared/effects/registry.ts';
+import { mappingOf, MAPPING_LABELS } from '../../src/shared/effects/mapping.ts';
 
 const words = (value) => value.replace(/([a-z])(?=[A-Z])/g, '$1 ').replace(/^./, (c) => c.toUpperCase());
 const LABELS = { 'fromPoint.x': 'Start X (metres)', 'fromPoint.y': 'Start height (metres)', 'fromPoint.z': 'Start Z (metres)',
   'toPoint.x': 'End X (metres)', 'toPoint.y': 'End height (metres)', 'toPoint.z': 'End Z (metres)',
   elevationDeg: 'Elevation (degrees)', azimuthDeg: 'Azimuth (degrees)', fromAnchor: 'Start anchor', toAnchor: 'End anchor',
   segmentM: 'Segment length (metres)', placeM: 'Room group spacing (metres)' };
+const BASIC_FIELDS = new Set(['colour', 'colourMode', 'shape', 'profile', 'mode', 'speed', 'width', 'trail', 'cycleBeats',
+  'stepBeats', 'turnsPerBar', 'density', 'selection', 'flashesPerSecond', 'softness']);
 
 function SchemaField({ schema: raw, value, path, setParam }) {
   const variants = raw.anyOf || [], nullable = variants.some((s) => s.type === 'null');
@@ -33,7 +36,7 @@ function SchemaField({ schema: raw, value, path, setParam }) {
   </fieldset>;
   if (schema.type === 'boolean') return <label class="insp-check"><input type="checkbox" checked={!!value} onChange={(e) => change(e.currentTarget.checked)} />{label}</label>;
   if (schema.enum) return <div class="insp-field"><label for={id}>{label}</label><select id={id} value={value} onChange={(e) => change(schema.enum.find((item) => String(item) === e.currentTarget.value))}>
-    {schema.enum.map((item) => <option key={item} value={item}>{path === 'space' ? item === 'room' ? 'Room · 3D metres' : 'Plan · classic 2D' : words(String(item))}</option>)}
+    {schema.enum.map((item) => <option key={item} value={item}>{words(String(item))}</option>)}
   </select></div>;
   if (schema.type === 'number' || schema.type === 'integer') return <div class="insp-field"><label for={id}>{label}</label>
     <input id={id} type={schema.minimum === 0 && schema.maximum === 1 ? 'range' : 'number'} value={value ?? ''} step={schema.type === 'integer' ? 1 : 0.05} min={schema.minimum} max={schema.maximum}
@@ -45,7 +48,7 @@ function SchemaField({ schema: raw, value, path, setParam }) {
   return null;
 }
 
-export function SpatialControls({ spec, setParam }) {
+export function SpatialControls({ spec, setParam, advancedControls }) {
   const [anchors, setAnchors] = useState([]);
   useEffect(() => {
     let current = true;
@@ -57,17 +60,37 @@ export function SpatialControls({ spec, setParam }) {
     return kind ? z.toJSONSchema(kind.schema, { unrepresentable: 'any' }) : null;
   }, [spec.kind]);
   const particles = spec.kind === 'v2.particles', mode = spec.params?.mode;
+  const mapping = mappingOf(spec);
   const path = spec.kind === 'v2.sweep' || particles && mode === 'orbs';
-  const fields = Object.entries(schema?.properties || {}).filter(([key]) => !particles
-    || mode === 'orbs' || !['toAnchor', 'toPoint', ...(mode === 'rain' ? ['fromAnchor', 'fromPoint'] : [])].includes(key));
+  const fields = Object.entries(schema?.properties || {}).filter(([key]) => key !== 'space' && (!particles
+    || mode === 'orbs' || !['toAnchor', 'toPoint', ...(mode === 'rain' ? ['fromAnchor', 'fromPoint'] : [])].includes(key)));
+  const draw = (entries) => <div class="insp-grid">{entries.map(([key, child]) => <SchemaField key={key} schema={child} value={spec.params?.[key]} path={key} setParam={setParam} />)}</div>;
   return <div class="spatial-controls">
     <datalist id="spatial-room-anchors">{anchors.map((id) => <option key={id} value={id} />)}</datalist>
     {spec.kind === 'v2.visualizer' && <p class="look-note">Uses the incoming room picture's colours and motion to animate the room. Choose Colour + motion as the room source and keep the picture sender running. Without a picture feed this effect goes dark. Audition supplies a demo picture signal.</p>}
-    <p class="look-note">Room mode uses real metres: X across, Y height above the floor, Z depth. Plan mode animates the plotted cells in 2D.</p>
+    {mapping && <div class="effect-mapping-control">
+      <label for="spatial-space">Mapping</label>
+      <select id="spatial-space" value={mapping} onChange={(e) => setParam('space', e.currentTarget.value)}>
+        {Object.entries(MAPPING_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select>
+      <p class="look-note">{mapping === 'room'
+        ? 'Follows the lights’ physical positions, including room depth and height. Room bindings make this different from the layout.'
+        : 'Follows the Rig plot like a flat picture. The top of the plot is up; no room setup is needed.'} The Stage view switch only changes how you see the preview.</p>
+    </div>}
+    {!mapping && <p class="look-note">{spec.kind === 'v2.step'
+      ? spec.params?.order === 'path' ? 'Follows each strip’s LED order. Room positions do not change this effect.' : 'Uses a random light order. Room positions do not change this effect.'
+      : spec.kind === 'v2.zones' ? 'Groups lights by their technology or assigned group. Room positions do not change this effect.'
+      : spec.kind === 'v2.scatter' ? 'Chooses individual pixels at random. Room positions do not change this effect.'
+      : 'All lights change together. Room positions do not change this effect.'}</p>}
+    {draw(fields.filter(([key]) => BASIC_FIELDS.has(key)))}
+    <details class="insp-advanced"><summary>Advanced</summary>
+    {mapping && <p class="look-note">Room coordinates use metres: X across, Y height above the floor, Z depth. Layout mapping uses the plotted cells.</p>}
     {path && <p class="look-note">{spec.kind === 'v2.sweep' && 'Elevation 0° travels horizontally; 90° climbs floor to ceiling. '}Start and end points or named room anchors define a diagonal path, including its height. For example, a floor start and a high corner end make the animation climb across the room.
       Plan mode maps explicit X and Z continuously across the room's width and depth; named anchors use the nearest lamp's plot position. Height is ignored on a horizontal or diagonal projection. If both endpoints project to one spot, height becomes travel from the bottom to the top of the plot.</p>}
     {particles && mode === 'fireworks' && <p class="look-note">The start point or anchor sets the launch position. Fireworks rise under gravity and burst at height. In Plan mode, an explicit start uses X across the plot and height from bottom to top; Z depth is ignored. Named anchors use the nearest lamp's plot position.</p>}
     {particles && mode === 'rain' && <p class="look-note">Rain falls through the room's full height. In Plan mode it falls down the plot from its top edge.</p>}
-    <div class="insp-grid">{fields.map(([key, child]) => <SchemaField key={key} schema={child} value={spec.params?.[key]} path={key} setParam={setParam} />)}</div>
+    {draw(fields.filter(([key]) => !BASIC_FIELDS.has(key)))}
+    {advancedControls}
+    </details>
   </div>;
 }

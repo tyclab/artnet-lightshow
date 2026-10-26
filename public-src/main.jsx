@@ -1,5 +1,5 @@
 import { render } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { field } from './state.js';
 import { setUpDevice } from './device.js';
 
@@ -43,6 +43,15 @@ function initialView() {
   const canonical = route?.canonical || 'show';
   window.history.replaceState(null, '', `#${canonical}`);
   return route?.view || 'show';
+}
+
+// Stored when chosen, not after the view renders: a reload during a slow first render keeps it.
+function rememberView(mode) {
+  try { localStorage.setItem('lightshow.mode', mode); } catch { /* private mode */ }
+  // A view with tabs of its own keeps its part of the hash (/#rig/outputs).
+  const route = resolveRoute(window.location.hash);
+  const path = route?.view === mode ? route.canonical : mode;
+  if (window.location.hash !== `#${path}`) window.history.replaceState(null, '', `#${path}`);
 }
 
 function ModeTabs({ mode, setMode }) {
@@ -142,7 +151,8 @@ function Root() {
   // Deliberately reads no signals. Subscribing the root made every component in
   // the tree re-render on every push; each component now subscribes to what it
   // actually needs.
-  const [mode, setMode] = useState(initialView);
+  const [mode, showMode] = useState(initialView);
+  const setMode = useCallback((next) => { rememberView(next); showMode(next); }, []);
   const Panel = PANELS[mode];
   // The strip — arm, picture source, auto show, blackout, master — sits above every live view.
   const live = LIVE_VIEWS.has(mode);
@@ -165,11 +175,7 @@ function Root() {
 
   useEffect(() => {
     document.title = pageTitle(VIEWS.find((view) => view.id === mode)?.label);
-    try { localStorage.setItem('lightshow.mode', mode); } catch { /* private mode */ }
-    // A view with tabs of its own keeps its part of the hash (/#rig/outputs).
-    const route = resolveRoute(window.location.hash);
-    const path = route?.view === mode ? route.canonical : mode;
-    if (window.location.hash !== `#${path}`) window.history.replaceState(null, '', `#${path}`);
+    rememberView(mode);
   }, [mode]);
 
   useEffect(() => {

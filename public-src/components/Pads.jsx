@@ -168,7 +168,7 @@ export function PadEditor({ entry, onClose, initial = {} }) {
           <select value={draft.content} onChange={(e) => set({ content: e.target.value })}>
             <option value="" selected={draft.content === ''}>Nothing</option>
             <option value="strobe:strobe" selected={strobe}>Strobe (held)</option>
-            {current && current !== 'strobe:strobe' && !values.has(current) && <option value={current} selected={draft.content === current}>{entry.content.id}</option>}
+            {current && current !== 'strobe:strobe' && !values.has(current) && <option value={current} selected={draft.content === current}>{[...userRows, ...(s.patterns || [])].find((r) => r.id === entry.content.id)?.name || entry.content.id}</option>}
             {choices.presets.map(option)}
             {shelf.length > 0 && <optgroup label="Patterns, played as one voice">{choices.patterns.map(option)}</optgroup>}
             {shelf.length > 0 && <optgroup label="Patterns, dropped into the sequence">{choices.drops.map(option)}</optgroup>}

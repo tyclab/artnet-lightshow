@@ -43,8 +43,12 @@ test('the division row goes to 1/16', async ({ page, request }) => {
 });
 
 test('the view is where the operator left it after a reload', async ({ page }) => {
+  await page.clock.install();
   await open(page, 'auto');
+  // Reloaded before the next frame: nothing that waits for a paint or a timer has run.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
   await page.getByRole('tab', { name: /Perform/ }).click();
   await page.goto('/');
+  await page.clock.resume();
   await expect(page.getByRole('tab', { name: /Perform/ })).toHaveAttribute('aria-selected', 'true');
 });

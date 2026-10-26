@@ -225,15 +225,43 @@ export function patchLibrary(fn) {
 }
 
 // Live actions must never queue up for replay after reconnecting.
-export function emitLive(event, payload) {
+export function emitLive(event, payload, ack) {
   if (!socket.connected) return false;
-  socket.emit(event, payload);
+  if (ack) socket.emit(event, payload, ack); else socket.emit(event, payload);
   return true;
 }
 
 export function send(patch) { return emitLive('set', patch); }
 export function emitOverride(id, override) { return emitLive('override', { id, override }); }
-export function emitFixture(payload) { return emitLive('fixture', payload); }
+// A fixture edit builds on what was last sent until the server acknowledges it; a render can predate the echo.
+const unacked = new Map();
+export const fixtureAckSig = signal(0);
+const LOST_ACK_MS = 5000;
+export function latestSent(id, key, server, now = Date.now()) {
+  const entry = unacked.get(`${id}:${key}`);
+  if (!entry) return server;
+  if (entry.value === null || now - entry.at > LOST_ACK_MS) {
+    unacked.delete(`${id}:${key}`);
+    return server;
+  }
+  return entry.value;
+}
+/** Holds the sent fields; the returned ack releases them unless a later edit replaced them. */
+export function rememberSent(id, patch, now = Date.now()) {
+  const held = ['position', 'emission', 'geometry'].filter((key) => key in patch)
+    .map((key) => [`${id}:${key}`, { value: patch[key], at: now }]);
+  for (const [k, entry] of held) unacked.set(k, entry);
+  return () => {
+    for (const [k, entry] of held) if (unacked.get(k) === entry) unacked.delete(k);
+    fixtureAckSig.value++;
+  };
+}
+export function emitFixture(payload) {
+  const ack = rememberSent(payload.id, payload);
+  if (emitLive('fixture', payload, ack)) return true;
+  ack();
+  return false;
+}
 export function emitTap() { return emitLive('tap'); }
 export function followMusic() { return api('/api/tempo/auto', { method: 'POST' }); }
 

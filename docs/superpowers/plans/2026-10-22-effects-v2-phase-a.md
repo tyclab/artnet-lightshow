@@ -248,3 +248,46 @@
 ## Gate: the operator's review
 
 Phase A ends here. The operator plays the Spatial presets on the Stage and on the rig, arming the rig themselves. Phase B (steps 1, 2 and 6 to 10 of `docs/effects-v2.md`: dedupe, one flash limiter, the strobe overlay, aliases and the saved-effect migration, defaults and choreography, retiring the old engines, palettes) and the Particles showpieces (light orbs, 3D fireworks and rain) are planned after that review, with the operator's decisions on which old effects stay.
+
+## Follow-up build — 2026-10-26
+
+The operator approved implementation after reviewing the physical rig. This
+supersedes Task 10's requirement to show both coordinate variants as separate
+menu entries. Start from the freshly fetched main branch (`28905af`).
+
+- [x] Show one entry per named effect in the catalogue, pad and sequence choices.
+  Retain all existing ids, aliases and authored specs for saved shows. Preserve
+  the selected mapping when opening a playing effect or an existing favourite.
+- [x] Offer **Across layout** / **Through room** inside the effect only when its
+  current settings use spatial coordinates. Wash, Breathe, path/random stepping
+  and all-lamp strobing need no mapping switch. Explain the visible difference;
+  keep the Stage camera's 2D/3D switch independent.
+- [x] Put common colour, timing and shape controls first; move detailed geometry
+  and modulation into Advanced. Built-in mapping changes should be playable
+  without saving a new preset; preserve other draft edits when changing mapping.
+- [x] Detect Hue entertainment conflicts across the whole bridge before starting
+  a session. Name the occupied area, leave another app's stream alone, retry when
+  released, and report failed enabled bridges in health. Test independent bridges,
+  unknown identity, cancellation and recovery.
+- [x] Run check, client build and the browser suite; document actual results.
+  `npm run check`: 3697 unit and 4 performance tests pass. Browser suite (WebGL via
+  SwiftShader): 251 pass, 1 skipped by design (touch sizing runs on the tablet project).
+
+### Deferred physical-rig observations
+
+Keep these in this plan, not in an issue tracker. No firmware or wiring experiment
+is part of this build.
+
+- **Curtain blip:** videos show an isolated colour flash just ahead of the wave,
+  approximately one camera frame. A later sender capture was clean but was not
+  simultaneous with the video, so it does not exclude the sender. WLED output
+  timing and signal integrity remain hypotheses, not a confirmed root cause.
+  Firmware already includes the older ESP32 RMT priority fix. A future investigation
+  needs a simultaneous capture and a controlled output/wiring comparison.
+- **Wave onset:** the shallow rising wave moves rapidly across vertical rows;
+  coarse couch zones and palette brightness changes can make the onset look
+  stepped. Tune against the real rig in a separate operator session; do not change
+  saved looks or claim a hardware fix from preview smoothness.
+- **Pale colour step:** the current palette's cyan-to-magenta RGB blend passes
+  through pale lavender. This is not an explicit white flash. Palette tuning is
+  separate from the isolated curtain blip.

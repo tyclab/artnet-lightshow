@@ -27,17 +27,18 @@ function fakeBridge(t, { put = () => ({ status: 200, body: { data: [{ rid: AREA 
     req.write = (chunk) => { payload += chunk; };
     req.destroy = (err) => { if (err) setImmediate(() => req.emit('error', err)); };
     req.end = () => {
-      const call = { method: options.method, path: options.path, body: payload ? JSON.parse(payload) : undefined };
+      const call = { method: options.method, host: options.host, path: options.path, body: payload ? JSON.parse(payload) : undefined };
       calls.push(call);
       const reply = options.method === 'PUT' ? put(call) : area(call);
-      setImmediate(() => {
+      const respond = () => {
         const res = new EventEmitter();
         res.statusCode = reply.status;
         res.headers = {};
         onResponse(res);
         res.emit('data', Buffer.from(JSON.stringify(reply.body)));
         res.emit('end');
-      });
+      };
+      if (reply.defer) reply.defer(respond); else setImmediate(respond);
     };
     return req;
   });
@@ -163,7 +164,7 @@ test('stop() resets the backoff', async (t) => {
 test('an area another app is streaming is reported as held, and left to it', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
   quiet(t);
-  const held = { data: [{ id: AREA, status: 'active', active_streamer: { rid: 'sync-box-app', rtype: 'auth_v1' } }] };
+  const held = { data: [{ id: AREA, metadata: { name: 'TV Lounge' }, status: 'active', active_streamer: { rid: 'sync-box-app', rtype: 'auth_v1' } }] };
   const calls = fakeBridge(t, { area: () => ({ status: 200, body: held }) });
   const sockets = fakeDtls(t);
   const session = new hue.HueSession(PAIRED);
@@ -172,10 +173,10 @@ test('an area another app is streaming is reported as held, and left to it', asy
   await until(t, () => session.getStatus().status === 'failed', 3000);
 
   assert.strictEqual(session.getStatus().status, 'failed');
-  assert.match(session.getStatus().error, /held by sync-box-app/);
+  assert.match(session.getStatus().error, /TV Lounge.*already in use/);
   assert.strictEqual(sockets.length, 0, 'no handshake against an area that is not ours');
-  assert.deepStrictEqual(actions(calls), ['start'], 'no stop for a stream that is not ours');
-  assert.ok(calls.some((c) => c.method === 'GET' && c.path.endsWith(`/entertainment_configuration/${AREA}`)));
+  assert.deepStrictEqual(actions(calls), [], 'no start or stop for a stream that is not ours');
+  assert.ok(calls.some((c) => c.method === 'GET' && c.path.endsWith('/entertainment_configuration')));
 });
 
 // An unreadable area must not cost the stream: the check is advisory.
@@ -190,4 +191,102 @@ test('an area that cannot be read does not block the handshake', async (t) => {
   await until(t, () => session.getStatus().status === 'streaming', 1000);
   assert.strictEqual(session.getStatus().status, 'streaming');
   await session.stop();
+});
+
+const OTHER_AREA = { id: 'other-area', metadata: { name: 'TV Couch' }, status: 'active', active_streamer: { rid: 'other-app' } };
+
+test('another active area blocks only its bridge, then reconnects after release', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+  quiet(t);
+  let occupied = true;
+  const calls = fakeBridge(t, { area: ({ host }) => ({ status: 200, body: host === PAIRED.host && occupied
+    ? { data: [{ id: AREA, status: 'inactive' }, OTHER_AREA] } : OURS }) });
+  const sockets = fakeDtls(t, [10, 10]);
+  const first = new hue.HueSession(PAIRED);
+  const second = new hue.HueSession({ ...PAIRED, id: 'b2', host: '10.0.0.3' });
+  first.sendFrame(RED);
+  second.sendFrame(RED);
+  await until(t, () => first.getStatus().status === 'failed' && second.getStatus().status === 'streaming', 1000);
+  assert.match(first.getStatus().error, /TV Couch.*already in use/);
+  assert.strictEqual(second.getStatus().status, 'streaming');
+  assert.deepStrictEqual(actions(calls.filter((c) => c.host === PAIRED.host)), []);
+  assert.strictEqual(sockets.length, 1);
+  occupied = false;
+  t.mock.timers.tick(2000);
+  first.sendFrame(RED);
+  await until(t, () => first.getStatus().status === 'streaming', 1000);
+  assert.strictEqual(first.getStatus().status, 'streaming');
+  assert.strictEqual(first.getStatus().error, null);
+  assert.strictEqual(second.getStatus().status, 'streaming');
+  await first.stop();
+  await second.stop();
+});
+
+test('ownership changed during start is reported without stopping the new owner', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+  quiet(t);
+  let reads = 0;
+  const calls = fakeBridge(t, { area: () => ({ status: 200, body: ++reads === 1 ? { data: [] } : { data: [OTHER_AREA] } }) });
+  const sockets = fakeDtls(t);
+  const session = new hue.HueSession(PAIRED);
+  session.sendFrame(RED);
+  await until(t, () => session.getStatus().status === 'failed', 1000);
+  assert.match(session.getStatus().error, /TV Couch/);
+  assert.deepStrictEqual(actions(calls), ['start']);
+  assert.strictEqual(sockets.length, 0);
+  await session.stop();
+  assert.deepStrictEqual(actions(calls), ['start']);
+});
+
+test('an unknown application identity never takes an already active area', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+  quiet(t);
+  const calls = fakeBridge(t);
+  const sockets = fakeDtls(t);
+  const session = new hue.HueSession({ ...PAIRED, applicationId: '' });
+  session.sendFrame(RED);
+  await until(t, () => session.getStatus().status === 'failed', 1000);
+  assert.match(session.getStatus().error, /already in use/);
+  assert.deepStrictEqual(actions(calls), []);
+  assert.strictEqual(sockets.length, 0);
+});
+
+test('disarming during the ownership check cannot start a session later', async (t) => {
+  quiet(t);
+  let respond;
+  const calls = fakeBridge(t, { area: () => ({ status: 200, body: { data: [] }, defer: (send) => { respond = send; } }) });
+  const sockets = fakeDtls(t);
+  const session = new hue.HueSession(PAIRED);
+  session.sendFrame(RED);
+  await settle();
+  assert.ok(respond);
+  await session.stop();
+  respond();
+  await settle();
+  assert.strictEqual(session.getStatus().status, 'idle');
+  assert.deepStrictEqual(actions(calls), []);
+  assert.strictEqual(sockets.length, 0);
+});
+
+test('reconfiguration during start releases the old area on the old bridge', async (t) => {
+  quiet(t);
+  let respond;
+  const calls = fakeBridge(t, { put: ({ body }) => ({ status: 200, body: { data: [] },
+    ...(body.action === 'start' ? { defer: (send) => { respond = send; } } : {}) }) });
+  const sockets = fakeDtls(t);
+  const session = new hue.HueSession(PAIRED);
+  session.sendFrame(RED);
+  await settle();
+  assert.ok(respond);
+  session.configure({ host: '10.0.0.9', entertainmentId: 'replacement-area' });
+  session.sendFrame(RED);
+  assert.deepStrictEqual(actions(calls), ['start'], 'the old pending start must settle first');
+  respond();
+  await settle();
+  const stops = calls.filter((c) => c.body?.action === 'stop');
+  assert.strictEqual(stops.length, 1);
+  assert.strictEqual(stops[0].host, PAIRED.host);
+  assert.ok(stops[0].path.endsWith(AREA));
+  assert.strictEqual(sockets.length, 0);
+  assert.strictEqual(session.getStatus().status, 'idle');
 });

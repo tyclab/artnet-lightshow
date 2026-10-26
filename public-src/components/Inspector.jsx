@@ -3,7 +3,7 @@ import { startAudition } from '../audition.js';
 import { HardwareFit } from './HardwareFit.jsx';
 import { ADMISSION_LABELS } from './setup/Hardware.jsx';
 import { gradientSettings } from './GradientEditor.jsx';
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useLayoutEffect, useMemo, useState } from 'preact/hooks';
 import { api, librarySig, patchLibrary, pick } from '../state.js';
 import { PaletteEditor, isHexColour, normaliseHex, pickerValue } from './PaletteEditor.jsx';
 import { parseHex, toHex, HEX_COLOUR } from '../../src/shared/palette-model.ts';
@@ -420,9 +420,9 @@ function DiscoControls({ spec, fixtures, setParam }) {
   </>;
 }
 
-function ParamControls({ spec, caps, families, lib, fixtures, setParam, setKind }) {
+function ParamControls({ spec, caps, families, lib, fixtures, setParam, setKind, advancedControls }) {
   const kind = spec.kind.replace(/^compat\./, '');
-  if (kind.startsWith('v2.') || kind === 'strobe') return <SpatialControls spec={spec} setParam={setParam} />;
+  if (kind.startsWith('v2.') || kind === 'strobe') return <SpatialControls spec={spec} setParam={setParam} advancedControls={advancedControls} />;
   if (kind === 'hd.disco') return <DiscoControls spec={spec} fixtures={fixtures} setParam={setParam} />;
   if (kind.startsWith('hd.')) return <HdControls spec={spec} caps={caps} setParam={setParam} />;
   if (kind === 'ldj.visualizer') return <VisualizerControls spec={spec} setParam={setParam} />;
@@ -465,7 +465,8 @@ export function Inspector({ id, onSelect, onPlay, onClose, inline = null, onAppl
   const audition = useVoicePads();
   const gate = useSafetyGate();
   const auditionKey = JSON.stringify(auditionTargets);
-  useEffect(() => { audition.releaseAll(); }, [key, draft?.spec, auditionKey, auditionUnavailable]);
+  // In the edit's own commit: after paint it would release a hold pressed just after the edit.
+  useLayoutEffect(() => { audition.releaseAll(); }, [key, draft?.spec, auditionKey, auditionUnavailable]);
 
   const title = (
     <div class="card-title">
@@ -504,7 +505,14 @@ export function Inspector({ id, onSelect, onPlay, onClose, inline = null, onAppl
   const def = kindDef(spec.kind, families);
   const caps = def?.capabilities || {};
   const setSpec = (field, value) => update((d) => ({ ...d, spec: { ...d.spec, [field]: value } }));
-  const setParam = (path, value) => update((d) => ({ ...d, spec: { ...d.spec, params: setPath(d.spec.params || {}, path, value) } }));
+  const setParam = (path, value) => {
+    if (path === 'space' && !dirty && preset.source === 'builtin' && onSelect) {
+      const root = preset.variantOf || preset.id;
+      const variant = lib.builtin.find((p) => (p.id === root || p.variantOf === root) && p.spec?.params?.space === value);
+      if (variant) { onSelect(variant.id); return; }
+    }
+    update((d) => ({ ...d, spec: { ...d.spec, params: setPath(d.spec.params || {}, path, value) } }));
+  };
   const setKind = (kind) => setSpec('kind', kind);
   const freshPalette = () => setPaletteEpoch((n) => n + 1);
   const applyRecommended = (target = def) => { if (target) { freshPalette(); update((d) => ({ ...d, spec: withRecommended(d.spec, target) })); } };
@@ -566,11 +574,26 @@ export function Inspector({ id, onSelect, onPlay, onClose, inline = null, onAppl
   const auditionProps = requiresAcknowledgement(spec) && !gate.acknowledged
     ? { onClick: () => gate.guard(draft.name, () => {}), 'data-safety': 'ask' }
     : audition.holdProps('inspector-audition', { effect: spec, targets: auditionTargets });
+  const spatial = spec.kind.startsWith('v2.') || spec.kind === 'strobe';
+  const advancedControls = <div class="insp-grid">
+    {siblings.length > 0 && <Field label="Family" path="family">
+      <select id={fid('family')} value={family?.id || ''} onChange={onFamily}>
+        {!family && <option value="">{spec.kind}</option>}
+        {siblings.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+      </select>
+    </Field>}
+    {siblings.length > 1 && <SelectField label="On a family change" path="recommended" value={preference} onChange={choosePreference}
+      options={{ ask: 'Ask', apply: 'Apply recommended', keep: 'Keep mine' }} />}
+    <SelectField label="When hardware cannot follow" path="admission" value={spec.admission || 'max'} options={ADMISSION_LABELS}
+      onChange={(v) => setSpec('admission', v)} />
+    <SelectField label="Scope" path="scope" value={spec.scope || ''} options={{ '': 'Not set', singleBeat: 'Single beat', measure: 'Measure' }}
+      onChange={(v) => setSpec('scope', v || undefined)} />
+  </div>;
   return (
     <div class="card effect-inspector">
       {title}
       <div class="effect-inspector-head">
-        <strong>{preset.name}</strong>
+        <strong>{preset.variantOf ? lib.builtin.find((p) => p.id === preset.variantOf)?.name || preset.name : preset.name}</strong>
         {preset.source === 'builtin' && <span class="setting-badge">Built-in</span>}
         {preset.source === 'user' && <span class="setting-badge">Yours</span>}
         {inline && <span class="setting-badge">Clip draft</span>}
@@ -584,25 +607,10 @@ export function Inspector({ id, onSelect, onPlay, onClose, inline = null, onAppl
         {!inline && <Field label="Name" path="name">
           <input id={fid('name')} type="text" value={draft.name} maxLength={80} onInput={(e) => update((d) => ({ ...d, name: e.target.value }))} />
         </Field>}
-        {siblings.length > 0 && (
-          <Field label="Family" path="family">
-            <select id={fid('family')} value={family?.id || ''} onChange={onFamily}>
-              {!family && <option value="">{spec.kind}</option>}
-              {siblings.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
-          </Field>
-        )}
-        {siblings.length > 1 && (
-          <SelectField label="On a family change" path="recommended" value={preference} onChange={choosePreference}
-            options={{ ask: 'Ask', apply: 'Apply recommended', keep: 'Keep mine' }} />
-        )}
         <UnitField label="Brightness" path="brightness" value={spec.brightness ?? 1} onChange={(v) => setSpec('brightness', v)} />
         <HardwareFit spec={spec} />
-        <SelectField label="When hardware cannot follow" path="admission" value={spec.admission || 'max'} options={ADMISSION_LABELS}
-          onChange={(v) => setSpec('admission', v)} />
-        <SelectField label="Scope" path="scope" value={spec.scope || ''} options={{ '': 'Not set', singleBeat: 'Single beat', measure: 'Measure' }}
-          onChange={(v) => setSpec('scope', v || undefined)} />
       </div>
+      {!spatial && advancedControls}
       {ask && (
         <div class="insp-ask" role="group" aria-label="Recommended settings">
           <span>Switching to {ask.name}: apply its recommended settings, or keep yours?</span>
@@ -613,7 +621,7 @@ export function Inspector({ id, onSelect, onPlay, onClose, inline = null, onAppl
       )}
 
       <Section title="Settings" />
-      <ParamControls spec={spec} caps={caps} families={families} lib={lib} fixtures={s.fixtures || []} setParam={setParam} setKind={setKind} />
+      <ParamControls spec={spec} caps={caps} families={families} lib={lib} fixtures={s.fixtures || []} setParam={setParam} setKind={setKind} advancedControls={advancedControls} />
 
       <Section title="Palette" />
       <label class="insp-check">

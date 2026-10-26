@@ -139,10 +139,14 @@ test('clip audition and Apply preserve the preset and fixture target', async ({ 
   const draft = { ...sequence(), lanes: [{ id: 'base', kind: 'track', fixtureId: target, name: 'Track', mute: false, solo: false }] };
   expect((await request.put('/api/sequence', { data: draft })).ok()).toBe(true);
   const before = await (await request.get('/api/effects')).json();
+  await page.clock.install();
   const editor = await openClipEditor(page);
+  // Pressed before the next frame: nothing that waits for a paint has run since the edit.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
   await editor.getByLabel('Step Beats', { exact: true }).fill('0.75');
   await editor.getByRole('button', { name: 'Hold on live rig' }).focus();
   await page.keyboard.down('Enter');
+  await page.clock.resume();
   try {
     const live = await until(request, (s) => s.voices.some((v) => v.spec.params.stepBeats === 0.75));
     expect(live.voices.find((v) => v.spec.params.stepBeats === 0.75).targets).toEqual([target]);

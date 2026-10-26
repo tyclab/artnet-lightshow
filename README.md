@@ -302,11 +302,36 @@ select theme, screen wake lock and fullscreen for the current device.
 
 ### Spatial effects
 
-The **Spatial** group leads the Effects view. Its 39 named looks are parameter sets of
-eleven generators, and every one comes twice: the room form (`v2.<name>`) samples
-each light's position in metres, and the 2D twin (`v2.<name>.2d`, named "… 2D")
-plays the same parameters across the Rig plot as a picture whose top is "up".
-Both are looks of their own; the 2D twin never needs a room.
+The **Spatial** group leads the Effects view with one entry for each of its 39
+named looks, over eleven generators. Open an effect's editor to choose its
+**Mapping** when its motion or selection uses positions:
+
+- **Across layout** follows the Rig plot as a flat picture whose top is up. It
+  needs no room setup.
+- **Through room** follows physical positions, including depth, height and room
+  anchors. Room bindings make the difference visible.
+
+Wash, Breathe, strip-path/random stepping, technology/group zones, independent
+random pixels and all-lamp strobing have no mapping switch: moving their positions
+does not change the effect. The switch appears if edited settings make positions
+matter. Colour, timing and shape controls come first; **Advanced** holds geometry,
+modulation and output settings. Switching a built-in's mapping makes that variant
+ready to Play without saving a copy. Other draft edits are preserved and can be
+auditioned or saved as usual.
+
+There is no separate 2D/3D catalogue filter. Pads and sequence pickers also offer
+one entry per look. Existing `v2.<name>.2d` and overlay ids, saved shows and aliases
+keep their exact specs; a playing or pinned layout variant stays on the single
+card. The Stage's **3D room / 2D plot** switch changes only the preview camera.
+
+```mermaid
+flowchart LR
+  Look[One effect entry] --> Edit[Common controls]
+  Edit --> Mapping{Uses positions?}
+  Mapping -->|Yes| Choice[Across layout / Through room]
+  Mapping -->|No| Shared[Same motion in either space]
+  Edit --> Advanced[Geometry and modulation]
+```
 
 | Generator | What moves | Presets |
 |-----------|------------|---------|
@@ -343,7 +368,7 @@ curtain. A Sweep at 90° elevation climbs vertically. For a diagonal, set its
 **From Point** and **To Point** (or named anchors), for example `(-2, 0.1, -2)`
 to `(2, 2.5, 2)`. The crest travels through that line in all three dimensions;
 Particles can use the same endpoints for an orb path. Choose points in your own
-room's bounds. In the 2D twin, explicit points map continuously across the room's
+room's bounds. With Across layout, explicit points map continuously across the room's
 width and depth: `plot x = 0.5 + x / width`, `plot row = 0.5 + z / depth`.
 Named anchors use the nearest lamp's plot position. This floor projection omits
 height on diagonal paths; when both endpoints project to one spot, height maps
@@ -851,8 +876,12 @@ reconnects at once, without a back-off, instead of holding every reply behind it
 4. Add the area's lamps to the patch and place them on the plan.
 
 Multiple bridges can stream simultaneously. A bridge supports one active
-entertainment stream; stop another sync client before connecting. An area another
-app is streaming is reported as held by that app's id. A lost DTLS handshake is
+entertainment stream; stop another sync client before connecting. Lightshow checks
+every area on the bridge before starting, including areas other than the selected
+one. An occupied area is named in the bridge status and left to its owner; the
+other bridges continue independently. Lightshow retries automatically when the
+area is released. An enabled, configured bridge whose stream fails degrades health
+while outputs are armed. A lost DTLS handshake is
 retried within the open session, up to five tries a second each; then the session
 closes and retries back off from 2 s to 60 s until the output is stopped. Pairing keys
 are stored as secrets. Disconnect refuses while lamps remain patched unless

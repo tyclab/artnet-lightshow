@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { pick, connectedSig, dmxSig, emitFixture } from '../../state.js';
+import { pick, connectedSig, dmxSig, emitFixture, latestSent } from '../../state.js';
 import { useDmxFeed } from '../../use-dmx.js';
 import { stagePositions } from '../../../src/shared/stage.ts';
 import { buildRig, lineOf } from '../../../src/shared/rig.ts';
@@ -292,13 +292,13 @@ export function PlanEditor() {
       const dx = e.key === 'ArrowRight' ? step : e.key === 'ArrowLeft' ? -step : 0;
       const dy = e.key === 'ArrowDown' ? step : e.key === 'ArrowUp' ? -step : 0;
       for (const id of moving) {
-        const at = positions[indexOf.get(id)];
+        const at = latestSent(id, 'position', positions[indexOf.get(id)]);
         if (at) edit({ id, position: { x: clamp(round1(at.x + dx)), y: clamp(round1(at.y + dy)) } });
       }
       return;
     }
     if (!rig.cellMaps[i]) return;
-    const l = lineAt(i);
+    const drawn = lineAt(i), l = { ...drawn, ...latestSent(fix.id, 'geometry', { length: drawn.length, angle: drawn.angle }) };
     const turn = e.shiftKey ? 5 : 15;
     const stretch = e.shiftKey ? 10 : 2;
     let geometry;
@@ -332,7 +332,7 @@ export function PlanEditor() {
   const one = chosen.length === 1 ? fixtures[indexOf.get(chosen[0])] : null;
   const oneHeight = one && one.position && Number.isFinite(one.position.height) ? one.position.height : null;
   const setHeight = (height) => {
-    const at = positions[indexOf.get(one.id)];
+    const at = latestSent(one.id, 'position', positions[indexOf.get(one.id)]);
     edit({ id: one.id, position: { x: round1(at.x), y: round1(at.y), height } });
   };
   const waiting = fixtures.filter((f) => !f.position);

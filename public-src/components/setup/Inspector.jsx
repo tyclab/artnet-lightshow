@@ -1,6 +1,6 @@
 import { emissionOf } from '../../../src/shared/emission.ts';
 import { FixtureHardware } from './Hardware.jsx';
-import { pick, connectedSig, emitFixture } from '../../state.js';
+import { pick, connectedSig, emitFixture, fixtureAckSig, latestSent } from '../../state.js';
 import { stagePositions } from '../../../src/shared/stage.ts';
 import { buildRig, lineOf } from '../../../src/shared/rig.ts';
 import { clamp, geometryOf, round1 } from '../../stage-geometry.js';
@@ -18,6 +18,7 @@ import { hueBridgeLabel } from '../../utils.js';
 export function Inspector() {
   const s = pick(['fixtures', 'profiles', 'identify', 'hueBridges', 'hardware']);
   const connected = connectedSig.value;
+  void fixtureAckSig.value;
   const fixtures = s.fixtures || [];
   const profiles = s.profiles || {};
   const selected = rigSelectionSig.value.filter((id) => fixtures.some((f) => f.id === id));
@@ -50,15 +51,23 @@ export function Inspector() {
   const fix = fixtures[index];
   const profile = profiles[fix.profileId];
   const rig = buildRig(fixtures, (f) => profiles[f.profileId] || null);
-  const point = stagePositions(fixtures)[index];
+  const placed = stagePositions(fixtures)[index];
+  const point = latestSent(fix.id, 'position', placed);
   const bar = !!rig.cellMaps[index];
   const grid = rig.grids[index];
-  const emission = emissionOf(fix, profile, bar);
+  const shaped = emissionOf(fix, profile, bar);
+  const emission = latestSent(fix.id, 'emission', shaped);
   const linear = bar || emission.kind === 'strip';
   const unplaced = fixtures.filter((f) => !f.position).length;
-  const line = linear ? lineOf(fix, grid ? grid.columns : Math.max(2, rig.ranges[index].count), fix.position ? 0 : unplaced) : null;
+  const drawn = linear ? lineOf(fix, grid ? grid.columns : Math.max(2, rig.ranges[index].count), fix.position ? 0 : unplaced) : null;
+  const lineNow = () => drawn && { ...drawn, ...latestSent(fix.id, 'geometry', { length: drawn.length, angle: drawn.angle }) };
+  const line = lineNow();
   const send = (patch) => emitFixture({ id: fix.id, ...patch });
-  const place = (patch) => send({ position: { x: clamp(round1(patch.x ?? point.x)), y: clamp(round1(patch.y ?? point.y)) } });
+  const place = (patch) => {
+    const at = latestSent(fix.id, 'position', placed);
+    send({ position: { x: clamp(round1(patch.x ?? at.x)), y: clamp(round1(patch.y ?? at.y)) } });
+  };
+  const shape = (patch) => send({ emission: { ...latestSent(fix.id, 'emission', shaped), ...patch } });
   const trimPct = Math.round(((fix.maxBrightness ?? 255) / 255) * 100);
   const addressless = hasNoAddress(fix);
   const hueLamp = isHueLamp(fix);
@@ -96,27 +105,27 @@ export function Inspector() {
         <FieldInput id="insp-y" type="number" min="0" max="100" step="0.5" value={round1(point.y)} onCommit={(y) => place({ y })} />
         <label for="insp-emission">Light shape</label>
         <select id="insp-emission" value={emission.kind} disabled={!connected}
-          onChange={(e) => send({ emission: { ...emission, kind: e.target.value } })}>
+          onChange={(e) => shape({ kind: e.target.value })}>
           <option value="bulb">Bulb / diffuse</option><option value="strip">Strip / panel</option><option value="beam">Directional beam</option>
         </select>
         {emission.kind === 'beam' && <>
           <label for="insp-pan">Beam pan</label>
           <FieldInput id="insp-pan" type="number" min="-180" max="180" step="5" value={emission.pan ?? (fix.group === 'floor' ? 180 : 0)}
-            onCommit={(pan) => send({ emission: { ...emission, pan } })} />
+            onCommit={(pan) => shape({ pan })} />
           <label for="insp-tilt">Beam tilt</label>
           <FieldInput id="insp-tilt" type="number" min="-90" max="90" step="5" value={emission.tilt ?? (fix.group === 'floor' ? 78 : -68)}
-            onCommit={(tilt) => send({ emission: { ...emission, tilt } })} />
+            onCommit={(tilt) => shape({ tilt })} />
           <label for="insp-beam-angle">Beam spread</label>
           <FieldInput id="insp-beam-angle" type="number" min="1" max="160" step="1" value={emission.beamAngle ?? 22}
-            onCommit={(beamAngle) => send({ emission: { ...emission, beamAngle } })} />
+            onCommit={(beamAngle) => shape({ beamAngle })} />
         </>}
         {linear && <>
           <label for="insp-length">Length</label>
           <FieldInput id="insp-length" type="number" min="1" max="100" step="0.5" value={round1(line.length)}
-            onCommit={(length) => send({ geometry: geometryOf(length, line.angle) })} />
+            onCommit={(length) => send({ geometry: geometryOf(length, lineNow().angle) })} />
           <label for="insp-angle">Angle</label>
           <FieldInput id="insp-angle" type="number" min="-180" max="180" step="5" value={round1(line.angle)}
-            onCommit={(angle) => send({ geometry: geometryOf(line.length, angle) })} />
+            onCommit={(angle) => send({ geometry: geometryOf(lineNow().length, angle) })} />
         </>}
         <label for="insp-trim">Trim</label>
         <span class="inspector-trim">
@@ -136,7 +145,7 @@ export function Inspector() {
           onClick={() => identifyFixtures([fix.id])}>Identify</button>
         {bar && <button type="button" class="btn sm" disabled={!connected}
           title="Turn it end for end: for a bar hung the other way round"
-          onClick={() => send({ geometry: geometryOf(line.length, line.angle + 180) })}>Reverse</button>}
+          onClick={() => { const now = lineNow(); send({ geometry: geometryOf(now.length, now.angle + 180) }); }}>Reverse</button>}
         {(fix.position || fix.geometry) && <button type="button" class="btn sm" disabled={!connected}
           onClick={() => send({ position: null, geometry: null })}>Reset place</button>}
       </div>

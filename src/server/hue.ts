@@ -436,23 +436,30 @@ async function identifyDevices(host: string, key: string, devices: readonly stri
 }
 
 async function setStreaming(host: string, key: string, configId: string, active: boolean): Promise<void> {
-  await bridgeRequest(host, {
+  const parsed = await bridgeRequest(host, {
     method: 'PUT',
     path: `/clip/v2/resource/entertainment_configuration/${encodeURIComponent(configId)}`,
     key,
     body: { action: active ? 'start' : 'stop' },
   });
+  const error = describeClipError(parsed);
+  if (error) throw new Error(error);
 }
 
-// The bridge accepts a start on an area another app is streaming, so only the area itself says who holds it.
-async function activeStreamer(host: string, key: string, configId: string): Promise<string | null> {
-  const parsed = await bridgeRequest(host, {
-    path: `/clip/v2/resource/entertainment_configuration/${encodeURIComponent(configId)}`,
-    key,
-  }) as ClipList<ClipEntertainmentConfig> | null;
-  const area = parsed && Array.isArray(parsed.data) ? parsed.data[0] : null;
-  return (area && area.status === 'active' && area.active_streamer?.rid) || null;
+// Entertainment ownership is bridge-wide, even when the selected area is inactive.
+async function conflictingArea(config: HueBridgeConfig, identity: string, beforeStart: boolean): Promise<ClipEntertainmentConfig | null> {
+  const path = '/clip/v2/resource/entertainment_configuration';
+  const parsed = await bridgeRequest(config.host, { path, key: config.username })
+    .catch(() => bridgeRequest(config.host, { path: `${path}/${encodeURIComponent(config.entertainmentId)}`, key: config.username }))
+    .catch(() => null) as ClipList<ClipEntertainmentConfig> | null;
+  const knownIdentity = identity !== config.username;
+  return parsed?.data?.find((area) => area.status === 'active' && (area.id !== config.entertainmentId
+    || (knownIdentity && area.active_streamer?.rid && area.active_streamer.rid !== identity)
+    || (beforeStart && (!knownIdentity || !area.active_streamer?.rid)))) || null;
 }
+
+const busyMessage = (area: ClipEntertainmentConfig): string =>
+  `Entertainment area "${area.metadata?.name || area.id}" is already in use. Stop its sync in the Hue app, Sync Box or other controller; Lightshow will retry automatically.`;
 
 const HEADER = Buffer.from('HueStream', 'ascii');    // 9 bytes
 const CONFIG_ID_BYTES = 36;                          // a UUID, as ASCII
@@ -520,7 +527,9 @@ class HueSession {
   private lastError: string | null = null;
   private retryAt = 0;
   private retryDelay = RETRY_BASE_MS;
-  private sessionOpen = false;
+  private sessionConfig: HueBridgeConfig | null = null;
+  private connecting: Promise<void> | null = null;
+  private connectEpoch = 0;
   private resolvedApplicationId: string | null = null;
   private lastChannels: number[] = [];
   private readonly sink: () => ApplicationIdSink | null;
@@ -579,6 +588,8 @@ class HueSession {
 
     this.status = CONNECTING;
     const config = this.config;
+    const epoch = ++this.connectEpoch;
+    const current = () => this.connectEpoch === epoch && this.status === CONNECTING;
 
     // Resolve the application ID for older pairings while preserving the accepted key fallback.
     let identity = config.applicationId || this.resolvedApplicationId;
@@ -594,24 +605,28 @@ class HueSession {
         identity = config.username;
       }
     }
-    if (this.config !== config || this.status !== CONNECTING) return;
+    if (!current()) return;
+
+    const occupied = await conflictingArea(config, identity, true);
+    if (!current()) return;
+    if (occupied) { this.fail(busyMessage(occupied)); return; }
 
     try {
       await setStreaming(config.host, config.username, config.entertainmentId, true);
-      this.sessionOpen = true;
+      this.sessionConfig = config;
     } catch (err) {
-      this.fail(`could not start the entertainment session: ${messageOf(err)}`);
+      if (current()) this.fail(`could not start the entertainment session: ${messageOf(err)}`);
       return;
     }
-    const holder = await activeStreamer(config.host, config.username, config.entertainmentId).catch(() => null);
-    if (this.config !== config || this.status !== CONNECTING) {
+    if (!current()) { this.teardown(); return; }
+    const holder = await conflictingArea(config, identity, false);
+    if (holder) this.sessionConfig = null;
+    if (!current()) {
       this.teardown();
       return;
     }
-    // A username fallback cannot be compared; a stop would end the other app's stream.
-    if (holder && identity !== config.username && holder !== identity) {
-      this.sessionOpen = false;
-      this.fail(`the entertainment area is held by ${holder}`);
+    if (holder) {
+      this.fail(busyMessage(holder));
       return;
     }
     this.handshake(config, identity, 1);
@@ -646,7 +661,7 @@ class HueSession {
 
     pending.on('error', (err: Error) => {
       if (this.socket !== pending) return;
-      if (/timed out/.test(err.message) && attempt < HANDSHAKE_TRIES && this.status === CONNECTING && this.sessionOpen) {
+      if (/timed out/.test(err.message) && attempt < HANDSHAKE_TRIES && this.status === CONNECTING && this.sessionConfig) {
         console.warn(`[hue] ${this.name}: ${err.message}, try ${attempt + 1} of ${HANDSHAKE_TRIES}`);
         this.socket = null;
         try { pending.close(); } catch (_) { /* already gone */ }
@@ -679,19 +694,21 @@ class HueSession {
     if (dying) {
       try { dying.close(); } catch (_) { /* already gone */ }
     }
-    const { host, username, entertainmentId } = this.config;
-    if (this.sessionOpen && host && username && entertainmentId) {
+    const { host, username, entertainmentId } = this.sessionConfig || {};
+    if (host && username && entertainmentId) {
       setStreaming(host, username, entertainmentId, false)
         .catch((err) => console.warn(`[hue] ${this.name}: could not close the session cleanly: ${messageOf(err)}`));
     }
-    this.sessionOpen = false;
+    this.sessionConfig = null;
   }
 
   async stop(): Promise<void> {
-    if (this.status === IDLE && !this.socket && !this.sessionOpen) return;
+    this.connectEpoch++;
+    if (this.status === IDLE && !this.socket && !this.sessionConfig) return;
     this.status = IDLE;
     this.lastError = null;
     this.retryDelay = RETRY_BASE_MS;
+    this.retryAt = 0;
     this.teardown();
   }
 
@@ -718,7 +735,9 @@ class HueSession {
     }
 
     if (this.status === IDLE || (this.status === FAILED && Date.now() >= this.retryAt)) {
-      this.connect().catch((err) => this.fail(messageOf(err)));
+      if (!this.connecting) this.connecting = this.connect().catch((err) => {
+        if (this.status === CONNECTING) this.fail(messageOf(err));
+      }).finally(() => { this.connecting = null; });
       return false;
     }
     if (this.status !== STREAMING || !this.socket) return false;

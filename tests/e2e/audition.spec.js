@@ -28,7 +28,7 @@ test('demo audition animates room and plot while every live control keeps its st
   const allow = page.getByRole('button', { name: 'Allow flashing in this browser preview' });
   await expect(allow).toBeVisible();
   await allow.click();
-  await picker.selectOption('v2.neural.2d');
+  await picker.selectOption('v2.neural');
   await page.getByRole('button', { name: 'Pause demo', exact: true }).click();
   await page.getByLabel('Audition position', { exact: true }).fill('16000');
   await expect(page.locator('[data-audition-section]')).toHaveAttribute('data-audition-section', 'breakdown');
@@ -73,6 +73,7 @@ test('a diagonal draft auditions with explicit floor-to-height endpoints without
   await page.getByLabel('Search effects').fill('Groove Wave');
   await page.getByRole('button', { name: 'Edit Groove Wave', exact: true }).first().click();
   const sheet = page.getByRole('dialog', { name: 'Edit effect' });
+  await sheet.getByText('Advanced', { exact: true }).click();
   await sheet.getByLabel('Use explicit from point', { exact: true }).check();
   await sheet.getByLabel('Use explicit to point', { exact: true }).check();
   await sheet.getByLabel('Start height (metres)', { exact: true }).fill('0.1');

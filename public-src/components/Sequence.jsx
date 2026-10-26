@@ -344,7 +344,7 @@ function PresetSelect({ clip, rows, onChange, ...rest }) {
   return (
     <select {...rest} value={current} onChange={(e) => { if (e.currentTarget.value) onChange(withPreset(clip, e.currentTarget.value)); }}>
       {!current && <option value="" selected>An effect of its own</option>}
-      {current && !rows.some((r) => r.id === current) && <option value={current} selected>{current}</option>}
+      {current && !rows.some((r) => r.id === current) && <option value={current} selected>{findPreset(current, librarySig.value)?.name || current}</option>}
       {rows.map((r) => <option key={r.id} value={r.id} selected={r.id === current}>{r.name}</option>)}
     </select>
   );

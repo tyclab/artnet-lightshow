@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { stateSig, dmxSig, connectedSig, emitFixture, stagePreviewSig } from '../state.js';
+import { stateSig, dmxSig, connectedSig, emitFixture, latestSent, stagePreviewSig } from '../state.js';
 import { colorToCss, fixtureOutputColor, fixtureCellColors, meanLight, fmtTime, patchedAt, stageMode } from '../utils.js';
 import { useDmxFeed } from '../use-dmx.js';
 import { useRehearsalTrack, useRehearsalSampler, useUnitSpace } from '../rehearsal.js';
@@ -166,19 +166,21 @@ export function StagePreview({ controls = true } = {}) {
             if (event.key.startsWith('Arrow')) {
               event.preventDefault();
               const step = event.shiftKey ? 10 : 2;
-              const next = { x: clamp(point.x + (event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0)),
-                y: clamp(point.y + (event.key === 'ArrowDown' ? step : event.key === 'ArrowUp' ? -step : 0)) };
+              const at = latestSent(fix.id, 'position', point);
+              const next = { x: clamp(at.x + (event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0)),
+                y: clamp(at.y + (event.key === 'ArrowDown' ? step : event.key === 'ArrowUp' ? -step : 0)) };
               emitFixture({ id: fix.id, position: next });
               return;
             }
             if (!bar) return;
             const turn = event.shiftKey ? 5 : 15;
             const stretch = event.shiftKey ? 10 : 2;
+            const l = { ...line, ...latestSent(fix.id, 'geometry', { length: line.length, angle: line.angle }) };
             let geometry;
-            if (event.key === '[' || event.key === '{') geometry = geometryOf(line.length, line.angle - turn);
-            else if (event.key === ']' || event.key === '}') geometry = geometryOf(line.length, line.angle + turn);
-            else if (event.key === '-' || event.key === '_') geometry = geometryOf(line.length - stretch, line.angle);
-            else if (event.key === '=' || event.key === '+') geometry = geometryOf(line.length + stretch, line.angle);
+            if (event.key === '[' || event.key === '{') geometry = geometryOf(l.length, l.angle - turn);
+            else if (event.key === ']' || event.key === '}') geometry = geometryOf(l.length, l.angle + turn);
+            else if (event.key === '-' || event.key === '_') geometry = geometryOf(l.length - stretch, l.angle);
+            else if (event.key === '=' || event.key === '+') geometry = geometryOf(l.length + stretch, l.angle);
             else if (event.key === '0') geometry = null;
             else return;
             event.preventDefault();

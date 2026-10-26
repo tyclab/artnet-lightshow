@@ -380,7 +380,7 @@ test("pickers expose every preset with effective acknowledgement", () => {
   assert.deepStrictEqual(PRESET_ROWS.map((p) => p.id), CATALOGUE.filter((p) => !p.legacy).map((p) => p.id));
   for (const row of PRESET_ROWS) {
     const p = presetById(row.id);
-    assert.deepStrictEqual(Object.keys(row), ['id', 'name', 'desc', ...(p.party ? ['party'] : []), ...(p.pixel ? ['pixel'] : []), ...(p.retired ? ['retired'] : []), 'app', 'family', 'rapidFlash', 'scope'], row.id);
+    assert.deepStrictEqual(Object.keys(row), ['id', 'name', 'desc', ...(p.party ? ['party'] : []), ...(p.pixel ? ['pixel'] : []), ...(p.retired ? ['retired'] : []), ...(p.variantOf ? ['variantOf'] : []), 'mapping', 'app', 'family', 'rapidFlash', 'scope'], row.id);
     assert.deepStrictEqual([row.name, row.desc, row.app, row.family], [p.name, p.desc, p.app, p.family], row.id);
     assert.strictEqual(row.rapidFlash, requiresAcknowledgement(p.spec), row.id);
     assert.strictEqual(row.scope, p.spec.scope ?? null, row.id);
