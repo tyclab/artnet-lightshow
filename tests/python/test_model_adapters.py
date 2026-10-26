@@ -216,6 +216,8 @@ class SKey(unittest.TestCase):
         module.load_audio = MagicMock(side_effect=RuntimeError('torchcodec'))
         exec(
             "def detect_key(path, device='cpu'):\n"
+            "    import sys\n"
+            "    seen['stdout'] = sys.stdout\n"
             "    seen['waveform'] = load_audio(path, 22050)\n"
             "    print('\\n✅ Predicted key: A minor\\n')\n"
             "    return ['A minor']\n",
@@ -238,6 +240,7 @@ class SKey(unittest.TestCase):
                 result = adapters.skey_key(path)
         self.assertEqual(result, {'value': 'A minor', 'confidence': 1.0, 'source': 's-key'})
         self.assertEqual(console.getvalue(), '')
+        self.assertIs(seen['stdout'], console, 'sys.stdout is shared with the other model threads; S-KEY must not swap it')
         waveform = seen['waveform']
         self.assertEqual(tuple(waveform.shape[:1]), (1,))
         self.assertAlmostEqual(waveform.shape[1], 22050, delta=2)

@@ -30,6 +30,7 @@ a performance fix is missing.
 | `a9ea36d`, `a7a1bc9`, `cea505b` | Capability-derived Hue profiles and ordered sections integrated with legacy migration that preserves fixture identities |
 | `64b104b` | WLED and OpenRGB use internal allocation without operator-facing DMX addresses |
 | `89b62d9`, `0f222a1` | Drawn strobe programs integrated with hardware and shared flash guards after program rendering |
+| `d81c065`, `3ce8f1c` | S-KEY is silenced in its own module; the adapter test also requires `sys.stdout` to stay unswapped |
 
 Upstream's removal of legacy Hue fixtures and restored comment-heavy files
 are not adopted. Existing shows keep their references; legacy lamp profiles
