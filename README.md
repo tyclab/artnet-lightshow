@@ -876,8 +876,12 @@ reconnects at once, without a back-off, instead of holding every reply behind it
 4. Add the area's lamps to the patch and place them on the plan.
 
 Multiple bridges can stream simultaneously. A bridge supports one active
-entertainment stream; stop another sync client before connecting. An area another
-app is streaming is reported as held by that app's id. A lost DTLS handshake is
+entertainment stream; stop another sync client before connecting. Lightshow checks
+every area on the bridge before starting, including areas other than the selected
+one. An occupied area is named in the bridge status and left to its owner; the
+other bridges continue independently. Lightshow retries automatically when the
+area is released. An enabled, configured bridge whose stream fails degrades health
+while outputs are armed. A lost DTLS handshake is
 retried within the open session, up to five tries a second each; then the session
 closes and retries back off from 2 s to 60 s until the output is stopped. Pairing keys
 are stored as secrets. Disconnect refuses while lamps remain patched unless

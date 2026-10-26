@@ -23,6 +23,19 @@ test('a server doing well is ok, with nothing to say', () => {
   assert.deepEqual(assess(fine), { status: 'ok', problems: [] });
 });
 
+test('an enabled Hue bridge failure degrades health while the other streams', () => {
+  const failed = { id: 'b1', label: 'Lounge', status: 'failed', enabled: true, configured: true, error: 'TV Couch is already in use' };
+  const assessBridges = (patch = {}, armed = true) => assess({ ...fine, armed,
+    hue: [{ ...failed, ...patch }, { ...failed, id: 'b2', status: 'streaming', error: null }] });
+  const result = assessBridges();
+  assert.equal(result.status, 'degraded');
+  assert.deepEqual(result.problems, [{ level: 'warn', what: 'Hue Lounge: TV Couch is already in use' }]);
+  for (const patch of [{ enabled: false }, { configured: false }, { status: 'streaming' }, { status: 'idle' }]) {
+    assert.equal(assessBridges(patch).status, 'ok');
+  }
+  assert.equal(assessBridges({}, false).status, 'ok', 'disarmed outputs do not imply failure');
+});
+
 for (const [name, patch, status, levels] of [
   ['late frames', { engine: { ...fine.engine, lateFrames: 120 } }, 'degraded', ['warn']],
   ['stalled event loop', { eventLoop: { p50Ms: 10, p99Ms: 250, maxMs: 900 } }, 'degraded', ['warn']],

@@ -13,6 +13,7 @@ import { wledStatus } from './wled-watch.ts';
 import type { Supervision } from './supervised.ts';
 import type { EngineStatus } from './engine.ts';
 import type { WledBoardStatus } from './wled-watch.ts';
+import type { HueStatus } from './hue.ts';
 
 export type HealthStatus = 'ok' | 'degraded' | 'failing';
 
@@ -38,6 +39,7 @@ export interface HealthInputs {
   /** Whether anything leaves the machine (armed.ts); left out, nothing is said about it. */
   armed?: boolean;
   wled?: WledBoardStatus[];
+  hue?: HueStatus[];
 }
 
 const WINDOW_MS = 30_000;
@@ -68,6 +70,9 @@ export function assess(inputs: HealthInputs): { status: HealthStatus; problems: 
   }
   if (auto && auto.status === 'error' && auto.error) problems.push({ level: 'warn', what: `The auto show: ${auto.error}` });
   for (const board of inputs.wled || []) if (board.problem) problems.push({ level: 'warn', what: `${board.problem}.` });
+  for (const bridge of inputs.hue || []) if (inputs.armed !== false && bridge.enabled && bridge.configured && bridge.status === 'failed') {
+    problems.push({ level: 'warn', what: `Hue ${bridge.label || bridge.id}: ${bridge.error || 'The entertainment stream failed.'}` });
+  }
   // Disarmed explains a dark rig without marking a healthy engine as degraded.
   if (inputs.armed === false) problems.push({ level: 'info', what: 'The outputs are disarmed: nothing goes out to the rig until they are armed.' });
   if (supervisor.restarts > 0) {
@@ -191,6 +196,7 @@ export function health({ autoShow = null }: HealthDeps = {}) {
     auto: autoShow ? { status: String(autoShow.status || 'idle'), error: autoShow.error ?? null } : null,
     armed: isArmed(),
     wled: wledStatus(),
+    hue: output.getHueStatus(),
   };
   const { status, problems } = assess(inputs);
   return {
@@ -209,7 +215,7 @@ export function health({ autoShow = null }: HealthDeps = {}) {
     outputs: {
       armed: inputs.armed,
       artnet: { enabled: state.artnet.enabled !== false, host: state.artnet.host },
-      hue: output.getHueStatus(),
+      hue: inputs.hue,
       wled: inputs.wled,
     },
     auto: autoShow ? { status: inputs.auto?.status, running: !!autoShow.running, error: inputs.auto?.error ?? null } : null,
