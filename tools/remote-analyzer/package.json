@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Analyses the lightshow's tracks on a PC's GPU and posts the documents back",
   "engines": {
-    "node": ">=22.18"
+    "node": ">=24"
   },
   "scripts": {
     "start": "node cli.js run",

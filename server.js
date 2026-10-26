@@ -1,11 +1,10 @@
-// Check native TypeScript support before loading the server.
-if (!process.features?.typescript) {
-  const [major, minor] = process.versions.node.split('.').map(Number);
-  const recentEnough = major > 22 || (major === 22 && minor >= 18);
+// Check the Node version and its native TypeScript support before loading the server.
+const recentEnough = Number(process.versions.node.split('.')[0]) >= 24;
+if (!recentEnough || !process.features?.typescript) {
   console.error(recentEnough
     ? `TycStation Lightshow runs its TypeScript directly, and this Node (${process.version}) has that turned off. `
       + 'Check NODE_OPTIONS and the command line for --no-experimental-strip-types.'
-    : `TycStation Lightshow needs Node.js 22.18 or newer, which runs TypeScript directly. `
+    : `TycStation Lightshow needs Node.js 24 or newer, which runs TypeScript directly. `
       + `This is Node ${process.version}. Install the current LTS from https://nodejs.org/ and run it again.`);
   process.exit(1);
 }

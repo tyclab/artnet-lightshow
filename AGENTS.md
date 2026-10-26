@@ -32,7 +32,7 @@ controls, protocols and deployment; keep it consistent with the implementation.
 
 ## Implementation constraints
 
-- Node 22.18+ runs TypeScript directly. Use erasable syntax, explicit `.ts`
+- Node 24+ runs TypeScript directly. Use erasable syntax, explicit `.ts`
   imports and `import type`; `tsc` checks types without generating runtime files.
 - Edit browser code in `public-src/`; esbuild generates `public/app.bundle.js`
   and chunks. Do not commit generated assets or installation data.

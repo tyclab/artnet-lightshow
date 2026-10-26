@@ -76,7 +76,7 @@ flowchart LR
 
 ### Source checkout
 
-Use Node.js 24 LTS; Node 22.18 or newer is also supported.
+Use Node.js 24 LTS or newer.
 
 ```bash
 npm ci
@@ -688,7 +688,7 @@ flowchart LR
     Engine --> Output[DDP and other configured outputs]
 ```
 
-On Windows with Node 22.18+, install the helper and use the browser launcher from
+On Windows with Node 24+, install the helper and use the browser launcher from
 [party-visuals](https://github.com/tyclab/party-visuals). The launcher creates a
 dedicated persistent Chrome profile, waits for the selected TV and supplies an
 ephemeral loopback debugging port. The helper accesses only the configured Music

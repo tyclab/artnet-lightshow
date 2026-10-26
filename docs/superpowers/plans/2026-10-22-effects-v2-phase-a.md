@@ -6,7 +6,7 @@
 
 **Architecture:** A shared `UnitSpace` gives every output unit a position in metres from the Stage room's bindings, with the 2D plan as fallback. It reaches the renderer worker and the browser preview through one shared builder. Five new effect kinds (`v2.sweep`, `v2.shell`, `v2.orbit`, `v2.scatter`, `v2.neural`) share one set of modifiers (space, trigger, envelope, colour, background) and register like every other kind, so pads, cues, sequences, voices and the existing safety path play them unchanged. Nothing existing is removed in Phase A.
 
-**Tech Stack:** Node 22.18+ running TypeScript directly (erasable syntax, explicit `.ts` imports), zod, `node --test`, Playwright, Preact client built with esbuild.
+**Tech Stack:** Node 24+ running TypeScript directly (erasable syntax, explicit `.ts` imports), zod, `node --test`, Playwright, Preact client built with esbuild.
 
 **Spec:** `docs/effects-v2.md` (fork main `f3f1a28`): sections "Target", "Next level", "3D space", "Steps" 0, 3, 4 and 5. Phase A covers steps 0, 3 and 4 plus the part of step 5 that builds the operator's list. Steps 1, 2 and 6 to 10 are Phase B, planned after the gate at the end of this plan.
 

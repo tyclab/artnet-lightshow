@@ -160,7 +160,7 @@ Based on LightD31's TycStation Lightshow; upstream copyright and MIT license are
 
 async function main() {
   if (!UV_WHEELS[target]) throw new Error(`packaging is for Windows and Linux (x64, arm64); this is ${target}`);
-  if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('package with Node 22 or newer (24 LTS is what it is made for)');
+  if (Number(process.versions.node.split('.')[0]) < 24) throw new Error('package with Node 24 or newer');
   console.log(`Packaging TycStation Lightshow ${PKG.version} for ${target}, with Node ${process.version}, into ${OUT}`);
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(APP, { recursive: true });
