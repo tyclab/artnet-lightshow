@@ -1,6 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { open, state, until } from './helpers.js';
 
+// A slow link: each edit goes out before the echo of the one before arrives.
+const slowEcho = (page) => page.routeWebSocket(/socket\.io/, (ws) => {
+  const server = ws.connectToServer();
+  ws.onMessage((message) => server.send(message));
+  server.onMessage((message) => setTimeout(() => ws.send(message), 400));
+});
+
 test('hardware disclosure controls are at least 44 pixels high', async ({ page }) => {
   await open(page, 'settings');
   const summaries = page.locator('.hardware-limits summary');
@@ -43,6 +50,7 @@ test('product and device limits save and return to inherited values', async ({ p
 test('physical light shape, beam aim and strip length survive show export and reload', async ({ page, request }) => {
   const original = await (await request.get('/api/show')).json();
   const fixture = (await state(request)).fixtures[0];
+  await slowEcho(page);
   const selectFixture = async () => {
     await open(page, 'rig');
     await page.locator(`.plan-surface [data-fixture="${fixture.id}"]`).click();
@@ -68,6 +76,29 @@ test('physical light shape, beam aim and strip length survive show export and re
     await panel.getByLabel('Length', { exact: true }).press('Enter');
     await until(request, (s) => s.fixtures.find((f) => f.id === fixture.id)?.geometry?.length === 35);
     await expect(panel.getByLabel('Beam pan', { exact: true })).toHaveCount(0);
+  } finally {
+    await request.post('/api/show', { data: original });
+  }
+});
+
+test('quick arrow presses on the plan each move the fixture a step', async ({ page, request }) => {
+  const original = await (await request.get('/api/show')).json();
+  const fixture = (await state(request)).fixtures[0];
+  await slowEcho(page);
+  try {
+    await open(page, 'rig');
+    const chip = page.locator(`.plan-surface [data-fixture="${fixture.id}"]`);
+    await chip.click();
+    const x = async () => (await state(request)).fixtures.find((f) => f.id === fixture.id).position?.x;
+    await chip.press('ArrowLeft');
+    await until(request, (s) => s.fixtures.find((f) => f.id === fixture.id).position);
+    const start = await x();
+    await chip.press('ArrowRight');
+    await until(request, (s) => s.fixtures.find((f) => f.id === fixture.id).position.x !== start);
+    const step = (await x()) - start;
+    expect(step).toBeGreaterThan(0);
+    for (let i = 0; i < 3; i++) await chip.press('ArrowRight');
+    await expect.poll(x).toBeCloseTo(start + 4 * step, 5);
   } finally {
     await request.post('/api/show', { data: original });
   }

@@ -203,7 +203,8 @@ function attachSockets(io: Server, { midi, integrations }: {
       }
     });
 
-    socket.on('fixture', (payload) => {
+    // The ack follows the state broadcast, so the sender knows its change is applied.
+    socket.on('fixture', (payload, ack?: unknown) => {
       try {
         const { id, address, universe, label, profileId, maxBrightness, position, group, geometry, emission, output, productId, hardware, admission } = validate(fixtureMessageSchema, payload, 'fixture-msg');
         const fixture = getFixture(id);
@@ -303,6 +304,8 @@ function attachSockets(io: Server, { midi, integrations }: {
         integrations.broadcast();
       } catch (err) {
         socket.emit('error-msg', { source: 'fixture', message: messageOf(err) });
+      } finally {
+        if (typeof ack === 'function') ack();
       }
     });
 

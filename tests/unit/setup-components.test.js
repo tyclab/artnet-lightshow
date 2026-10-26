@@ -18,7 +18,7 @@ async function load() {
       contents: `
         export { render as html } from 'preact-render-to-string';
         export { h } from 'preact';
-        export { store } from './public-src/state.js';
+        export { store, latestSent, rememberSent } from './public-src/state.js';
         export { settingsSig } from './public-src/setup-state.js';
         export { rigSelectionSig } from './public-src/rig-ui.js';
         export { lineFromEnds, geometryOf } from './public-src/stage-geometry.js';
@@ -198,4 +198,22 @@ test('the pre-show report says what to fix, and each row in words', () => {
   assert.doesNotMatch(html, /n\/a/, 'no fix for what passed');
   const ready = ui.html(ui.h(ui.PreflightReport, { report: { ok: true, counts: { ok: 4, warn: 0, fail: 0 }, checks: [] } }));
   assert.match(ready, /Ready\. 4 checks passed\./);
+});
+
+test('fixture edits build on the last sent value until the server acknowledges it', () => {
+  const server = { kind: 'beam' }, pan = { kind: 'beam', pan: 75 }, tilt = { kind: 'beam', pan: 75, tilt: -25 };
+  const ackPan = ui.rememberSent('lamp', { emission: pan, label: 'Lamp' }, 1000);
+  assert.deepStrictEqual(ui.latestSent('lamp', 'emission', server, 1100), pan, 'a render before the echo');
+  assert.strictEqual(ui.latestSent('other', 'emission', server, 1100), server, 'another fixture');
+  assert.strictEqual(ui.latestSent('lamp', 'label', 'Old', 1100), 'Old', 'untracked fields are not held');
+  const ackTilt = ui.rememberSent('lamp', { emission: tilt }, 1200);
+  ackPan();
+  assert.deepStrictEqual(ui.latestSent('lamp', 'emission', pan, 1300), tilt, 'an earlier ack keeps the later commit');
+  ackTilt();
+  const dragged = { kind: 'beam', pan: 10 };
+  assert.strictEqual(ui.latestSent('lamp', 'emission', dragged, 1400), dragged, 'after the ack, another writer shows');
+  ui.rememberSent('lamp', { geometry: { length: 30, angle: 0 } }, 3000);
+  assert.deepStrictEqual(ui.latestSent('lamp', 'geometry', { length: 5, angle: 0 }, 3000 + 5001), { length: 5, angle: 0 }, 'a lost ack');
+  ui.rememberSent('lamp', { position: null, geometry: null }, 4000);
+  assert.deepStrictEqual(ui.latestSent('lamp', 'position', { x: 1, y: 2 }, 4100), { x: 1, y: 2 }, 'a reset');
 });
