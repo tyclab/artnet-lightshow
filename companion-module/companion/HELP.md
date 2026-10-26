@@ -99,4 +99,4 @@ Load or edit the sequence in the Lightshow's Sequence page first. **Sequence: Pl
 
 The Sequence presets reuse the existing BPM display and ±5 actions. Set BPM and Adjust BPM change the shared tempo and end sequence tempo automation; later authored tempo commands can change it again. Pausing and resuming preserves the sequence position and does not reapply its initial tempo.
 
-TycStation Lightshow builds on [LightD31’s TycStation Lightshow](https://github.com/LightD31/artnet-lightshow) under the MIT license. The `artnet-lightshow` module ID and `lightshow` variable prefix stay compatible with existing Companion connections.
+TycStation Lightshow builds on [LightD31’s ArtNet Lightshow](https://github.com/LightD31/artnet-lightshow) under the MIT license. The `artnet-lightshow` module ID and `lightshow` variable prefix stay compatible with existing Companion connections.

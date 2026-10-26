@@ -74,10 +74,10 @@ credentials to this public repository.
 
 ## Fork policy
 
-Tyclab maintains its own application and tested deployment revisions while
-retaining attribution and the upstream remote. Review and adopt upstream changes
-selectively. Rebase is not required to operate independently, and rewriting
-published deployment history is unnecessary.
+Tyclab develops the application independently and keeps the MIT attribution.
+Upstream is no longer tracked: the consolidation in fork PR #27 (reviewed
+against upstream `b6f7f28`) was the last, and later upstream changes are
+neither reviewed nor adopted.
 
 The earlier review of upstream `cac3618a` found two adoption blockers: legacy
 Hue fixtures could be dropped during migration, and drawn strobes could bypass

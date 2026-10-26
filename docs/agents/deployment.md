@@ -15,6 +15,5 @@ Read for this topic; paths below are relative to the repository root unless stat
   and output safety controls. Do not restore retired integrations.
 - Never publish source-application names or private deployment hosts, addresses,
   account names or paths in this repository, issues or pull requests.
-- Do not open upstream PRs or make upstream-first changes. Review external
-  changes by content; copies can carry different SHAs, so git cherry is not proof
-  of equivalence. README records the last reviewed revision.
+- Do not open upstream PRs. Upstream is no longer tracked: do not review or
+  port upstream changes.
