@@ -621,6 +621,8 @@ The optional `tools/browser-visuals` helper uses Music Assistant's existing
 MilkDrop canvas in a dedicated fullscreen Chrome profile. It removes the artwork,
 timeline and visual tint, and follows the local Party Visuals on/off switch.
 Music Assistant remains the renderer and audio source. OBS is not required.
+Playback-path limitations and capture checks are in the
+[visualizer troubleshooting notes](docs/agents/visualizer.md).
 Every helper light output also follows the Lightshow's **Picture** selector:
 **Effects** releases the curtain, panel and room leases and pauses capture;
 **Visualizer** resumes them automatically. The fullscreen display

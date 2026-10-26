@@ -1,58 +1,40 @@
-# Repository instructions
+# AGENTS.md — Lightshow
 
-TycStation Lightshow runs a Node/TypeScript lighting server, a Preact browser client
-and an optional Python audio-analysis pipeline. Read README.md for operator
-controls, protocols and deployment; keep it consistent with the implementation.
+Node/TypeScript lighting server, Preact client and optional Python analysis.
+README owns operator controls, protocols and setup; keep it aligned with code.
 
-## Code and scope
+- Keep this public repo free of private addresses, deployment identities,
+  personal/employer details and source-application names. Secrets never enter
+  logs, browser state or tracked files.
+- Every startup remains disarmed. Preserve blackout, flash limits, photosensitivity
+  acknowledgement, output shutdown and preview/output parity. Never fetch model
+  weights during a show. Do not arm physical outputs without authorization.
+- Fetch and inspect incoming work before editing; preserve concurrent branches
+  and use an isolated worktree when changes overlap.
+- Target this fork explicitly with `gh ... --repo tyclab/lightshow`; verify the
+  PR URL before sharing it. Do not open upstream PRs. Preserve configured merge
+  defaults and hooks; use the repo-local identity or GitHub noreply email.
+- Node 24+ runs TypeScript directly: erasable syntax, explicit .ts imports and
+  import type. Browser sources are in public-src/; do not commit generated bundles
+  or installation data. Generated schema types are regenerated, never hand-edited.
+- Keep the server as the show orchestrator, with displays as separate clients.
+  Scope changes preserve the output safety contract.
 
-- README files and agent instruction files are exempt from the comment limit
-  by design. The limit applies to code and configuration files.
-- Outside the limit (operator, 2026-10-08): vendored third-party code and
-  third-party build output (kept byte-identical to upstream), Hugo site
-  functional files, translation files, example/template configs whose comments
-  document the schema, files under ten code lines, and approved runtime text
-  such as MCP tool docstrings. Output of our own generators is inside it: fix
-  the generator.
-- Keep comment-only lines at or below 20% of nonblank lines in each code or
-  configuration file. Count Python documentation strings; identify real comments
-  with the language parser so embedded scripts and data remain intact.
-- An operator must explicitly approve each exception with its path, reason and
-  scope. No code-file exceptions are granted by this file. Preserve required
-  legal notices, compiler/tool directives and runtime descriptions while seeking
-  approval; never remove them to satisfy a metric.
-- Retain concise explanations of units, invariants and failure handling. Remove
-  repeated narration, obsolete scaffolding and unused code only with evidence
-  that behavior and callers are preserved. Do not invent or remove features based
-  on assumptions about demand.
-- Keep repository guidance here, without duplicate CLAUDE.md or GEMINI.md files.
-  Explain significant process changes with the README's Mermaid diagrams.
-- Fetch/prune and inspect incoming branches before editing. Preserve concurrent
-  work and use a separate branch for changes that overlap another agent's work.
+Keep code/config comments at or below 20% of nonblank lines; preserve licenses,
+tool directives and runtime descriptions. Only the operator may grant a documented,
+file-specific exception. See the shared [maintenance policy](https://github.com/tyclab/flakelab/blob/main/docs/agents/maintenance.md)
+for exclusions and counting rules. Remove code only with evidence that behavior and
+callers are preserved; keep README commands and diagrams aligned with code.
 
-## Implementation constraints
+## Read before the task
 
-- Node 24+ runs TypeScript directly. Use erasable syntax, explicit `.ts`
-  imports and `import type`; `tsc` checks types without generating runtime files.
-- Edit browser code in `public-src/`; esbuild generates `public/app.bundle.js`
-  and chunks. Do not commit generated assets or installation data.
-- Every startup must remain disarmed. Preserve blackout, flash limits,
-  photosensitivity acknowledgement, output shutdown and preview/output parity.
-- Keep access tokens and credentials out of logs, client state and tracked files.
-- The analysis contract is `src/analysis/document.schema.json`. Regenerate
-  `src/types/analysis.ts` with `npm run gen:analysis-types`; do not hand-edit it.
-  In `src/analysis/version.py`, incompatible changes need a major schema bump,
-  additive changes a minor bump; `MIN_COMPATIBLE` controls cache reanalysis.
-  `src/analysis-cache.ts` reads it with a regex: keep the line as
-  `MIN_COMPATIBLE = 'X.Y'`.
-- Python worker stdout is NDJSON. Keep library logs on stderr and preserve CLI
-  descriptions consumed through `__doc__`. Never fetch model weights during a show.
+- TypeScript, Python, analysis schema, Hue or output behavior:
+  [implementation contracts](docs/agents/implementation.md).
+- Tests, browser motion, Nix or dependency work:
+  [validation and traps](docs/agents/validation.md).
+- Display capture or a dark visualizer: [visualizer troubleshooting](docs/agents/visualizer.md).
+- Deployment, external ports or integration changes:
+  [deployment and show safety](docs/agents/deployment.md).
 
-## Validation
-
-Run `npm run check` and `npm run build:client` for JavaScript/TypeScript changes.
-For browser behavior, run `npm run test:e2e` with Playwright Chromium installed.
-For Python changes, run `python -m unittest discover -s tests/python -v` using the
-analysis environment; report missing dependencies, skipped models and failures.
-Validate comment edits with parser/AST comparisons as well as relevant tests.
-Do not update golden outputs merely to make a failing check pass.
+Keep repository-wide instructions here; put task-specific guidance in `docs/agents/`
+and link it from this file. README owns human setup and architecture; plans hold open work only.
