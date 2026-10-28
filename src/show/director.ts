@@ -354,7 +354,7 @@ class ShowDirector {
       }
       if (source === 'drop:anchor' && releases.some((r) => Math.abs(r.start - intent.timeMs) < 2)) pattern = 'v2.fallingWall';
       intent.pattern = pattern;
-      intent.pixelPattern = null; intent.panelPattern = null; intent.pixelMap = 'stage'; intent.split = 0;
+      intent.pixelPattern = null; intent.panelPattern = null; intent.pixelMap = 'stage'; intent.split = null;
       intent.strobeSpeed = 0;
       intent.pixelSpan = null; intent.pixelFrom = null;
       if (pattern === 'v2.risingWall') {
@@ -375,7 +375,7 @@ class ShowDirector {
       }
       const pool = roles.drop.filter((id) => context.available.has(id));
       if (pool.length) intents.push(scene(release.end, { pattern: pool[Math.abs(context.trackSeed) % pool.length], colors: anchor.colors,
-        pixelPattern: null, panelPattern: null, pixelMap: 'stage', pixelSpan: null, pixelFrom: null, split: 0, strobeSpeed: 0, beatDivision: 1 },
+        pixelPattern: null, panelPattern: null, pixelMap: 'stage', pixelSpan: null, pixelFrom: null, split: null, strobeSpeed: 0, beatDivision: 1 },
       { source: 'drop:detonate', priority: PRIORITY.DROP }));
     }
     intents.sort((a, b) => a.timeMs - b.timeMs || a.priority - b.priority);

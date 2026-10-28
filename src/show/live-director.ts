@@ -204,7 +204,7 @@ class LiveDirector {
       colorA: at(0), colorB: at(3), colorC: at(5), colorD: at(7),
       beatDivision: 1,
       running: true,
-      ...(pattern.startsWith('v2.') ? { pixelPattern: null, panelPattern: null, pixelMap: 'stage', pixelSpan: null, pixelFrom: null, split: 0 } : {}),
+      ...(pattern.startsWith('v2.') ? { pixelPattern: null, panelPattern: null, pixelMap: 'stage', pixelSpan: null, pixelFrom: null, split: null } : {}),
       ...(fadeMs > 0 ? { fadeMs: Math.min(10000, Math.round(fadeMs)) } : {}),
     };
     this._look = look;
@@ -242,7 +242,7 @@ class LiveDirector {
         this._building = true;
         if (this._available.has('v2.risingWall')) {
           this._look = { ...this._look, pattern: 'v2.risingWall', beatDivision: 2, pixelPattern: null, panelPattern: null,
-            pixelMap: 'stage', pixelSpan: null, pixelFrom: null, split: 0 };
+            pixelMap: 'stage', pixelSpan: null, pixelFrom: null, split: null };
           this._apply(this._look);
         } else this._apply({ beatDivision: 2 });
         break;

@@ -63,7 +63,7 @@ export interface ScenePayload {
   level?: string;
   identity?: number;
   fadeMs?: number;
-  split?: number;
+  split?: number | null;
   pixelMap?: string;
   pixelPattern?: string | null;
   pixelSpan?: number | null;

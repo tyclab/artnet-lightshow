@@ -611,8 +611,10 @@ overrides, pad voices and Identify retain priority over the external picture.
 Other fixtures continue their existing effects.
 
 The optional `tools/browser-visuals` helper uses Music Assistant's existing
-MilkDrop canvas in a dedicated fullscreen Chrome profile. It removes the artwork,
-timeline and visual tint, and follows the local Party Visuals on/off switch.
+MilkDrop canvas in a dedicated fullscreen Chrome profile. While a usable canvas
+is visible, it removes the artwork, timeline and visual tint, and follows the
+local Party Visuals on/off switch. If the visualizer is disabled, absent or idle,
+the ordinary player artwork remains visible; the helper does not enable it itself.
 Music Assistant remains the renderer and audio source. OBS is not required.
 Playback-path limitations and capture checks are in the
 [visualizer troubleshooting notes](docs/agents/visualizer.md).
@@ -620,6 +622,10 @@ Every helper light output also follows the Lightshow's **Picture** selector:
 **Effects** releases the curtain, panel and room leases and pauses capture;
 **Visualizer** resumes them automatically. The fullscreen display
 continues to follow the local Party Visuals switch.
+`--status-file /absolute/path/status.json` publishes a complete readiness snapshot
+once per second for a local controller: browser connection, visualizer readiness
+and each output's armed/lease state. Consumers must check its timestamp; a stale
+file does not mean the helper is running. It contains no URLs or credentials.
 **Colour + motion** resumes only the room feed for the spatial Visualizer effects;
 direct curtain and panel streams stay paused so their pictures cannot cover the
 generated animation.
