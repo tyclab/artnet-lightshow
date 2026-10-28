@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
 import { dmxSig, emitOverride, emitFixture, pick } from '../state.js';
-import { fixtureOutputColor, fixtureCellColors, patchedAt } from '../utils.js';
-import { useDmxFeed } from '../use-dmx.js';
+import { cellsOfProfile, fixtureOutputColor, fixtureCellColors, patchedAt } from '../utils.js';
+import { useDmxFeed, useDmxPaint } from '../use-dmx.js';
 import { useDraft, createFrameThrottle, SETTLE_MS } from '../draft.js';
 import { FIXTURE_GROUPS } from '../../src/shared/stage.ts';
 import { hasNoAddress } from '../../src/shared/placement.ts';
@@ -12,21 +12,35 @@ const CHANNELS = ['r', 'g', 'b', 'w', 'a', 'uv', 'dim', 'strobe'];
 const CHANNEL_LABELS = { r: 'Red', g: 'Green', b: 'Blue', w: 'White', a: 'Amber', uv: 'UV', dim: 'Dim', strobe: 'Strb' };
 const DEFAULT_OVERRIDE = { enabled: false, r: 255, g: 0, b: 0, w: 0, a: 0, uv: 0, dim: 255, strobe: 0, blackout: false };
 
+const sameColours = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((colour, i) => colour === b[i]);
+
 /**
  * The lit swatch, and the only part of a card that follows the DMX stream.
  *
- * It reads dmxSig itself so the DMX feed wakes one `<div>` per fixture
- * instead of every card — with the read in Fixtures() the whole grid, its
- * address inputs and its override sliders re-rendered on every frame.
+ * It paints itself from the feed once per animation frame (useDmxPaint) without
+ * rendering, and rebuilds a bar's gradient only when one of its cells changed:
+ * reading dmxSig here re-rendered every card's swatch on every frame, each
+ * rebuilding a gradient with a stop per cell.
  */
-function FixturePreview({ fix, state }) {
-  // An LED bar shows every cell, left to right, in hard steps rather than a
-  // blend: that is what the bar itself looks like.
-  const cells = fixtureCellColors(fix, state, dmxSig.value);
-  const background = cells
-    ? `linear-gradient(90deg, ${cells.map((c, i) => `${c} ${(i / cells.length) * 100}% ${((i + 1) / cells.length) * 100}%`).join(', ')})`
-    : fixtureOutputColor(fix, state, dmxSig.value);
-  return <div class="fixture-preview" style={{ background }} title={cells ? `${cells.length} cells` : undefined} />;
+export function FixturePreview({ fix, state }) {
+  const swatch = useRef(null);
+  const painted = useRef(null);
+  const cellCount = cellsOfProfile(state.profiles && state.profiles[fix.profileId])?.length;
+  useDmxPaint(() => {
+    const element = swatch.current;
+    if (!element) return;
+    const dmx = dmxSig.peek();
+    // An LED bar shows every cell, left to right, in hard steps rather than a
+    // blend: that is what the bar itself looks like.
+    const cells = fixtureCellColors(fix, state, dmx);
+    const colour = cells ? null : fixtureOutputColor(fix, state, dmx);
+    if (cells ? sameColours(cells, painted.current) : colour === painted.current) return;
+    painted.current = cells || colour;
+    element.style.background = cells
+      ? `linear-gradient(90deg, ${cells.map((c, i) => `${c} ${(i / cells.length) * 100}% ${((i + 1) / cells.length) * 100}%`).join(', ')})`
+      : colour;
+  });
+  return <div ref={swatch} class="fixture-preview" title={cellCount ? `${cellCount} cells` : undefined} />;
 }
 
 function FixtureCard({ fix, state }) {

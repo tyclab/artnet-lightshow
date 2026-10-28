@@ -29,7 +29,7 @@ async function redBars(request) {
 const restore = (request, before) => set(request, { pattern: before.pattern, basePalette: before.basePalette,
   overridePalette: before.overridePalette, masterBlackout: before.masterBlackout, running: before.running });
 
-test('the Effects stage plot paints bar cells on one canvas from the live feed', async ({ page, request }) => {
+test('the Effects stage plot paints bar cells on one canvas, and the swatches follow, from the live feed', async ({ page, request }) => {
   const before = await state(request);
   const remove = await redBars(request);
   try {
@@ -45,6 +45,12 @@ test('the Effects stage plot paints bar cells on one canvas from the live feed',
     const lamps = plot.locator('.stage-fixture.bar');
     await expect(lamps).toHaveCount(4);
     expect(await lamps.evaluateAll((nodes) => nodes.map((node) => node.style.getPropertyValue('--light')))).toEqual(Array(4).fill('rgb(0,255,0)'));
+    const swatches = page.locator('.fixture-preview[title="128 cells"]');
+    await expect(swatches).toHaveCount(4);
+    for (const background of await swatches.evaluateAll((nodes) => nodes.map((node) => node.style.background))) {
+      expect(background).toMatch(/^linear-gradient\(90deg, rgb\(0, 255, 0\)/);
+      expect(background).not.toMatch(/rgb\(255, 0, 0\)/);
+    }
   } finally {
     await remove();
     await restore(request, before);
