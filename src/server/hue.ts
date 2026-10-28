@@ -166,13 +166,17 @@ function bridgeRequest(host: string, options: BridgeRequest & { withHeaders: tru
 function bridgeRequest(host: string, options: BridgeRequest): Promise<unknown>;
 function bridgeRequest(host: string, { method = 'GET', path, key, body, withHeaders = false }: BridgeRequest): Promise<unknown> {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const finish = (error: Error | null, value?: unknown) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      if (error) reject(error); else resolve(value);
+    };
     const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
     const req = https.request({
-      host,
-      port: 443,
-      path,
-      method,
-      rejectUnauthorized: false,
+      host, port: 443, path, method, rejectUnauthorized: false,
       headers: {
         Accept: 'application/json',
         ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': payload.length } : {}),
@@ -181,26 +185,36 @@ function bridgeRequest(host: string, { method = 'GET', path, key, body, withHead
       timeout: REST_TIMEOUT_MS,
     }, (res) => {
       const chunks: Buffer[] = [];
-      res.on('data', (c: Buffer) => chunks.push(c));
+      let ended = false;
+      res.on('error', (err: Error) => finish(err));
+      res.on('aborted', () => finish(new Error('bridge response was aborted')));
+      res.on('close', () => { if (!ended) finish(new Error('bridge response closed before completion')); });
+      res.on('data', (chunk: Buffer) => { if (!settled) chunks.push(chunk); });
       res.on('end', () => {
+        ended = true;
+        if (settled) return;
         const text = Buffer.concat(chunks).toString('utf8');
         let parsed;
-        try {
-          parsed = text ? JSON.parse(text) : null;
-        } catch (_) {
-          reject(new Error(`bridge returned ${res.statusCode} with a non-JSON body`));
-          return;
-        }
+        try { parsed = text ? JSON.parse(text) : null; }
+        catch (_) { finish(new Error(`bridge returned ${res.statusCode} with a non-JSON body`)); return; }
         if ((res.statusCode ?? 0) >= 400) {
-          reject(new Error(describeClipError(parsed) || `bridge returned HTTP ${res.statusCode}`));
+          finish(new Error(describeClipError(parsed) || `bridge returned HTTP ${res.statusCode}`));
           return;
         }
-        resolve(withHeaders ? { body: parsed, headers: res.headers } : parsed);
+        finish(null, withHeaders ? { body: parsed, headers: res.headers } : parsed);
       });
     });
-
-    req.on('timeout', () => req.destroy(new Error(`no answer from ${host} within ${REST_TIMEOUT_MS}ms`)));
-    req.on('error', (err) => reject(err));
+    const timeout = () => {
+      const error = new Error(`no complete answer from ${host} within ${REST_TIMEOUT_MS}ms`);
+      finish(error);
+      req.destroy(error);
+    };
+    req.on('timeout', timeout);
+    req.on('error', (err: Error) => finish(err));
+    if (!settled) {
+      deadline = setTimeout(timeout, REST_TIMEOUT_MS);
+      deadline.unref?.();
+    }
     if (payload) req.write(payload);
     req.end();
   });
@@ -209,7 +223,7 @@ function bridgeRequest(host: string, { method = 'GET', path, key, body, withHead
 function describeClipError(parsed: unknown): string | null {
   const list = parsed && typeof parsed === 'object' ? (parsed as { errors?: unknown }).errors : null;
   const errors: { description?: string }[] = Array.isArray(list) ? list : [];
-  if (errors.length && errors[0].description) return errors[0].description;
+  if (errors.length) return errors[0]?.description || 'bridge returned a CLIP error';
   return null;
 }
 
@@ -447,16 +461,29 @@ async function setStreaming(host: string, key: string, configId: string, active:
 }
 
 // Entertainment ownership is bridge-wide, even when the selected area is inactive.
-async function conflictingArea(config: HueBridgeConfig, identity: string, beforeStart: boolean, requireReadable = false): Promise<ClipEntertainmentConfig | null> {
-  const path = '/clip/v2/resource/entertainment_configuration';
-  const parsed = await bridgeRequest(config.host, { path, key: config.username })
-    .catch(() => bridgeRequest(config.host, { path: `${path}/${encodeURIComponent(config.entertainmentId)}`, key: config.username }))
-    .catch(() => null) as ClipList<ClipEntertainmentConfig> | null;
-  if (requireReadable && !Array.isArray(parsed?.data)) throw new Error('could not verify Entertainment ownership before retrying');
-  const knownIdentity = identity !== config.username;
-  return parsed?.data?.find((area) => area.status === 'active' && (area.id !== config.entertainmentId
-    || (knownIdentity && area.active_streamer?.rid && area.active_streamer.rid !== identity)
-    || (beforeStart && (!knownIdentity || !area.active_streamer?.rid)))) || null;
+type Ownership = { kind: 'available' | 'owned' } | { kind: 'occupied'; area: ClipEntertainmentConfig };
+
+async function ownership(config: HueBridgeConfig, identity: string): Promise<Ownership> {
+  let parsed: ClipList<ClipEntertainmentConfig>;
+  try {
+    parsed = await bridgeRequest(config.host, { path: '/clip/v2/resource/entertainment_configuration', key: config.username }) as ClipList<ClipEntertainmentConfig>;
+    const error = describeClipError(parsed);
+    if (error) throw new Error(error);
+    if (!Array.isArray(parsed?.data)) throw new Error('invalid area list');
+  } catch (err) {
+    throw new Error(`could not verify Entertainment ownership: ${messageOf(err)}`, { cause: err });
+  }
+  for (const area of parsed.data) {
+    if (!area || typeof area.id !== 'string' || !['active', 'inactive'].includes(area.status || '')) {
+      throw new Error('could not verify Entertainment ownership: invalid area');
+    }
+    if (area.status === 'active' && (area.id !== config.entertainmentId || area.active_streamer?.rid !== identity)) {
+      return { kind: 'occupied', area };
+    }
+  }
+  const selected = parsed.data.find(area => area.id === config.entertainmentId);
+  if (!selected) throw new Error('could not verify Entertainment ownership: selected area is missing');
+  return { kind: selected.status === 'active' ? 'owned' : 'available' };
 }
 
 const busyMessage = (area: ClipEntertainmentConfig): string =>
@@ -516,7 +543,13 @@ function isConfigured(c: Pick<HueBridgeConfig, 'host' | 'username' | 'clientKey'
   return !!(c.host && c.username && c.clientKey && c.entertainmentId);
 }
 
-type ApplicationIdSink = (bridgeId: string, applicationId: string) => void;
+export interface ApplicationIdentity {
+  source: Pick<HueBridgeConfig, 'id' | 'host' | 'username' | 'applicationId'>;
+  applicationId: string;
+}
+export type ApplicationIdSink = (identity: ApplicationIdentity) => void;
+interface OwnedSession { config: HueBridgeConfig; identity: string }
+
 
 class HueSession {
   readonly id: string;
@@ -528,7 +561,8 @@ class HueSession {
   private lastError: string | null = null;
   private retryAt = 0;
   private retryDelay = RETRY_BASE_MS;
-  private sessionConfig: HueBridgeConfig | null = null;
+  private sessionConfig: OwnedSession | null = null;
+  private releasing: Promise<void> | null = null;
   private connecting: Promise<void> | null = null;
   private connectEpoch = 0;
   private resolvedApplicationId: string | null = null;
@@ -583,76 +617,62 @@ class HueSession {
     return { ...this.config };
   }
 
+  private track(task: Promise<void>): void {
+    this.connecting = task;
+    void task.finally(() => { if (this.connecting === task) this.connecting = null; }).catch(() => {});
+  }
+
   private async connect(): Promise<void> {
     if (this.status === CONNECTING || this.status === STREAMING) return;
     if (!this.config.enabled || !this.isConfigured()) return;
-
     this.status = CONNECTING;
-    const config = this.config;
+    const config = { ...this.config };
     const epoch = ++this.connectEpoch;
     const current = () => this.connectEpoch === epoch && this.status === CONNECTING;
-
-    // Resolve the application ID for older pairings while preserving the accepted key fallback.
+    if (this.sessionConfig) await this.releaseAfter();
+    if (!current()) return;
     let identity = config.applicationId || this.resolvedApplicationId;
     if (!identity) {
       identity = await fetchApplicationId(config.host, config.username);
+      if (!current()) return;
       if (identity) {
         this.resolvedApplicationId = identity;
         const sink = this.sink();
         if (sink) {
-          try { sink(this.id, identity); } catch (_) { /* persisting is best effort */ }
+          try { sink({ source: { id: this.id, host: config.host, username: config.username, applicationId: config.applicationId }, applicationId: identity }); }
+          catch (_) { /* persistence does not own the attempt */ }
         }
-      } else {
-        identity = config.username;
       }
     }
     if (!current()) return;
-
+    if (!identity) throw new Error('could not verify the application identity; pair this bridge again');
     if (await this.openSession(config, identity, current)) this.handshake(config, identity, 1);
   }
 
   private async openSession(config: HueBridgeConfig, identity: string, current: () => boolean, restart = false): Promise<boolean> {
-    let occupied: ClipEntertainmentConfig | null;
-    try {
-      occupied = await conflictingArea(config, identity, true, restart);
-    } catch (err) {
-      if (current()) {
-        this.sessionConfig = null;
-        this.fail(messageOf(err));
-      }
-      return false;
-    }
+    const before = await ownership(config, identity);
     if (!current()) return false;
-    if (occupied) {
+    if (before.kind === 'occupied') {
       this.sessionConfig = null;
-      this.fail(busyMessage(occupied));
-      return false;
+      throw new Error(busyMessage(before.area));
     }
-
-    try {
-      if (restart) {
-        await setStreaming(config.host, config.username, config.entertainmentId, false);
-        this.sessionConfig = null;
-        if (!current()) return false;
-        return this.openSession(config, identity, current);
-      }
-      await setStreaming(config.host, config.username, config.entertainmentId, true);
-      this.sessionConfig = config;
-    } catch (err) {
-      if (current()) this.fail(`could not ${restart ? 'restart' : 'start'} the entertainment session: ${messageOf(err)}`);
-      return false;
+    if (restart) {
+      if (before.kind === 'owned') await setStreaming(config.host, config.username, config.entertainmentId, false);
+      this.sessionConfig = null;
+      if (!current()) return false;
+      return this.openSession(config, identity, current);
     }
-    if (!current()) { this.teardown(); return false; }
-    const holder = await conflictingArea(config, identity, false);
-    if (holder) this.sessionConfig = null;
-    if (!current()) {
-      this.teardown();
-      return false;
+    // A cancelled or failed request may still have changed the bridge.
+    this.sessionConfig = { config, identity };
+    await setStreaming(config.host, config.username, config.entertainmentId, true);
+    if (!current()) return false;
+    const after = await ownership(config, identity);
+    if (!current()) return false;
+    if (after.kind === 'occupied') {
+      this.sessionConfig = null;
+      throw new Error(busyMessage(after.area));
     }
-    if (holder) {
-      this.fail(busyMessage(holder));
-      return false;
-    }
+    if (after.kind !== 'owned') throw new Error('could not verify Entertainment ownership after start');
     return true;
   }
 
@@ -691,11 +711,11 @@ class HueSession {
         try { pending.close(); } catch (_) { /* already gone */ }
         const epoch = this.connectEpoch;
         const current = () => this.connectEpoch === epoch && this.status === CONNECTING;
-        this.connecting = this.openSession(config, identity, current, true).then((opened) => {
+        this.track(this.openSession(config, identity, current, true).then((opened) => {
           if (opened) this.handshake(config, identity, attempt + 1);
         }).catch((error) => {
           if (current()) this.fail(messageOf(error));
-        }).finally(() => { this.connecting = null; });
+        }));
         return;
       }
       this.fail(err.message);
@@ -709,37 +729,60 @@ class HueSession {
     this.socket = pending;
   }
 
-  private fail(message: string): void {
+  private recordFailure(message: string): void {
     this.lastError = message;
     console.warn(`[hue] ${this.name}: ${message}`);
     this.status = FAILED;
     this.retryAt = Date.now() + this.retryDelay;
     this.retryDelay = Math.min(RETRY_MAX_MS, this.retryDelay * 2);
-    this.teardown();
   }
 
-  private teardown(): void {
+  private closeSocket(): void {
     const dying = this.socket;
     this.socket = null;
     if (dying) {
       try { dying.close(); } catch (_) { /* already gone */ }
     }
-    const { host, username, entertainmentId } = this.sessionConfig || {};
-    if (host && username && entertainmentId) {
-      setStreaming(host, username, entertainmentId, false)
-        .catch((err) => console.warn(`[hue] ${this.name}: could not close the session cleanly: ${messageOf(err)}`));
-    }
-    this.sessionConfig = null;
+  }
+
+  private releaseAfter(pending: Promise<void> | null = null): Promise<void> {
+    if (this.releasing) return this.releasing;
+    const release = (async () => {
+      if (pending) await pending.catch(() => {});
+      const owned = this.sessionConfig;
+      if (!owned) return;
+      const { config, identity } = owned;
+      const holder = await ownership(config, identity);
+      if (holder.kind === 'owned') await setStreaming(config.host, config.username, config.entertainmentId, false);
+      if (this.sessionConfig === owned) this.sessionConfig = null;
+    })();
+    this.releasing = release;
+    void release.finally(() => { if (this.releasing === release) this.releasing = null; }).catch(() => {});
+    return release;
+  }
+
+  private fail(message: string): void {
+    this.recordFailure(message);
+    this.closeSocket();
+    const epoch = this.connectEpoch;
+    void this.releaseAfter(this.connecting).catch(err => {
+      if (this.connectEpoch === epoch) this.recordFailure(`could not release the session: ${messageOf(err)}`);
+    });
   }
 
   async stop(): Promise<void> {
-    this.connectEpoch++;
-    if (this.status === IDLE && !this.socket && !this.sessionConfig) return;
+    const epoch = ++this.connectEpoch;
     this.status = IDLE;
     this.lastError = null;
     this.retryDelay = RETRY_BASE_MS;
     this.retryAt = 0;
-    this.teardown();
+    this.closeSocket();
+    try {
+      await this.releaseAfter(this.connecting);
+    } catch (err) {
+      if (this.connectEpoch === epoch) this.recordFailure(`could not release the session: ${messageOf(err)}`);
+      throw err;
+    }
   }
 
   async close(): Promise<void> {
@@ -747,7 +790,7 @@ class HueSession {
       this.sequence = (this.sequence + 1) & 0xff;
       const dark = this.lastChannels.map((id) => ({ id, r: 0, g: 0, b: 0 }));
       try {
-        this.socket.send(buildStreamMessage(this.config.entertainmentId, dark, this.sequence), () => { /* on the way out */ });
+        this.socket.send(buildStreamMessage(this.sessionConfig?.config.entertainmentId || this.config.entertainmentId, dark, this.sequence), () => { /* on the way out */ });
       } catch (_) { /* the session closes regardless */ }
     }
     await this.stop();
@@ -759,15 +802,18 @@ class HueSession {
     if (!channels.length) {
       if (this.status === STREAMING || this.status === CONNECTING) {
         console.log(`[hue] ${this.name}: no lamp of it in the patch — releasing the entertainment area`);
-        this.stop();
+        void this.stop().catch(() => {});
       }
       return false;
     }
 
     if (this.status === IDLE || (this.status === FAILED && Date.now() >= this.retryAt)) {
-      if (!this.connecting) this.connecting = this.connect().catch((err) => {
-        if (this.status === CONNECTING) this.fail(messageOf(err));
-      }).finally(() => { this.connecting = null; });
+      if (!this.connecting && !this.releasing) {
+        const epoch = this.connectEpoch + 1;
+        this.track(this.connect().catch((err) => {
+          if (this.connectEpoch === epoch && this.status === CONNECTING) this.fail(messageOf(err));
+        }));
+      }
       return false;
     }
     if (this.status !== STREAMING || !this.socket) return false;
@@ -779,9 +825,10 @@ class HueSession {
     this.sequence = (this.sequence + 1) & 0xff;
     const slots = channels.length > MAX_CHANNELS ? channels.slice(0, MAX_CHANNELS) : channels;
     this.lastChannels = slots.map((c) => c.id);
+    const sending = this.socket;
     try {
-      this.socket.send(buildStreamMessage(this.config.entertainmentId, slots, this.sequence), (err) => {
-        if (err && this.status === STREAMING) this.fail(`send failed: ${err.message}`);
+      sending.send(buildStreamMessage(this.config.entertainmentId, slots, this.sequence), (err) => {
+        if (err && this.socket === sending && this.status === STREAMING) this.fail(`send failed: ${err.message}`);
       });
     } catch (err) {
       this.fail(`send failed: ${messageOf(err)}`);
@@ -792,6 +839,7 @@ class HueSession {
 }
 
 const sessions = new Map<string, HueSession>();
+const retiring = new Map<string, HueSession>();
 
 let onApplicationId: ApplicationIdSink | null = null;
 function setApplicationIdSink(fn: ApplicationIdSink | null): void { onApplicationId = fn; }
@@ -800,13 +848,17 @@ function configureBridges(list: readonly HueBridgeConfig[]): void {
   const keep = new Set(list.map((b) => b.id));
   for (const [id, session] of sessions) {
     if (keep.has(id)) continue;
-    session.stop().catch(() => { /* best effort */ });
+    retiring.set(id, session);
     sessions.delete(id);
+    void session.stop().then(() => { if (retiring.get(id) === session) retiring.delete(id); }).catch(() => {});
   }
   for (const bridge of list) {
-    const session = sessions.get(bridge.id);
-    if (session) session.configure(bridge);
-    else sessions.set(bridge.id, new HueSession(bridge, () => onApplicationId));
+    const session = sessions.get(bridge.id) || retiring.get(bridge.id);
+    retiring.delete(bridge.id);
+    if (session) {
+      session.configure(bridge);
+      sessions.set(bridge.id, session);
+    } else sessions.set(bridge.id, new HueSession(bridge, () => onApplicationId));
   }
 }
 
@@ -838,6 +890,7 @@ async function closeAll(): Promise<void> {
 
 function _reset(): void {
   sessions.clear();
+  retiring.clear();
   onApplicationId = null;
 }
 

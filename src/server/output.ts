@@ -83,7 +83,7 @@ function setArmed(on: boolean): boolean {
   return true;
 }
 
-function onHueApplicationId(fn: (bridgeId: string, applicationId: string) => void): void { hue.setApplicationIdSink(fn); }
+function onHueApplicationId(fn: hue.ApplicationIdSink): void { hue.setApplicationIdSink(fn); }
 
 function sacnUniverseFor(universe: number, offset = sacn.universeOffset): number | null {
   return mapSacnUniverse(universe, offset);

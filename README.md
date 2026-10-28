@@ -876,7 +876,11 @@ every area on the bridge before starting, including areas other than the selecte
 one. An occupied area is named in the bridge status and left to its owner; the
 other bridges continue independently. Lightshow retries automatically when the
 area is released. An enabled, configured bridge whose stream fails degrades health
-while outputs are armed. A timed-out DTLS handshake reopens the Entertainment
+while outputs are armed. Starts require a verified application identity and a readable
+bridge-wide ownership check; unknown or conflicting ownership leaves output stopped.
+Stop waits for release before a replacement can start, including a removed and re-added
+bridge. A release failure remains visible and blocks reconnection until reconciled.
+A timed-out DTLS handshake reopens the Entertainment
 session after checking ownership again; retrying only the socket can leave a
 stalled bridge unresponsive. Up to five one-second handshakes are attempted; then the session
 closes and retries back off from 2 s to 60 s until the output is stopped. Pairing keys
