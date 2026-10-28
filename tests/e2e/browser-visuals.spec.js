@@ -1,6 +1,28 @@
 import { test, expect } from '@playwright/test';
 import { pageAction, matchesTarget } from '../../tools/browser-visuals/browser.js';
 
+test('display preserves artwork until a usable visualizer appears, and restores it when unavailable', async ({ page }) => {
+  const expected = 'http://music.invalid/#/now-playing?player=test&frameless=1';
+  await page.route('http://music.invalid/**', route => route.fulfill({ contentType: 'text/html', body:
+    '<div class="now-playing-view"><div class="now-playing-artwork">Artwork</div><div class="now-playing-info">Track</div><div class="now-playing-timeline">Position</div></div>' }));
+  await page.goto(expected);
+  const display = () => page.evaluate(`(${pageAction.toString()})(${JSON.stringify({ expected, mode: 'display', visible: true })}, ${matchesTarget.toString()})`);
+  const absent = await display();
+  await expect(page.getByText('Artwork')).toBeVisible();
+  await expect(page.getByText('Track')).toBeVisible();
+  expect(absent).toMatchObject({ ok: true, live: false, reason: 'visualizer-unavailable' });
+  await page.evaluate(() => document.querySelector('.now-playing-view').insertAdjacentHTML('beforeend',
+    '<div class="visualizer-layer" style="opacity:1"><canvas class="visualizer-layer__canvas" width="64" height="64"></canvas></div>'));
+  expect(await display()).toMatchObject({ ok: true, live: true, reason: null });
+  await expect(page.getByText('Artwork')).toBeHidden();
+  await page.evaluate(() => document.querySelector('.visualizer-layer').style.opacity = '0');
+  expect(await display()).toMatchObject({ live: false, reason: 'visualizer-idle' });
+  await expect(page.getByText('Artwork')).toBeVisible();
+  await page.evaluate(() => document.querySelector('.visualizer-layer').remove());
+  expect(await display()).toMatchObject({ live: false, reason: 'visualizer-unavailable' });
+  await expect(page.getByText('Track')).toBeVisible();
+});
+
 test('WebGL captures share bounded canvases, follow replacement and clear on cleanup', async ({ page }) => {
   const expected = 'http://music.invalid/#/now-playing?player=test&frameless=1';
   await page.route('http://music.invalid/**', route => route.fulfill({ contentType: 'text/html', body: '<div class="now-playing-view"><canvas class="visualizer-layer__canvas" width="128" height="72"></canvas></div>' }));

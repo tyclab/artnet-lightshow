@@ -117,13 +117,13 @@ test('display reports whether the visualizer is live, and a capture under a fade
   };
   const display = (visible = true) => pageAction({ expected, mode: 'display', visible }, matchesTarget);
   const capture = (gpu) => pageAction({ expected, mode: 'capture', visible: true, fit: 'cover', width: 2, height: 1 }, matchesTarget, gpu);
-  assert.deepEqual(display(), { ok: true, live: false }, 'no canvas yet');
+  assert.deepEqual(display(), { ok: true, live: false, reason: 'visualizer-unavailable' }, 'no canvas yet');
   source = canvas;
-  assert.deepEqual(display(), { ok: true, live: true });
+  assert.deepEqual(display(), { ok: true, live: true, reason: null });
   assert.equal((await capture()).ok, true);
   opacity = '0';
-  assert.deepEqual(display(), { ok: true, live: false }, 'Music Assistant faded the visualizer out after playback stopped');
-  assert.deepEqual(display(false), { ok: true, live: true }, 'a covered display sends black and never reads the canvas');
+  assert.deepEqual(display(), { ok: true, live: false, reason: 'visualizer-idle' }, 'Music Assistant faded the visualizer out after playback stopped');
+  assert.deepEqual(display(false), { ok: true, live: true, reason: null }, 'a covered display sends black and never reads the canvas');
   assert.deepEqual(await capture(), { ok: false, idle: true });
   assert.deepEqual(await capture(async (_options, _canvas, _view, valid) => { assert.equal(valid(), false); return { ok: false }; }), { ok: false, idle: true });
   opacity = '1';

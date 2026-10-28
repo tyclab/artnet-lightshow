@@ -110,15 +110,15 @@ export function pageAction(options, matches, gpu = null) {
   const view = doc.querySelector('.now-playing-view');
   if (options.mode === 'cleanup') {
     void gpu?.(options, null, view);
-    doc.getElementById(styleId)?.remove(); view?.removeAttribute('data-party-display');
+    doc.getElementById(styleId)?.remove(); view?.removeAttribute('data-party-display'); view?.removeAttribute('data-party-canvas');
     if (view) delete view.__tyclabCaptureCanvases;
     return { ok: true };
   }
-  if (!view) return { ok: false };
+  if (!view) return { ok: false, live: false, reason: 'player-page-unavailable' };
   if (!doc.getElementById(styleId)) {
     const style = doc.createElement('style'); style.id = styleId;
     style.textContent = `.now-playing-view { isolation:isolate; }
-      .now-playing-view .now-playing-artwork,.now-playing-view .now-playing-info,.now-playing-view .now-playing-timeline,.now-playing-view .visualizer-layer__scrim,.now-playing-view .visualizer-layer__tint { display:none!important; }
+      .now-playing-view[data-party-canvas="live"] .now-playing-artwork,.now-playing-view[data-party-canvas="live"] .now-playing-info,.now-playing-view[data-party-canvas="live"] .now-playing-timeline,.now-playing-view[data-party-canvas="live"] .visualizer-layer__scrim,.now-playing-view[data-party-canvas="live"] .visualizer-layer__tint { display:none!important; }
       .now-playing-view .visualizer-layer__canvas { filter:none!important; transform:none!important; }
       .now-playing-view .visualizer-layer__stack { opacity:1!important; }
       .now-playing-view[data-party-display="off"]::after { content:""; position:absolute; inset:0; background:#000; z-index:10; pointer-events:none; }`;
@@ -129,10 +129,14 @@ export function pageAction(options, matches, gpu = null) {
   const canvas = view.querySelector('.visualizer-layer__canvas');
   // Music Assistant fades the visualizer out about a second after playback stops; a covered display never reads it.
   const faded = () => {
-    const layer = options.visible ? canvas.closest('.visualizer-layer') : null;
+    const layer = options.visible !== false ? canvas?.closest('.visualizer-layer') : null;
     return !!layer && Number(globalThis.getComputedStyle(layer).opacity) <= 0.001;
   };
-  if (options.mode !== 'capture') return { ok: true, live: !!canvas && !!canvas.width && !!canvas.height && !faded() };
+  const live = !!canvas && !!canvas.width && !!canvas.height && !faded();
+  const canvasState = live ? 'live' : 'fallback';
+  if (view.getAttribute('data-party-canvas') !== canvasState) view.setAttribute('data-party-canvas', canvasState);
+  const reason = live ? null : !canvas || !canvas.width || !canvas.height ? 'visualizer-unavailable' : 'visualizer-idle';
+  if (options.mode !== 'capture') return { ok: true, live, reason };
   if (!canvas || !canvas.width || !canvas.height || doc.visibilityState !== 'visible') return { ok: false };
   const valid = () => canvas.isConnected && doc.visibilityState === 'visible' && matches(globalThis.location.href, options.expected) && !faded();
   const idle = (result) => result.ok || !faded() ? result : { ok: false, idle: true };
