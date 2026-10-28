@@ -4,6 +4,7 @@ import { createRenderer, withInputDefaults } from '../../src/server/renderer.ts'
 import { createUniverseStore } from '../../src/server/universes.ts';
 import { validateSpec } from '../../src/shared/effects/registry.ts';
 import { migrateEffectSpec } from '../../src/shared/effects/migrate.ts';
+import { HD_DEFAULTS } from '../../src/shared/effects/hd.ts';
 import { DEFAULT_BACKGROUND, composeBackground } from '../../src/shared/background.ts';
 import { createPreviewSampler } from '../../src/shared/preview.ts';
 import { buildRig } from '../../src/shared/rig.ts';
@@ -194,4 +195,97 @@ test('Visualizer spike baseline and colour handoff are ambient; Off keeps no fiv
   const baseline = a.draw(500, { audio: audio(1, 'loud') });
   assert.ok(lit(baseline), 'negative control: the authored handoff still emits light');
   assert.ok(dark(b.draw(500, { audio: audio(1, 'loud') })), 'Off removes the handoff baseline');
+});
+
+const hdGap = (kind, over = {}) => validateSpec({ kind, brightness: 1, ...over,
+  params: { ...HD_DEFAULTS[kind].params, curve: 'cut', attack: 0, hold: .25, release: 0, stagger: 0, loopLength: 4, probability: 1,
+    trigger: { ...HD_DEFAULTS[kind].params.trigger, mode: 'timeline' },
+    ...(kind === 'hd.simpleAdsr' ? { rgbEnvelope: { ...HD_DEFAULTS[kind].params.rgbEnvelope,
+      brightness: { attack: 0, hold: .1, decay: 0, sustain: 0, release: 0, peak: 1 } } } : {}),
+    ...over.params } });
+
+for (const kind of Object.keys(HD_DEFAULTS).filter(kind => kind !== 'hd.frequencyBurst')) {
+  test(`${kind}: Fixed fills ordinary idle coverage in all six emitters while Follow and Off stay dark`, () => {
+    const effect = hdGap(kind);
+    const follow = engine({ effect }), removed = engine({ effect, background: off }), filled = engine({ effect, background: fixed });
+    follow.draw(0); removed.draw(0); filled.draw(0);
+    const original = follow.draw(900), disabled = removed.draw(900), wash = filled.draw(900);
+    assert.ok(dark(original), 'negative control: this phase is an actual authored gap');
+    assert.deepEqual(disabled, original, 'Off does not change foreground-only output');
+    // Wire values include the established 1.8× UV calibration, applied after composition.
+    for (let i = 0; i < wash.length; i += 6) assert.deepEqual(wash.slice(i, i + 6), [48, 36, 24, 30, 27, 32]);
+    const dim = engine({ effect: validateSpec({ ...effect, brightness: .05 }), background: fixed });
+    dim.draw(0);
+    assert.deepEqual(dim.draw(900), wash, 'foreground brightness does not dim the independent wash');
+  });
+}
+
+test('HD spatial coverage reveals Fixed without recolouring its fully covered foreground', () => {
+  const effect = hdGap('hd.positionChase', { params: { stagger: .25, hold: .125 } });
+  const a = engine({ effect, paletteOverride: null, background: off }), b = engine({ effect, paletteOverride: null, background: fixed });
+  const foreground = a.draw(40), wash = b.draw(40);
+  assert.ok(lit(foreground.slice(0, 6)), 'negative control: the first lamp owns foreground');
+  assert.deepEqual(wash.slice(0, 6), foreground.slice(0, 6));
+  assert.ok(dark(foreground.slice(6)));
+  assert.ok(wash.slice(6).every(v => v > 0));
+});
+
+test('an explicitly black HD foreground owns its lamps independently of RGB brightness', () => {
+  for (const kind of ['hd.positionChase', 'hd.simpleAdsr']) {
+    const effect = hdGap(kind, { palette: ['#000000'],
+      ...(kind === 'hd.simpleAdsr' ? { params: { rgbEnvelope: { ...HD_DEFAULTS[kind].params.rgbEnvelope, singleColour: '#000000',
+        brightness: { attack: 0, hold: .1, decay: 0, sustain: 0, release: 0, peak: 1 } } } } : {}) });
+    const e = engine({ effect, paletteOverride: null, background: fixed });
+    assert.ok(dark(e.draw(20)), `${kind}: an active black foreground must not be mistaken for an empty slot`);
+    assert.ok(lit(e.draw(900)), `${kind}: its later ordinary gap reveals Fixed`);
+  }
+});
+
+test('a half-opacity black HD foreground reveals half the Fixed wash independently of its brightness', () => {
+  const black = (sustain, brightness = 1) => hdGap('hd.simpleAdsr', { brightness, palette: ['#000000'],
+    params: { rgbEnvelope: { ...HD_DEFAULTS['hd.simpleAdsr'].params.rgbEnvelope, singleColour: '#000000',
+      brightness: { attack: 0, hold: .1, decay: 0, sustain, release: 0, peak: 1 } } } });
+  const half = engine({ effect: black(.5), background: fixed }), dim = engine({ effect: black(.5, .05), background: fixed });
+  const reference = engine({ effect: black(0), background: { ...fixed, level: .15 } });
+  assert.ok(dark(half.draw(20)), 'negative control: the opaque black hold still occludes Fixed');
+  reference.draw(20); dim.draw(20);
+  const wash = half.draw(900);
+  assert.ok(lit(wash), 'half coverage reveals the wash');
+  assert.deepEqual(wash, reference.draw(900), 'half coverage of a .3 wash equals full coverage of a .15 wash');
+  assert.deepEqual(dim.draw(900), wash, 'foreground brightness does not scale the revealed wash');
+});
+
+for (const kind of ['hd.frequencyBurst', 'hd.positionChase', 'hd.simpleAdsr']) {
+  test(`${kind}: rapid rest coverage remains opaque under Fixed`, () => {
+    const effect = hdGap(kind, { rapidFlash: true });
+    const e = engine({ effect, background: fixed });
+    assert.ok(lit(e.draw(20)), 'negative control: the admitted foreground can emit light');
+    assert.ok(dark(e.draw(900)), 'Fixed cannot fill an owned rapid rest');
+    assert.ok(lit(e.draw(1000, { programmePlaying: false })), 'explicit Stop releases programme coverage');
+  });
+}
+
+test('HD zero-foreground coverage survives a sequence clip and its held snapshot', () => {
+  const e = engine({ background: fixed });
+  const effect = hdGap('hd.twinkle', { params: { probability: 0 } });
+  e.renderer.setSequence({ revision: 1,
+    lanes: [{ id: 'one', kind: 'shared', name: 'one', mute: false, solo: false }],
+    clips: [{ id: 'gap', laneId: 'one', fixtureIds: null, startBeat: 0, lengthBeats: 8, loopBeats: 8,
+      spec: effect, seed: [1, 2, 3, 4], mute: false }] });
+  const sequenceTransport = { startBeat: 0, generation: 0, loop: null };
+  const wash = e.draw(0, { sequenceRevision: 1, sequenceTransport });
+  assert.ok(wash.every(v => v > 0));
+  assert.ok(dark(e.draw(100, { sequenceRevision: 1, sequenceTransport, background: off })));
+  const hold = { ...sequenceTransport, stop: { mode: 'hold', position: .2, traversal: 0 } };
+  assert.deepEqual(e.draw(200, { sequenceRevision: 1, sequenceTransport: hold }), wash);
+});
+
+test('HD Fixed wash remains subordinate to explicit Kill and Blackout', () => {
+  const effect = hdGap('hd.twinkle', { params: { probability: 0 } });
+  const e = engine({ effect, background: fixed });
+  assert.ok(lit(e.draw(0)), 'negative control: the transparent base exposes the wash');
+  const kill = { id: 'kill', spec: validateSpec({ kind: 'energy.kill' }), targets: null, tier: 'voice', launchSeq: 1,
+    startedAtMs: 0, untilMs: null, anchorBeat: 0, seed: [1, 2, 3, 4] };
+  assert.ok(dark(e.draw(100, { voices: [kill] })), 'Kill owns black above every background emitter');
+  assert.ok(dark(e.draw(200, { masterBlackout: true })), 'Blackout owns the final output');
 });

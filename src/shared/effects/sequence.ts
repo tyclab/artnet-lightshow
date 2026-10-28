@@ -415,7 +415,7 @@ export function renderPlaced(frame: FrameBase, table: SequenceTable, transport: 
     renderEffect(instance, frame, room, stepper, out);
     for (const k of cells) {
       const slot = out[k] as EffectSlot | undefined;
-      lay(k, slot && slot.strength > 0 ? slot : null, clip.spec.kind);
+      lay(k, slot && (slot.strength > 0 || slot.background) ? slot : null, clip.spec.kind);
     }
   }
   return true;

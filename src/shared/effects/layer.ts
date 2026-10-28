@@ -162,7 +162,7 @@ export function renderEffectLayer(rig: Rig, layout: Layout, frame: FrameBase, in
   for (let k = 0; k < list.length; k++) {
     const slot = out[k] as EffectSlot | undefined;
     if (slot && slot.strength > 0) set(list[k], slot.colour, 255 * slot.level, slot.strobe ?? 0, slot.kind ?? instance.spec.kind, slot.owner, slot.background);
-    else set(list[k], BLACK, 0, 0, null);
+    else set(list[k], BLACK, 0, 0, null, slot?.owner, slot?.background);
   }
 }
 
