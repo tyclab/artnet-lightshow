@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
-import { stateSig, dmxSig, connectedSig, emitFixture, latestSent, stagePreviewSig } from '../state.js';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { pick, dmxSig, connectedSig, emitFixture, latestSent, stagePreviewSig } from '../state.js';
 import { colorToCss, fixtureOutputColor, fixtureCellColors, meanLight, fmtTime, patchedAt, stageMode } from '../utils.js';
-import { useDmxFeed } from '../use-dmx.js';
+import { useDmxFeed, useDmxPaint } from '../use-dmx.js';
 import { useRehearsalTrack, useRehearsalSampler, useUnitSpace } from '../rehearsal.js';
 import { Audition } from './Audition.jsx';
 import { auditionSig, setAudition, useAuditionSampler } from '../audition.js';
@@ -10,10 +10,93 @@ import { useTimeline } from '../use-timeline.js';
 import { stagePositions } from '../../src/shared/stage.ts';
 import { buildRig, lineOf, rigSignature } from '../../src/shared/rig.ts';
 import { STAGE_EDGES, clamp, geometryOf, placeAt, pointIn, surfaceStyle } from '../stage-geometry.js';
+import { cellCentres, paintCells } from '../stage-cells.js';
+
+// The state the plot draws from; any other key changes without waking it.
+const KEYS = ['fixtures', 'profiles', 'armed', 'autoShow', 'colorPresets', 'masterBlackout', 'masterDimmer'];
+const NONE = [];
+
+/** A bar's cells, in rig unit order, and where each sits on a surface of the layer's size. */
+function cellsOf(layer, rig) {
+  if (layer.rig !== rig || layer.placedFor !== layer.size) {
+    const units = [];
+    rig.ranges.forEach(({ start, count }, i) => { if (rig.cellMaps[i]) for (let c = 0; c < count; c++) units.push(start + c); });
+    layer.rig = rig;
+    layer.placedFor = layer.size;
+    layer.units = units;
+    layer.centres = cellCentres(units.map((u) => rig.points[u]), layer.size);
+  }
+  return layer;
+}
+
+/**
+ * Light the plot: each lamp's --light and the bar cells' canvas. Runs outside
+ * rendering, once per animation frame the DMX feed moved in, so a frame costs
+ * one canvas paint and a few dozen style writes instead of a render of the
+ * whole plot.
+ */
+function paintPlot(surface, layer, { drawn, rig, preview, shown, connected, live }) {
+  const dmx = live ? dmxSig.peek() : null;
+  const lamps = surface ? surface.querySelectorAll(':scope > .stage-fixture') : NONE;
+  const cells = layer && layer.size ? cellsOf(layer, rig) : null;
+  const colours = cells ? new Array(rig.points.length) : null;
+  drawn.forEach((fix, i) => {
+    const { start, count } = rig.ranges[i];
+    const bar = !!rig.cellMaps[i];
+    if (bar && colours) {
+      const lit = preview
+        ? preview.slice(start, start + count).map(colorToCss)
+        : connected ? (fixtureCellColors(fix, shown, dmx) || NONE) : NONE;
+      for (let c = 0; c < count; c++) colours[start + c] = lit[c];
+    }
+    const color = preview
+      ? colorToCss(bar ? meanLight(preview.slice(start, start + count)) : preview[start])
+      : connected ? fixtureOutputColor(fix, shown, dmx) : '#222';
+    const lamp = lamps[i];
+    if (lamp && lamp.style.getPropertyValue('--light') !== color) lamp.style.setProperty('--light', color);
+  });
+  if (!cells) return;
+  const lit = cells.units.map((u) => colours[u]);
+  // An unchanged picture is not painted again: a still or dark rig costs no new frame.
+  if (cells.painted && cells.paintedAt === cells.centres && lit.every((colour, i) => colour === cells.painted[i])) return;
+  paintCells(cells.ctx, cells.glow, cells.size, cells.centres, lit);
+  cells.painted = lit;
+  cells.paintedAt = cells.centres;
+}
+
+/** The cell canvas, sized to the surface in device pixels; repaints as it resizes. */
+function useCellLayer(canvas, present, paint) {
+  const layer = useRef(null);
+  useLayoutEffect(() => {
+    const element = canvas.current;
+    if (!present || !element || typeof ResizeObserver !== 'function') return undefined;
+    const ctx = element.getContext('2d');
+    // A browser without canvas filters draws the cells without their bloom.
+    const glow = typeof ctx.filter === 'string' ? document.createElement('canvas').getContext('2d') : null;
+    const current = { ctx, glow, size: null };
+    layer.current = current;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (!width || !height) return;
+      const device = entry.devicePixelContentBoxSize && entry.devicePixelContentBoxSize[0];
+      const w = device ? device.inlineSize : Math.round(width * (window.devicePixelRatio || 1));
+      const h = device ? device.blockSize : Math.round(height * (window.devicePixelRatio || 1));
+      for (const target of glow ? [element, glow.canvas] : [element]) {
+        if (target.width !== w) target.width = w;
+        if (target.height !== h) target.height = h;
+      }
+      current.size = { width, height, scale: w / width };
+      paint();
+    });
+    try { observer.observe(element, { box: 'device-pixel-content-box' }); } catch { observer.observe(element); }
+    return () => { observer.disconnect(); layer.current = null; };
+  }, [present]);
+  return layer;
+}
 
 export function StagePreview({ controls = true } = {}) {
-  const s = stateSig.value;
-  const fixtures = s.fixtures || [];
+  const s = pick(KEYS);
+  const fixtures = s.fixtures || NONE;
   const connected = connectedSig.value;
   const audition = auditionSig.value;
   const auditioning = audition.active && !s.armed;
@@ -24,14 +107,15 @@ export function StagePreview({ controls = true } = {}) {
   const drag = useRef(null);
   // The patch as it is being dragged: a lamp moved, or a bar turned, shows
   // where it is going before the server has it.
-  const drawn = draft
+  const drawn = useMemo(() => (draft
     ? fixtures.map((f) => (f.id === draft.id ? { ...f, ...draft.patch } : f))
-    : fixtures;
+    : fixtures), [fixtures, draft]);
   // Stored or default, from the same module the engine orders patterns by, so
   // where a lamp is drawn is where the chase will find it — and every cell of
-  // a bar where the engine puts it (shared/rig.js).
-  const positions = stagePositions(drawn);
-  const rig = buildRig(drawn, (f) => (s.profiles && s.profiles[f.profileId]) || null);
+  // a bar where the engine puts it (shared/rig.js). Built once per patch.
+  const positions = useMemo(() => stagePositions(drawn), [drawn]);
+  const rig = useMemo(() => buildRig(drawn, (f) => (s.profiles && s.profiles[f.profileId]) || null), [drawn, s.profiles]);
+  const signature = useMemo(() => rigSignature(drawn), [drawn]);
   const unplaced = drawn.filter((f) => !f.position).length;
   const duration = (data?.duration || 0) * 1000;
   // Rehearsal needs a timeline to rehearse. Deriving it rather than clearing the
@@ -43,17 +127,22 @@ export function StagePreview({ controls = true } = {}) {
   const shown = mode.lit ? s : { ...s, masterBlackout: true };
   // The timeline data carries the analysed beats, so the chase steps here on
   // the same beats the rig will step on.
-  const space = useUnitSpace(rig, [rigSignature(drawn), s.profiles]);
+  const space = useUnitSpace(rig, [signature, s.profiles]);
   const sample = useRehearsalSampler(data, space, rehearsal);
   // One entry per light: a par, or each cell of a bar.
   const auditionSample = useAuditionSampler(space, auditioning);
   const preview = auditioning ? auditionSample(audition.position, fixtures, s.colorPresets, rig) : rehearsal ? sample(position, fixtures, s.colorPresets, rig) : null;
-  // Read inside the branch that uses it: a signal subscribes on read, so while
-  // rehearsing this panel is driven by its own scrub position and has no reason
-  // to wake — and re-sample the whole timeline — on every live DMX frame.
-  const dmx = rehearsal || auditioning ? null : dmxSig.value;
-  // Live, the plot draws the DMX feed; rehearsing, it draws the timeline.
-  useDmxFeed(!rehearsal && !auditioning);
+  // Live, the plot paints the DMX feed; rehearsing, it draws the timeline and
+  // has no reason to wake — and re-sample the whole timeline — on every frame.
+  const live = !rehearsal && !auditioning;
+  useDmxFeed(live);
+  const surface = useRef(null);
+  const cellCanvas = useRef(null);
+  const hasCells = rig.cellMaps.some(Boolean);
+  const inputs = useRef(null);
+  inputs.current = { drawn, rig, preview, shown, connected, live };
+  const layer = useCellLayer(cellCanvas, hasCells, () => paintPlot(surface.current, layer.current, inputs.current));
+  useDmxPaint(() => paintPlot(surface.current, layer.current, inputs.current), live);
 
   // Follows the *track*, not the timeline. A replan — an intensity nudge, a
   // palette change — re-mints timelineRevision and hands us a new `data` for the
@@ -125,37 +214,23 @@ export function StagePreview({ controls = true } = {}) {
         onClick={() => { setUi({ edit: !edit }); drag.current = null; setDraft(null); }}> {edit ? 'Done positioning' : 'Position fixtures'}</button>
     </header>
     {controls && <Audition compact />}
-    <div class={`stage-surface ${edit ? 'editing' : ''}`} role="group"
+    <div ref={surface} class={`stage-surface ${edit ? 'editing' : ''}`} role="group"
       aria-label="Stage layout, viewed from the audience"
       style={surfaceStyle}>
       <span class="stage-back">{STAGE_EDGES.top}</span>
       {/* A bar's cells first, so its number and every lamp sit on top. */}
-      {drawn.map((fix, i) => {
-        if (!rig.cellMaps[i]) return null;
-        const { start, count } = rig.ranges[i];
-        const colours = preview
-          ? preview.slice(start, start + count).map(colorToCss)
-          : connected ? (fixtureCellColors(fix, shown, dmx) || []) : [];
-        return <span key={`cells-${fix.id}`} class="stage-cells" aria-hidden="true">
-          {rig.points.slice(start, start + count).map((point, c) => (
-            <i key={c} class="stage-cell" style={{ ...placeAt(point), '--light': colours[c] || '#222' }} />
-          ))}
-        </span>;
-      })}
+      {hasCells && <canvas ref={cellCanvas} class="stage-cells-canvas" aria-hidden="true" />}
       {drawn.map((fix, i) => {
         const point = positions[i];
-        const { start, count } = rig.ranges[i];
+        const { count } = rig.ranges[i];
         const bar = !!rig.cellMaps[i];
-        const color = preview
-          ? colorToCss(bar ? meanLight(preview.slice(start, start + count)) : preview[start])
-          : connected ? fixtureOutputColor(fix, shown, dmx) : '#222';
         // A panel's line is its top edge, as wide as its columns (shared/rig.js).
         const grid = rig.grids[i];
         const line = bar ? lineOf(fix, grid ? grid.columns : count, fix.position ? 0 : unplaced) : null;
         const shape = grid ? `a panel of ${grid.columns} × ${grid.rows} cells` : `a bar of ${count} cells`;
         const turnHelp = bar ? ' [ and ] turn it, minus and equals change its length, 0 resets both.' : '';
         return <button key={fix.id} type="button" class={`stage-fixture ${bar ? 'bar' : ''}`}
-          style={{ ...placeAt(point), '--light': color }}
+          style={placeAt(point)}
           aria-label={`${fix.label}${bar ? `, ${shape}` : ''}, position ${Math.round(point.x)}, ${Math.round(point.y)}${edit ? `. Arrow keys move, Shift moves faster.${turnHelp}` : ''}`}
           title={`${fix.label} · ${patchedAt(fix)}${bar ? ` · ${grid ? `${grid.columns} × ${grid.rows}` : count} cells` : ''}`}
           onPointerDown={(event) => grab(event, fix.id)}
