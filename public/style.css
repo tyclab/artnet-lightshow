@@ -260,6 +260,9 @@ header {
   color: var(--muted);
   font-weight: 700;
 }
+.stat-pill.control { font-family: inherit; line-height: inherit; cursor: pointer; }
+.stat-pill.control:focus-visible { outline: .125rem solid var(--accent); outline-offset: .1875rem; }
+.stat-pill.control:disabled { opacity: .5; cursor: default; }
 .stat-pill.alert {
   background: var(--wash-amber);
   border-color: var(--amber);
@@ -590,7 +593,7 @@ button.cb-bpm-num:focus-visible { outline: .125rem solid var(--accent); outline-
 }
 @media (max-width: 560px) {
   /* The Perform view carries tempo and master: the header keeps what is alarming. */
-  .header-stats .stat-pill:not(.alert):not(.conn):not(.gate):not(.frozen) { display: none; }
+  .header-stats .stat-pill:not(.alert):not(.conn):not(.gate):not(.control) { display: none; }
   /* And room for this device's tools: the name shortens, the theme picker narrows. */
   .site-product { display: none; }
   .header-theme { max-width: 104px; }
@@ -2167,6 +2170,9 @@ input[type=range]::-moz-range-thumb {
    RESPONSIVE
    ============================================================= */
 @media (max-width: 1280px) {
+  .header-tools { order: 1; margin-left: auto; }
+  .header-stats { order: 2; flex-basis: 100%; margin-left: 0; }
+  .header-now { order: 3; }
   .manual-view { grid-template-columns: 1fr 1fr; }
   .manual-view .col-fixtures { grid-column: 1 / -1; }
   .color-grid { grid-template-columns: repeat(6, 1fr); }
@@ -2179,7 +2185,7 @@ input[type=range]::-moz-range-thumb {
   .cb-energy-grid { flex-wrap: wrap; }
 
   .manual-view { grid-template-columns: 1fr; }
-  .header-stats .stat-pill .label { display: none; }
+  .header-stats .stat-pill:not(.control) .label { display: none; }
   main { padding: 14px; }
 }
 
@@ -3771,7 +3777,7 @@ input[type=range]::-moz-range-thumb {
    ============================================================= */
 @media (pointer: coarse) {
   .btn, .btn.sm, .btn.icon, .segmented-btn, .bd-tab, .bd-toggle, .mode-tab, .nav-link,
-  .header-tool, .header-theme, .stat-pill.gate, .cb-energy-btn, .cb-tap, .cb-play, .cb-bpm-follow,
+  .header-tool, .header-theme, .stat-pill.gate, .stat-pill.control, .cb-energy-btn, .cb-tap, .cb-play, .cb-bpm-follow,
   .palette-btn, .pattern-btn, .color-slot-tab, .cue-recall, .cue-capture, .sync-nudge,
   .transport-btn, .warm-toggle, .auto-select, .warm-playlist-select, .shortcuts-tab,
   .sub-tab, .remove-btn, .wizard-step-btn, .ofl-hit, .file-upload-btn, .timeline-section,

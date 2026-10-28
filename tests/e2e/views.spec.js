@@ -132,9 +132,9 @@ test('a new browser opens Show, and Perform restarts a frozen look', async ({ pa
   const freeze = page.getByRole('button', { name: 'Freeze look', exact: true });
   await expect(freeze).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByText('Look · frozen', { exact: false })).toBeVisible();
-  await expect(page.getByTitle(/The look is frozen/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Look playback' })).toHaveAttribute('aria-pressed', 'false');
   await play.click();
   await expect(play).toHaveAttribute('aria-pressed', 'true');
   await expect(freeze).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.getByTitle(/The look is frozen/)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Look playback' })).toHaveAttribute('aria-pressed', 'true');
 });
