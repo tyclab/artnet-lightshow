@@ -93,3 +93,20 @@ test('the Effects stage plot paints bar cells on one canvas, and the swatches fo
     await restore(request, before);
   }
 });
+
+test('the bars above each view are measured again for the sticky offsets after a view switch', async ({ page }) => {
+  await open(page, 'show');
+  const bars = { header: '.app-header', commands: '.command-bar', views: '.mode-nav', effects: '.effects-tools' };
+  const offsets = () => page.evaluate((bars) => {
+    const css = getComputedStyle(document.documentElement);
+    return Object.entries(bars).map(([name, selector]) => {
+      const element = document.querySelector(selector);
+      return { name, variable: parseFloat(css.getPropertyValue(`--${name}-height`)), height: element ? element.getBoundingClientRect().height : 0 };
+    }).filter(({ variable, height }) => !(Math.abs(variable - height) < 0.5));
+  }, bars);
+  for (const view of ['effects', 'show', 'stage', 'effects', 'sequence']) {
+    await page.locator(`#tab-${view}`).click();
+    await page.locator(`#panel-${view}`).waitFor();
+    await expect.poll(offsets).toEqual([]);
+  }
+});
