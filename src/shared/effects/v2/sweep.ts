@@ -18,6 +18,7 @@ export const sweepSchema = v2CommonSchema.extend({
   motion: z.enum(['loop', 'bounce', 'random']).default('loop'),
   // Degrees the plane turns per lap, continuously.
   turnPerLap: z.number().min(-720).max(720).default(0),
+  // Without a show's span, 'cycle' and a section fill missing section progress repeat every lengthBeats; 'once' holds its end.
   fillSource: z.enum(['cycle', 'once', 'section', 'volume']).default('cycle'),
   lengthBeats: z.number().min(1).max(256).default(16),
   falling: z.boolean().default(false),
@@ -108,9 +109,9 @@ function renderSweep(p: SweepParams, room: Room, f: EffectFrame, out: EffectSlot
   // A loop also draws the crest a lap behind, so it re-enters at the start while it leaves at the end.
   const loopLength = p.motion === 'loop' ? span + 2 * width : 0;
   const trigger = triggerLevel(p, f);
-  const age = Math.max(0, f.beatPos - f.anchorBeat);
+  const age = Math.max(0, f.beatPos - f.anchorBeat), repeat = age / p.lengthBeats % 1;
   const progress = p.fillSource === 'volume' ? bandGate(p, f) ?? 1 : p.fillSource === 'once' ? Math.min(1, age / p.lengthBeats) : p.fillSource === 'section'
-    ? f.modulation?.sectionProgress ?? Math.min(1, age / p.lengthBeats) : age / p.lengthBeats % 1;
+    ? f.modulation?.sectionProgress ?? repeat : f.modulation?.spanProgress ?? repeat;
   const fill = p.falling ? 1 - progress : progress;
   for (let i = 0; i < room.n; i++) {
     const at = project(pos, i, pass.d);

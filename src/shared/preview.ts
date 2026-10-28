@@ -758,7 +758,8 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
         w.base = { key, id, kind: spec.kind, seed: seedFrom(id), startedAtMs: t };
       }
       const instance: EffectInstance = { id, spec, seed: w.base.seed, anchorBeat: f.anchor / division, startedAtMs: w.base.startedAtMs, targets: null };
-      renderEffectLayer(rig, cells.layout, { ...fb, fixtureIds: cells.ids, hardware: cells.hardware }, instance, w.stepper, (u, colour, dim, strobe, kind, owner) => {
+      const modulation = s.pixelSpan ? { ...fb.modulation, spanProgress: fb.modulation?.sectionProgress } : fb.modulation;
+      renderEffectLayer(rig, cells.layout, { ...fb, modulation, fixtureIds: cells.ids, hardware: cells.hardware }, instance, w.stepper, (u, colour, dim, strobe, kind, owner) => {
         units[u] = unitLight(colour, dim, strobe);
         baseKind[u] = kind;
         baseOwner[u] = owner;

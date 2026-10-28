@@ -720,7 +720,8 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       for (const c of commands.due) def!.command!(state, c.cmd, c.arg);
     };
     baseKinds = true;
-    renderEffectLayer(rigNow, cells.layout, { ...fb, fixtureIds: cells.ids, hardware: cellHardware(cells.layout, rigNow) }, instance, stepper, (u, colour, dim, strobe, kind, owner) => {
+    const modulation = input.pixelSpan ? { ...fb.modulation, spanProgress: fb.modulation?.sectionProgress } : fb.modulation;
+    renderEffectLayer(rigNow, cells.layout, { ...fb, modulation, fixtureIds: cells.ids, hardware: cellHardware(cells.layout, rigNow) }, instance, stepper, (u, colour, dim, strobe, kind, owner) => {
       setUnitColor(u, colour, dim, strobe);
       baseKind[u] = kind;
       baseOwner[u] = owner;

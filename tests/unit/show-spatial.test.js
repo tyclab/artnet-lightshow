@@ -52,7 +52,10 @@ test('director builds upward, detonates drops and drifts in breakdown as one roo
     assert.equal(scene.panelPattern, null);
     assert.equal(scene.pixelMap, 'stage');
     assert.equal(scene.strobeSpeed, 0);
-    if (scene.pattern !== 'v2.risingWall') {
+    if (scene.pattern === 'v2.fallingWall') {
+      assert.equal(scene.pixelSpan, 4, 'the drop releases the wall once, over its bar');
+      assert.equal(scene.pixelFrom, null);
+    } else if (scene.pattern !== 'v2.risingWall') {
       assert.equal(scene.pixelSpan, null);
       assert.equal(scene.pixelFrom, null);
     }
@@ -73,7 +76,7 @@ test('live director selects a rising wall for builds and a spatial impact on a d
   director.start();
   director.onEvent({ type: 'BUILDUP', data: {} });
   assert.equal(patches.at(-1).pattern, 'v2.risingWall');
-  assert.equal(patches.at(-1).pixelSpan, null, 'an analyzed build cannot leave a span in the live build');
+  assert.equal(patches.at(-1).pixelSpan, 16, 'the live build fills once over the wall\'s own sixteen beats, never an analyzed span');
   assert.equal(patches.at(-1).pixelFrom, null);
   director.onEvent({ type: 'DROP', data: {} });
   const drop = patches.findLast((p) => p.pattern);

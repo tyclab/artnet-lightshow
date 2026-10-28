@@ -63,6 +63,8 @@ export type EffectCommand = 'stop' | 'comboBreak' | 'toggleDirection' | 'fadeToB
 
 export interface EffectModulation {
   sectionProgress?: number;
+  // Progress through the span a show scheduled for the look itself; absent for a look picked by hand, voices and clips.
+  spanProgress?: number;
   section?: string;
   stems?: { bass?: number; drums?: number; vocals?: number; hats?: number };
 }
