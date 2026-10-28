@@ -485,11 +485,15 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
     controls.update();
   }
 
+  let sizedTo = '';
   function resize() {
     invalidate();
     const box = canvas.parentElement ? canvas.parentElement.getBoundingClientRect() : canvas.getBoundingClientRect();
     const w = Math.max(1, Math.round(box.width));
     const h = Math.max(1, Math.round(box.height));
+    // Setting a canvas's size, even to the same one, reallocates its drawing buffer.
+    if (sizedTo === `${w}x${h}`) return;
+    sizedTo = `${w}x${h}`;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
@@ -552,6 +556,9 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
     if (screenTexture) screenTexture.dispose();
     for (const thing of disposables) if (thing && thing.dispose) thing.dispose();
     renderer.dispose();
+    // dispose() frees what the renderer allocated but not the context, which the
+    // browser keeps (up to its limit) until the canvas is collected.
+    renderer.forceContextLoss();
   }
 
   return {

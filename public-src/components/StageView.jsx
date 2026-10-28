@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect } from '@preact/signals';
 import { api, pick, connectedSig, dmxSig, field, pictureImageSig, stagePreviewSig } from '../state.js';
 import { fmtTime, rigLights, stageMode } from '../utils.js';
@@ -11,6 +11,7 @@ import { Audition } from './Audition.jsx';
 import { StagePreview } from './StagePreview.jsx';
 import { auditionSig, setAudition, useAuditionSampler } from '../audition.js';
 import { StageRoomPanel } from './StageRoomPanel.jsx';
+import { scenePool } from '../stage3d/scene-pool.js';
 
 const VIEWS = [
   { id: 'audience', label: 'Audience' },
@@ -47,8 +48,12 @@ export function StageView({ compact = false } = {}) {
   const [roomState, setRoomState] = useState({ room: null, revision: null });
   const [cutaway, setCutaway] = useState(true);
   const room = roomState.room;
+  const host = useRef(null);
   const canvas = useRef(null);
   const scene = useRef(null);
+  const latestHaze = useRef(haze);
+  latestHaze.current = haze;
+  const keys = useRef(null);
   useEffect(() => {
     if (!compact) return undefined;
     let live = true;
@@ -70,26 +75,48 @@ export function StageView({ compact = false } = {}) {
   const live = useRef({});
   live.current = { fixtures, profiles, rig, sample, auditionSample, auditioning, format, rehearsing, dark: !mode.lit, presets: s.colorPresets, durationMs };
 
-  useEffect(() => {
+  // The canvas and its scene come from the pool and go back to it (scene-pool.js):
+  // a return to this view reuses the WebGL context instead of making another.
+  useLayoutEffect(() => {
     let cancelled = false;
-    import('../stage3d/scene.js')
-      .then(({ createStageScene }) => {
-        if (cancelled || !canvas.current) return;
-        try {
-          scene.current = createStageScene(canvas.current, {
-            haze: haze / 100, room: { width: STAGE_W, depth: STAGE_D, trussHeight: TRUSS_H }, lightRGB,
-          });
-          scene.current.resize();
-          setStatus('ready');
-        } catch {
-          setStatus('nowebgl');
-        }
-      })
-      .catch(() => { if (!cancelled) setStatus('error'); });
+    let held = scenePool.take();
+    const element = held ? held.canvas : document.createElement('canvas');
+    if (!held) {
+      element.className = 'stage3d-canvas';
+      element.tabIndex = 0;
+      element.setAttribute('role', 'img');
+    }
+    element.onkeydown = (event) => keys.current(event);
+    host.current.appendChild(element);
+    canvas.current = element;
+    const adopt = (entry) => {
+      held = entry;
+      scene.current = entry.scene;
+      entry.scene.setHaze(latestHaze.current / 100);
+      setStatus('ready');
+    };
+    if (held) adopt(held);
+    else {
+      import('../stage3d/scene.js')
+        .then(({ createStageScene }) => {
+          if (cancelled) return;
+          try {
+            adopt({ canvas: element, scene: createStageScene(element, {
+              haze: latestHaze.current / 100, room: { width: STAGE_W, depth: STAGE_D, trussHeight: TRUSS_H }, lightRGB,
+            }) });
+          } catch {
+            setStatus('nowebgl');
+          }
+        })
+        .catch(() => { if (!cancelled) setStatus('error'); });
+    }
     return () => {
       cancelled = true;
-      if (scene.current) scene.current.dispose();
+      element.onkeydown = null;
+      if (held) scenePool.give(held);
+      else element.remove();
       scene.current = null;
+      canvas.current = null;
     };
   }, []);
 
@@ -124,8 +151,14 @@ export function StageView({ compact = false } = {}) {
   useEffect(() => {
     if (status !== 'ready') return undefined;
     const box = canvas.current.parentElement;
-    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => scene.current && scene.current.resize()) : null;
+    // Sized from the observer, after the frame's layout: measuring as the view
+    // mounts forced layout of all of it, and a kept canvas still has the size of
+    // the view it was last in.
+    let sized = false;
+    const resize = () => { sized = true; if (scene.current) scene.current.resize(); };
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(resize) : null;
     if (observer) observer.observe(box);
+    else resize();
     let raf = 0;
     let lastDmx = null;
     let liveFrame = null;
@@ -141,7 +174,7 @@ export function StageView({ compact = false } = {}) {
     const tick = (now) => {
       const cur = live.current;
       const st = stagePreviewSig.value;
-      if (cur.format === 'plot') { lastNow = now; raf = requestAnimationFrame(tick); return; }
+      if (cur.format === 'plot' || !sized) { lastNow = now; raf = requestAnimationFrame(tick); return; }
       if (cur.auditioning) {
         const at = auditionSig.peek().position;
         const inputs = [at, cur.auditionSample, cur.fixtures, cur.presets, cur.rig];
@@ -215,6 +248,8 @@ export function StageView({ compact = false } = {}) {
     + `${fixtures.length} fixtures${bars ? `, ${bars} of them bars` : ''}, ${parts} lights, `
     + `${auditioning ? `auditioning ${audition.name || audition.id}; browser only, outputs disarmed` : rehearsing ? `rehearsing the track at ${fmtTime(ui.position)}` : !connected ? 'offline' : s.armed ? 'showing the live output'
       : mode.lit ? 'previewing with outputs disarmed; nothing is transmitted' : 'outputs disarmed, lights drawn off; nothing is transmitted'}.`;
+  keys.current = onKeyDown;
+  useLayoutEffect(() => { if (canvas.current) canvas.current.setAttribute('aria-label', description); });
 
   return (
     <div class={`stage3d-view${compact ? ' compact' : ''}`}>
@@ -255,7 +290,7 @@ export function StageView({ compact = false } = {}) {
       </div>
       {format === 'plot' && <StagePreview controls={false} />}
       <div class="stage3d-wrap" style={format === 'plot' ? { display: 'none' } : undefined}>
-        <canvas ref={canvas} class="stage3d-canvas" tabIndex={0} role="img" aria-label={description} onKeyDown={onKeyDown} />
+        <div ref={host} class="stage3d-host" />
         {status === 'loading' && <p class="stage3d-note">Setting the stage…</p>}
         {status === 'nowebgl' && (
           <p class="stage3d-note" role="alert">The 3D stage needs WebGL, which this browser has turned off. The plan in the Manual

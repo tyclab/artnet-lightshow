@@ -1,6 +1,22 @@
 import { test, expect } from '@playwright/test';
 import { open, previewLook, set, state } from './helpers.js';
 
+// Every WebGL context the page makes, and whether it is still alive, in the document or out of it.
+function countContexts() {
+  const made = [];
+  const getContext = window.HTMLCanvasElement.prototype.getContext;
+  window.HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
+    const context = getContext.call(this, type, ...rest);
+    if (context && /webgl/.test(type) && !made.some((entry) => entry.context === context)) made.push({ canvas: this, context });
+    return context;
+  };
+  window.webglContexts = () => ({
+    made: made.length,
+    live: made.filter(({ canvas, context }) => canvas.isConnected && !context.isContextLost()).length,
+    detached: made.filter(({ canvas, context }) => !canvas.isConnected && !context.isContextLost()).length,
+  });
+}
+
 /** Red and green pixels on the stage plot's cell layer. */
 const cellPixels = (page) => page.locator('canvas.stage-cells-canvas').evaluate((canvas) => {
   const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
@@ -28,6 +44,27 @@ async function redBars(request) {
 
 const restore = (request, before) => set(request, { pattern: before.pattern, basePalette: before.basePalette,
   overridePalette: before.overridePalette, masterBlackout: before.masterBlackout, running: before.running });
+
+test('switching between Show and Effects keeps one WebGL context for the room', async ({ page, request }) => {
+  test.setTimeout(60_000);
+  await page.addInitScript(countContexts);
+  const before = await state(request);
+  const remove = await redBars(request);
+  try {
+    await open(page, 'show');
+    await expect(page.locator('.show-room .stage3d-canvas')).toBeVisible();
+    for (let round = 0; round < 4; round++) {
+      await page.locator('#tab-effects').click();
+      await expect(page.getByRole('group', { name: 'Stage layout, viewed from the audience' })).toBeVisible();
+      await page.locator('#tab-show').click();
+      await expect(page.getByRole('img', { name: /The rig in 3D/ })).toBeVisible();
+    }
+    expect(await page.evaluate(() => window.webglContexts())).toEqual({ made: 1, live: 1, detached: 0 });
+  } finally {
+    await remove();
+    await restore(request, before);
+  }
+});
 
 test('the Effects stage plot paints bar cells on one canvas, and the swatches follow, from the live feed', async ({ page, request }) => {
   const before = await state(request);
