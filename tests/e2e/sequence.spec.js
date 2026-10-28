@@ -67,7 +67,7 @@ test('a clip added in the editor plays, and the lane cursor moves', async ({ pag
   await page.getByRole('button', { name: 'Edit' }).click();
   await page.getByRole('button', { name: 'Add clip' }).click();
   await expect(page.locator('.seq-block')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Play' }).click();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect(page.locator('.seq-now')).toContainText('Playing');
   const before = await cursorLeft(page);
   await expect.poll(() => cursorLeft(page), { timeout: 4000 }).toBeGreaterThan(before);
@@ -87,7 +87,7 @@ test('a sequence started in the view plays, and Unload gives the rig back to the
   await length.fill('64');
   await length.press('Enter');
   await expect(page.locator('.seq-block')).toHaveAttribute('aria-label', /beats 0 to 64/);
-  await page.getByRole('button', { name: 'Play' }).click();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect(page.locator('.seq-now')).toContainText('Playing');
   await page.getByRole('button', { name: 'Stop' }).click();
   page.once('dialog', (dialog) => dialog.accept());
@@ -189,7 +189,7 @@ test('a pad hit while recording is kept as a clip', async ({ page, request }) =>
   expect(put.ok(), await put.text()).toBe(true);
   await open(page, 'sequence');
   await page.getByLabel('Count-in beats').selectOption('0');
-  await page.getByRole('button', { name: 'Play' }).click();
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
   await page.getByRole('button', { name: 'Record' }).click();
   await expect(page.getByRole('button', { name: 'Keep take' })).toBeVisible();
   const hit = await request.post('/api/pads/0/0/once', { data: {} });

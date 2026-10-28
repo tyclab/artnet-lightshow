@@ -213,8 +213,9 @@ header {
   white-space: nowrap;
   text-align: right;
 }
-/* Below a wide desktop the kicker would push the status pills onto a row of their own. */
-@media (max-width: 79.9375em) { .site-kicker { display: none; } }
+/* Below a wide desktop the kicker would push the status pills onto a row of their own: every pill
+   stays (Header.jsx), so the kicker gives way first. */
+@media (max-width: 124.9375em) { .site-kicker { display: none; } }
 
 .header-nav { display: flex; gap: 2px; margin-left: 8px; }
 .nav-link {
@@ -235,7 +236,7 @@ header {
 .header-stats {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-left: auto;
   flex-wrap: wrap;
 }
@@ -592,9 +593,8 @@ button.cb-bpm-num:focus-visible { outline: .125rem solid var(--accent); outline-
   .header-tool-label { display: none; }
 }
 @media (max-width: 560px) {
-  /* The Perform view carries tempo and master: the header keeps what is alarming. */
-  .header-stats .stat-pill:not(.alert):not(.conn):not(.gate):not(.control) { display: none; }
-  /* And room for this device's tools: the name shortens, the theme picker narrows. */
+  /* Room for this device's tools: the name shortens, the theme picker narrows. The status pills
+     stay at every width and wrap onto more rows instead. */
   .site-product { display: none; }
   .header-theme { max-width: 104px; }
 }
@@ -2171,7 +2171,10 @@ input[type=range]::-moz-range-thumb {
    ============================================================= */
 @media (max-width: 1280px) {
   .header-tools { order: 1; margin-left: auto; }
-  .header-stats { order: 2; flex-basis: 100%; margin-left: 0; }
+  .header-stats { order: 2; flex-basis: 100%; margin-left: 0; gap: 5px; }
+  /* Every pill on one row of a tablet, so the Show's room still starts in the top half. */
+  .stat-pill { padding: 4px 7px; gap: 5px; font-size: 10px; }
+  .stat-pill .label { font-size: 9px; letter-spacing: .05em; }
   .header-now { order: 3; }
   .manual-view { grid-template-columns: 1fr 1fr; }
   .manual-view .col-fixtures { grid-column: 1 / -1; }
@@ -2185,7 +2188,6 @@ input[type=range]::-moz-range-thumb {
   .cb-energy-grid { flex-wrap: wrap; }
 
   .manual-view { grid-template-columns: 1fr; }
-  .header-stats .stat-pill:not(.control) .label { display: none; }
   main { padding: 14px; }
 }
 
@@ -2193,8 +2195,9 @@ input[type=range]::-moz-range-thumb {
   .app-header { padding: 10px 12px; }
   .app-header h1 { font-size: 13px; }
   .nav-link { padding: 4px 10px; font-size: 11px; }
-  .header-stats { gap: 6px; }
-  .stat-pill { padding: 4px 8px; font-size: 10px; }
+  .header-stats { gap: 4px; row-gap: 3px; }
+  /* Every pill stays on a phone too: tighter rows keep the Matrix colours on the first screen. */
+  .stat-pill { padding: 3px 6px; gap: 4px; font-size: 10px; line-height: 1.2; }
   .cb-tempo { gap: 10px; }
   .cb-bpm-num { font-size: 28px; }
   .cb-tap { height: 48px; padding: 0 16px; }
