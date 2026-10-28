@@ -139,7 +139,7 @@ const STREAM_PORT = 2100;
 const CIPHER_SUITE = 'TLS_PSK_WITH_AES_128_GCM_SHA256' as const;
 
 const REST_TIMEOUT_MS = 5000;
-// node-dtls-client never retransmits a flight, so a lost datagram costs the whole try; a good handshake takes under 200 ms.
+// A stalled bridge can ignore every new socket until its Entertainment session is reopened.
 const HANDSHAKE_TIMEOUT_MS = 1000;
 const HANDSHAKE_TRIES = 5;
 
@@ -447,11 +447,12 @@ async function setStreaming(host: string, key: string, configId: string, active:
 }
 
 // Entertainment ownership is bridge-wide, even when the selected area is inactive.
-async function conflictingArea(config: HueBridgeConfig, identity: string, beforeStart: boolean): Promise<ClipEntertainmentConfig | null> {
+async function conflictingArea(config: HueBridgeConfig, identity: string, beforeStart: boolean, requireReadable = false): Promise<ClipEntertainmentConfig | null> {
   const path = '/clip/v2/resource/entertainment_configuration';
   const parsed = await bridgeRequest(config.host, { path, key: config.username })
     .catch(() => bridgeRequest(config.host, { path: `${path}/${encodeURIComponent(config.entertainmentId)}`, key: config.username }))
     .catch(() => null) as ClipList<ClipEntertainmentConfig> | null;
+  if (requireReadable && !Array.isArray(parsed?.data)) throw new Error('could not verify Entertainment ownership before retrying');
   const knownIdentity = identity !== config.username;
   return parsed?.data?.find((area) => area.status === 'active' && (area.id !== config.entertainmentId
     || (knownIdentity && area.active_streamer?.rid && area.active_streamer.rid !== identity)
@@ -607,29 +608,52 @@ class HueSession {
     }
     if (!current()) return;
 
-    const occupied = await conflictingArea(config, identity, true);
-    if (!current()) return;
-    if (occupied) { this.fail(busyMessage(occupied)); return; }
+    if (await this.openSession(config, identity, current)) this.handshake(config, identity, 1);
+  }
+
+  private async openSession(config: HueBridgeConfig, identity: string, current: () => boolean, restart = false): Promise<boolean> {
+    let occupied: ClipEntertainmentConfig | null;
+    try {
+      occupied = await conflictingArea(config, identity, true, restart);
+    } catch (err) {
+      if (current()) {
+        this.sessionConfig = null;
+        this.fail(messageOf(err));
+      }
+      return false;
+    }
+    if (!current()) return false;
+    if (occupied) {
+      this.sessionConfig = null;
+      this.fail(busyMessage(occupied));
+      return false;
+    }
 
     try {
+      if (restart) {
+        await setStreaming(config.host, config.username, config.entertainmentId, false);
+        this.sessionConfig = null;
+        if (!current()) return false;
+        return this.openSession(config, identity, current);
+      }
       await setStreaming(config.host, config.username, config.entertainmentId, true);
       this.sessionConfig = config;
     } catch (err) {
-      if (current()) this.fail(`could not start the entertainment session: ${messageOf(err)}`);
-      return;
+      if (current()) this.fail(`could not ${restart ? 'restart' : 'start'} the entertainment session: ${messageOf(err)}`);
+      return false;
     }
-    if (!current()) { this.teardown(); return; }
+    if (!current()) { this.teardown(); return false; }
     const holder = await conflictingArea(config, identity, false);
     if (holder) this.sessionConfig = null;
     if (!current()) {
       this.teardown();
-      return;
+      return false;
     }
     if (holder) {
       this.fail(busyMessage(holder));
-      return;
+      return false;
     }
-    this.handshake(config, identity, 1);
+    return true;
   }
 
   private handshake(config: HueBridgeConfig, identity: string, attempt: number): void {
@@ -665,7 +689,13 @@ class HueSession {
         console.warn(`[hue] ${this.name}: ${err.message}, try ${attempt + 1} of ${HANDSHAKE_TRIES}`);
         this.socket = null;
         try { pending.close(); } catch (_) { /* already gone */ }
-        this.handshake(config, identity, attempt + 1);
+        const epoch = this.connectEpoch;
+        const current = () => this.connectEpoch === epoch && this.status === CONNECTING;
+        this.connecting = this.openSession(config, identity, current, true).then((opened) => {
+          if (opened) this.handshake(config, identity, attempt + 1);
+        }).catch((error) => {
+          if (current()) this.fail(messageOf(error));
+        }).finally(() => { this.connecting = null; });
         return;
       }
       this.fail(err.message);

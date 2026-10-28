@@ -6,10 +6,8 @@ import { dtls } from 'node-dtls-client';
 
 import * as hue from '../../src/server/hue.ts';
 
-// node-dtls-client sends each handshake flight once and never retransmits, so a
-// single lost datagram stalls the handshake until its timer. Measured on the
-// bridges, half the starts lost one and sat dark for 7 to 30 s of stop/start
-// rounds while a good handshake takes under 200 ms.
+// Some bridges answer the cookie exchange but stall until the area is reopened;
+// changing only the socket leaves every retry in the same broken session.
 
 const AREA = '0123abcd-1234-5678-9abc-def012345678';
 const PAIRED = {
@@ -90,7 +88,7 @@ async function until(t, done, limit) {
 
 const actions = (calls) => calls.filter((c) => c.method === 'PUT').map((c) => c.body.action);
 
-test('a handshake lost on the first try is retried inside the open session', async (t) => {
+test('a stalled handshake reopens its owned Entertainment session before retrying', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
   const lines = quiet(t);
   const calls = fakeBridge(t);
@@ -104,14 +102,12 @@ test('a handshake lost on the first try is retried inside the open session', asy
   assert.ok(took <= 1200, `streaming after ${took} ms`);
   assert.strictEqual(sockets.length, 2);
   assert.ok(sockets[0].closed, 'the stalled handshake is closed');
-  assert.deepStrictEqual(actions(calls), ['start'], 'one session for both tries, no stop/start between them');
+  assert.deepStrictEqual(actions(calls), ['start', 'stop', 'start'], 'release the stalled session before the next handshake');
   assert.ok(lines.some((l) => /timed out.*try 2 of 5/.test(l)), 'the lost try is logged');
   assert.strictEqual(session.sendFrame(RED), true, 'frames flow');
   await session.stop();
 });
 
-// Five tries of a second each cost what the one five-second try did before, so
-// a bridge that answers nothing is no darker than it was.
 test('a bridge that answers no handshake falls back to the backoff after five tries', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
   quiet(t);
@@ -126,11 +122,89 @@ test('a bridge that answers no handshake falls back to the backoff after five tr
   assert.match(session.getStatus().error, /timed out/);
   assert.ok(took >= 5000 && took <= 5200, `failed after ${took} ms`);
   assert.strictEqual(sockets.length, 5);
-  assert.deepStrictEqual(actions(calls), ['start', 'stop'], 'the session is closed once, after the last try');
+  assert.deepStrictEqual(actions(calls), Array.from({ length: 5 }, () => ['start', 'stop']).flat());
   assert.strictEqual(session.sendFrame(RED), false);
   await settle();
   assert.strictEqual(sockets.length, 5, 'backing off: the next frame starts nothing');
 });
+
+test('a timeout never stops an area taken by another controller', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+  quiet(t);
+  let reads = 0;
+  const calls = fakeBridge(t, { area: () => ({ status: 200, body: ++reads <= 2 ? OURS
+    : { data: [{ id: AREA, metadata: { name: 'Other stream' }, status: 'active', active_streamer: { rid: 'other-app' } }] } }) });
+  const sockets = fakeDtls(t);
+  const session = new hue.HueSession(PAIRED);
+  session.sendFrame(RED);
+  await until(t, () => session.getStatus().status === 'failed', 2000);
+  assert.match(session.getStatus().error, /Other stream.*already in use/);
+  assert.deepStrictEqual(actions(calls), ['start']);
+  assert.strictEqual(sockets.length, 1);
+  await session.stop();
+  assert.deepStrictEqual(actions(calls), ['start']);
+});
+
+test('a retry leaves the bridge alone when ownership cannot be verified', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+  quiet(t);
+  let reads = 0;
+  const calls = fakeBridge(t, { area: () => ++reads <= 2 ? { status: 200, body: OURS }
+    : { status: 500, body: { errors: [{ description: 'unavailable' }] } } });
+  const sockets = fakeDtls(t);
+  const session = new hue.HueSession(PAIRED);
+  session.sendFrame(RED);
+  await until(t, () => session.getStatus().status === 'failed', 2000);
+  assert.match(session.getStatus().error, /could not verify.*ownership/);
+  assert.deepStrictEqual(actions(calls), ['start']);
+  assert.strictEqual(sockets.length, 1);
+  await session.stop();
+  assert.deepStrictEqual(actions(calls), ['start']);
+});
+
+test('a controller taking the area after retry release is not displaced', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+  quiet(t);
+  let released = false;
+  const calls = fakeBridge(t, {
+    put: ({ body }) => { if (body.action === 'stop') released = true; return { status: 200, body: { data: [] } }; },
+    area: () => ({ status: 200, body: released ? { data: [OTHER_AREA] } : OURS }),
+  });
+  const sockets = fakeDtls(t);
+  const session = new hue.HueSession(PAIRED);
+  session.sendFrame(RED);
+  await until(t, () => session.getStatus().status === 'failed', 2000);
+  assert.match(session.getStatus().error, /TV Couch.*already in use/);
+  assert.deepStrictEqual(actions(calls), ['start', 'stop']);
+  assert.strictEqual(sockets.length, 1);
+  await session.stop();
+});
+
+for (const pendingAction of ['stop', 'start']) {
+  test(`disarming during a retry's ${pendingAction} cannot reconnect later`, async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+    quiet(t);
+    let respond, starts = 0, stops = 0;
+    const calls = fakeBridge(t, { put: ({ body }) => {
+      if (body.action === 'start') starts++; else stops++;
+      const defer = body.action === pendingAction && (pendingAction === 'start' ? starts === 2 : stops === 1);
+      return { status: 200, body: { data: [] }, ...(defer ? { defer: send => { respond = send; } } : {}) };
+    } });
+    const sockets = fakeDtls(t);
+    const session = new hue.HueSession(PAIRED);
+    session.sendFrame(RED);
+    await until(t, () => !!respond, 2000);
+    assert.ok(respond);
+    await session.stop();
+    session.sendFrame(RED);
+    assert.strictEqual(starts, pendingAction === 'start' ? 2 : 1, 'a pending retry must settle first');
+    respond();
+    await settle();
+    assert.strictEqual(session.getStatus().status, 'idle');
+    assert.strictEqual(sockets.length, 1);
+    assert.strictEqual(actions(calls).at(-1), 'stop');
+  });
+}
 
 // A disarm during backoff used to carry the doubled delay into the next arm,
 // up to a minute dark on a bridge that had long recovered.
