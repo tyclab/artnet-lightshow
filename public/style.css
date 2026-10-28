@@ -592,9 +592,8 @@ button.cb-bpm-num:focus-visible { outline: .125rem solid var(--accent); outline-
   .header-tool-label { display: none; }
 }
 @media (max-width: 560px) {
-  /* The Perform view carries tempo and master: the header keeps what is alarming. */
-  .header-stats .stat-pill:not(.alert):not(.conn):not(.gate):not(.control) { display: none; }
-  /* And room for this device's tools: the name shortens, the theme picker narrows. */
+  /* Room for this device's tools: the name shortens, the theme picker narrows. The status pills
+     stay at every width (a grid of tiles below 1280px). */
   .site-product { display: none; }
   .header-theme { max-width: 104px; }
 }
@@ -2171,7 +2170,20 @@ input[type=range]::-moz-range-thumb {
    ============================================================= */
 @media (max-width: 1280px) {
   .header-tools { order: 1; margin-left: auto; }
-  .header-stats { order: 2; flex-basis: 100%; margin-left: 0; }
+  /* Every pill (Header.jsx) on its own row below the wordmark: a fixed grid of tiles, label over
+     value, so the row count does not depend on the font and the Show's room still starts in the
+     top half of a tablet. */
+  .header-stats {
+    order: 2; flex-basis: 100%; margin-left: 0;
+    display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px;
+  }
+  .header-stats .stat-pill {
+    flex-direction: column; justify-content: center; gap: 1px; min-width: 0;
+    padding: 3px 4px; border-radius: 8px; font-size: 10px; line-height: 1.15; text-align: center;
+  }
+  .header-stats .stat-pill .label { font-size: 9px; letter-spacing: .04em; }
+  .header-stats .stat-pill > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .header-stats .stat-pill.conn { flex-direction: row; gap: 5px; }
   .header-now { order: 3; }
   .manual-view { grid-template-columns: 1fr 1fr; }
   .manual-view .col-fixtures { grid-column: 1 / -1; }
@@ -2185,7 +2197,6 @@ input[type=range]::-moz-range-thumb {
   .cb-energy-grid { flex-wrap: wrap; }
 
   .manual-view { grid-template-columns: 1fr; }
-  .header-stats .stat-pill:not(.control) .label { display: none; }
   main { padding: 14px; }
 }
 
@@ -2193,8 +2204,8 @@ input[type=range]::-moz-range-thumb {
   .app-header { padding: 10px 12px; }
   .app-header h1 { font-size: 13px; }
   .nav-link { padding: 4px 10px; font-size: 11px; }
-  .header-stats { gap: 6px; }
-  .stat-pill { padding: 4px 8px; font-size: 10px; }
+  /* Every pill stays on a phone too: two rows of five keep the Matrix colours on the first screen. */
+  .header-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; }
   .cb-tempo { gap: 10px; }
   .cb-bpm-num { font-size: 28px; }
   .cb-tap { height: 48px; padding: 0 16px; }

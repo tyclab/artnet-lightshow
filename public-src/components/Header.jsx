@@ -4,7 +4,7 @@ import { formatBpm, clockSource } from '../utils.js';
 import { driverOf } from '../transport-model.js';
 import { useState } from 'preact/hooks';
 import { awakeSig, fullscreenSig, setAwake, toggleFullscreen, canFullscreen } from '../device.js';
-import { StrobesOff } from './Photosensitivity.jsx';
+import { StrobesOff, isAcknowledged } from './Photosensitivity.jsx';
 import { BRAND, PRODUCT, KICKER } from '../brand.js';
 
 // The themes, and what each is for. `system` follows the device's setting.
@@ -57,11 +57,12 @@ function DeviceTools() {
   );
 }
 
+// Every pill keeps its place in every state and at every width: a pill that comes and goes moves the
+// controls beside it and hides what the room is doing. Absent values read '—'.
 function MasterPill({ master, blackout }) {
-  if (blackout) return null;
   const pct = Math.round(((master ?? 255) / 255) * 100);
   return (
-    <div class="stat-pill" title="Master dimmer">
+    <div class="stat-pill" title={blackout ? 'Master dimmer: Blackout holds every light dark over it' : 'Master dimmer'}>
       <span class="label">Master</span>
       <span>{pct}%</span>
     </div>
@@ -80,9 +81,10 @@ function BpmPill({ bpm, running, source }) {
 
 export function Header() {
   const connected = connectedSig.value;
-  const s = pick(['bpm', 'clock', 'running', 'masterDimmer', 'masterBlackout', 'energyOverride', 'flashLimit', 'autoShow', 'armed', 'sequence', 'showOn']);
+  const s = pick(['bpm', 'clock', 'running', 'masterDimmer', 'masterBlackout', 'energyOverride', 'flashLimit', 'autoShow', 'armed', 'sequence', 'showOn', 'safety']);
   const blackout = !!s.masterBlackout;
-  const manual = driverOf(s) === 'look';
+  const driver = driverOf(s);
+  const under = driver === 'look' ? '' : ` — the base look under the ${driver === 'auto' ? 'auto show' : 'sequence'}`;
   const frozen = s.running === false;
   const energy = s.energyOverride;
   const auto = s.autoShow && s.autoShow.status;
@@ -98,50 +100,45 @@ export function Header() {
       <span class="site-kicker" aria-hidden="true">{KICKER}</span>
 
       <div class="header-stats">
-        {s.armed != null && (
-          <button type="button" class={`stat-pill control ${s.armed ? 'live' : ''}`} disabled={!connected}
-            aria-label={s.armed ? 'Disarm outputs' : 'Arm outputs'} aria-pressed={!!s.armed}
-            onClick={() => api(s.armed ? '/api/outputs/disarm' : '/api/outputs/arm', { method: 'POST' })}
-            title={s.armed ? 'Disarm outputs: stop sending frames; the look keeps playing' : 'Arm outputs: send frames to the rig'}>
-            <span class="label">Outputs</span>
-            <span>{s.armed ? 'Armed' : 'Disarmed'}</span>
-          </button>
-        )}
-        {manual && (
-          <button type="button" class={`stat-pill control${frozen ? ' energy frozen' : ''}`} disabled={!connected}
-            aria-label="Look playback" aria-pressed={!frozen} onClick={() => send({ running: frozen })}
-            title={frozen ? 'Play look: animate the look; outputs stay as they are' : 'Freeze look: hold the current picture; pads still play'}>
-            <span class="label">Look</span>
-            <span>{frozen ? 'Frozen' : 'Playing'}</span>
-          </button>
-        )}
-        {s.bpm != null && <BpmPill bpm={s.bpm} running={!!s.running} source={s.clock && s.clock.source} />}
-        {!blackout && <MasterPill master={s.masterDimmer} blackout={blackout} />}
+        <button type="button" class={`stat-pill control ${s.armed ? 'live' : ''}`} disabled={!connected || s.armed == null}
+          aria-label={s.armed ? 'Disarm outputs' : 'Arm outputs'} aria-pressed={!!s.armed}
+          onClick={() => api(s.armed ? '/api/outputs/disarm' : '/api/outputs/arm', { method: 'POST' })}
+          title={s.armed ? 'Disarm outputs: stop sending frames; the look keeps playing' : 'Arm outputs: send frames to the rig'}>
+          <span class="label">Outputs</span>
+          <span>{s.armed == null ? '—' : s.armed ? 'Armed' : 'Disarmed'}</span>
+        </button>
+        <button type="button" class={`stat-pill control${frozen ? ' energy frozen' : ''}`} disabled={!connected}
+          aria-label="Look playback" aria-pressed={!frozen} onClick={() => send({ running: frozen })}
+          title={`${frozen ? 'Play look: animate the look; outputs stay as they are' : 'Freeze look: hold the current picture; pads still play'}${under}`}>
+          <span class="label">Look</span>
+          <span>{frozen ? 'Frozen' : 'Playing'}</span>
+        </button>
+        <BpmPill bpm={s.bpm} running={!!s.running} source={s.clock && s.clock.source} />
+        <MasterPill master={s.masterDimmer} blackout={blackout} />
         <button type="button" class={`stat-pill control${blackout ? ' alert' : ''}`} disabled={!connected}
           aria-label="Master blackout" aria-pressed={blackout} onClick={() => send({ masterBlackout: !blackout })}
           title={blackout ? 'Release blackout: restore the current look' : 'Blackout: darken every light'}>
           <span class="label">Blackout</span>
           <span>{blackout ? 'ON' : 'OFF'}</span>
         </button>
-        {energy && (
-          <div class="stat-pill energy" title={`Energy override: ${energy}`}>
-            <span class="label">Energy</span>
-            <span>{energy.replace(/-/g, ' ')}</span>
+        <div class={`stat-pill${energy ? ' energy' : ''}`} title={energy ? `Energy override: ${energy}` : 'Energy override: none'}>
+          <span class="label">Energy</span>
+          <span>{energy ? energy.replace(/-/g, ' ') : 'off'}</span>
+        </div>
+        {s.safety && !isAcknowledged(s.safety) ? <StrobesOff /> : (
+          <div class="stat-pill" title={s.safety ? 'Strobes and fast-flashing effects are allowed: the photosensitivity acknowledgement is given' : 'Strobes: waiting for the server'}>
+            <span class="label">Strobes</span>
+            <span>{s.safety ? 'allowed' : '—'}</span>
           </div>
         )}
-        <StrobesOff />
-        {s.flashLimit && (
-          <div class="stat-pill" title="Flash limit: at most three large-area flashes a second (Settings → Show)">
-            <span class="label">Flash</span>
-            <span>≤ 3/s</span>
-          </div>
-        )}
-        {auto && auto !== 'idle' && (
-          <div class="stat-pill" title="Auto show status">
-            <span class="label">Auto</span>
-            <span>{auto}</span>
-          </div>
-        )}
+        <div class="stat-pill" title={s.flashLimit ? 'Flash limit: at most three large-area flashes a second (Settings → Show)' : 'Flash limit off (Settings → Show)'}>
+          <span class="label">Flash</span>
+          <span>{s.flashLimit ? '≤ 3/s' : 'off'}</span>
+        </div>
+        <div class="stat-pill" title="Auto show status">
+          <span class="label">Auto</span>
+          <span>{auto || '—'}</span>
+        </div>
         <div class="stat-pill conn" title={connected ? 'Connected' : 'Disconnected'}>
           <div class={`status-dot ${connected ? 'connected' : ''}`} />
           <span>{connected ? 'Online' : 'Offline'}</span>

@@ -132,7 +132,8 @@ test('the strip has the outputs switch, saying what disarmed means', () => {
 
 test('unacknowledged strobe notices follow server safety state', () => {
   const views = () => [ui.html(ui.h(ui.Header, {})), ui.html(ui.h(ui.Perform, {}))];
-  const notice = /<button type="button" class="[^"]*" data-safety="ask"[^>]*>(?:<[^>]+>)*Strobes off until acknowledged/;
+  // The header pill carries the notice as its accessible name; Perform shows it as text.
+  const notice = /<button type="button" class="[^"]*" data-safety="ask"(?:[^>]*aria-label="Strobes off until acknowledged"[^>]*>|[^>]*>(?:<[^>]+>)*Strobes off until acknowledged)/;
   given({ safety: { photosensitivityAcknowledged: false, hdFlashIntervalMs: 350, strobeMaxLatchSec: 60 } });
   for (const html of views()) assert.match(html, notice);
   assert.match(views()[1], /tap to acknowledge/);
@@ -142,16 +143,46 @@ test('unacknowledged strobe notices follow server safety state', () => {
   for (const html of views()) assert.doesNotMatch(html, /Strobes off/);
 });
 
-test('the header flags a frozen look only while the look is what plays', () => {
+test('the header shows the look\'s playback whatever drives the room', () => {
   given({ running: false });
   assert.match(ui.html(ui.h(ui.Header, {})),
     /<button[^>]*aria-label="Look playback"[^>]*aria-pressed="false"[^>]*title="Play look:[^"]*"><span class="label">Look<\/span><span>Frozen<\/span><\/button>/);
   given({ running: true });
   assert.doesNotMatch(ui.html(ui.h(ui.Header, {})), /Frozen/);
+  assert.match(ui.html(ui.h(ui.Header, {})), /<span class="label">Look<\/span><span>Playing<\/span>/);
+  // A sequence or the auto show over a frozen base: the pill stays, says so and still answers a click.
   given({ running: false, sequence: { loaded: { id: 'set', name: 'Set' }, playing: true, lanes: [] } });
-  assert.doesNotMatch(ui.html(ui.h(ui.Header, {})), /Frozen/);
+  assert.match(ui.html(ui.h(ui.Header, {})), /aria-label="Look playback"[^>]*title="Play look:[^"]*the base look under the sequence"><span class="label">Look<\/span><span>Frozen<\/span>/);
   given({ running: false, showOn: true });
-  assert.doesNotMatch(ui.html(ui.h(ui.Header, {})), /Frozen/);
+  assert.match(ui.html(ui.h(ui.Header, {})), /aria-label="Look playback"[^>]*title="Play look:[^"]*the base look under the auto show"><span class="label">Look<\/span><span>Frozen<\/span>/);
+});
+
+test('every header pill keeps its place in every state', () => {
+  const LABELS = ['Outputs', 'Look', 'BPM', 'Master', 'Blackout', 'Energy', 'Flash', 'Auto'];
+  const STATES = {
+    'nothing known yet': { bpm: null, masterDimmer: undefined, autoShow: undefined },
+    'disarmed, idle': { armed: false },
+    armed: { armed: true },
+    'blackout on': { masterBlackout: true },
+    'an energy override': { energyOverride: 'blinder' },
+    'the flash limit on': { flashLimit: true },
+    'the auto show playing': { showOn: true, autoShow: { status: 'playing', intensity: 70 } },
+    'a sequence loaded': { sequence: { loaded: { id: 'set', name: 'Set' }, playing: true, lanes: [] } },
+    'strobes refused': { safety: { photosensitivityAcknowledged: false, hdFlashIntervalMs: 350, strobeMaxLatchSec: 60 } },
+    'strobes allowed': { safety: { photosensitivityAcknowledged: true, hdFlashIntervalMs: 350, strobeMaxLatchSec: 60 } },
+  };
+  for (const [name, state] of Object.entries(STATES)) {
+    given(state);
+    const html = ui.html(ui.h(ui.Header, {}));
+    for (const label of LABELS) assert.match(html, new RegExp(`<span class="label">${label}</span>`), `${name}: ${label}`);
+    assert.match(html, /<span class="label">Strobes<\/span>/, `${name}: Strobes`);
+    assert.match(html, /<span>(Online|Offline)<\/span>/, `${name}: connection`);
+  }
+  given({ masterBlackout: true, masterDimmer: 128 });
+  assert.match(ui.html(ui.h(ui.Header, {})), /<span class="label">Master<\/span><span>50%<\/span>/, 'the master reads through a blackout');
+  given({});
+  assert.match(ui.html(ui.h(ui.Header, {})), /<span class="label">Outputs<\/span><span>—<\/span>/, 'unknown arming reads —');
+  assert.match(ui.html(ui.h(ui.Header, {})), /aria-label="Arm outputs"[^>]*disabled|disabled[^>]*aria-label="Arm outputs"/, 'and cannot be pressed');
 });
 
 test('blackout on the strip and a running voice\'s pad show as pressed', () => {
