@@ -94,7 +94,7 @@ test('specs keep wire palettes and metadata defaults through repeated validation
       rapidFlash: true, minFlashIntervalMs: 400, scope: 'measure' }, init: () => null, render() {} });
   const spec = validateSpec({ kind: 'test.defaults', params: { nested: { b: 3 } } });
   assert.deepStrictEqual(spec, { kind: 'test.defaults', params: { level: 0.5, nested: { a: 1, b: 3 } },
-    palette: ['#FFFFFF'], brightness: 0.7, rapidFlash: true, minFlashIntervalMs: 400, scope: 'measure' });
+    palette: ['#FFFFFF'], brightness: 0.7, background: { version: 1, level: .7 }, rapidFlash: true, minFlashIntervalMs: 400, scope: 'measure' });
   assert.deepStrictEqual(validateSpec(spec), spec);
   assert.deepStrictEqual(specWithDefaults('test.defaults', { level: 0.2 }).params, { level: 0.2, nested: { a: 1, b: 2 } });
   assert.strictEqual(kindOf('test.defaults'), KINDS.get('test.defaults'));

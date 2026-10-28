@@ -1,3 +1,4 @@
+import { ambient } from '../background.ts';
 import { z } from 'zod';
 import type { Colour } from '../../types/rig.ts';
 import { HUE_PULSE_MS, huePulseLevel, tempoOf } from '../look-math.ts';
@@ -62,6 +63,13 @@ export function blendRendered(a: Colour, aLevel: number, b: Colour, bLevel: numb
   const lone = wx === 0 ? y : wy === 0 ? x : null;
   const mean = (i: number) => lone ? lone[i] : Math.trunc(f32(f32(f32(x[i] * wx) + f32(y[i] * wy)) / sum));
   return { r: mean(0), g: mean(1), b: mean(2), w: mean(3), a: mean(4), uv: mean(5) };
+}
+
+function renderedBackground(bed: { colour: Colour; bri: number }, top: { colour: Colour; bri: number }) {
+  const a = Math.max(...EMITTERS.map((key) => renderByte(bed.colour[key], bed.bri))) / 255;
+  const b = Math.max(...EMITTERS.map((key) => renderByte(top.colour[key], top.bri))) / 255;
+  const coverage = a + b > 0 ? a / (a + b) : 1;
+  return ambient(bed.colour, bed.bri * coverage, coverage, bed.bri);
 }
 
 interface Handoff { from: Colour; to: Colour; tick: number }
@@ -360,8 +368,9 @@ registerKind<VisualizerParams, VisualizerState>({
       const top = s.spikes[i] ? s.lamps.read(i) : handoff ? handoffSample(handoff)
         : hueTails && room.hue[i] ? hueTailSample(s, i) : null;
       // Brightness is already in the rendered bytes, so the blended slot must use unit level.
-      out[i] = top ? { colour: blendRendered(bed.colour, bed.bri, top.colour, top.bri), level: 1, strength: 1 }
-        : { colour: { ...BLACK, ...bed.colour }, level: bed.bri, strength: 1 };
+      out[i] = top ? { colour: blendRendered(bed.colour, bed.bri, top.colour, top.bri), level: 1, strength: 1,
+        background: renderedBackground(bed, top) }
+        : { colour: { ...BLACK, ...bed.colour }, level: bed.bri, strength: 1, background: ambient(bed.colour, bed.bri) };
     }
     s.cursorMs = now;
     s.cursorBeat = beat;

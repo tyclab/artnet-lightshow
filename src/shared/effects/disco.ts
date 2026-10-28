@@ -1,3 +1,5 @@
+import { ambient } from '../background.ts';
+import type { BackgroundField } from '../background.ts';
 import { HEX_COLOUR } from '../palette-model.ts';
 // Disco: lamps answer the hits in three bands (Spectrum), the loudest peaks
 // (Peak) or a running reading of pitch and level (Neural), with idle washes
@@ -253,7 +255,7 @@ export const discoSchema: ZodType<DiscoParams> = z.object({
 // `commanded` marks a lamp the Disco has set at least once: the stream starts
 // from what the lamps already show, so until a hit, flash or idle
 // reaches a lamp the layer below stays visible through it.
-interface Lamp { from: Colour; fromLevel: number; to: Colour; toLevel: number; start: number; end: number; commanded: boolean }
+interface Lamp { fromBackground: number; toBackground: number; from: Colour; fromLevel: number; to: Colour; toLevel: number; start: number; end: number; commanded: boolean }
 interface Command { due: number; slots: number[]; colour: Colour; level: number; duration: number }
 interface ChannelState { lastHit: number; lastIdle: number; sequence: number; pulse: boolean; draws: number }
 interface Layout {
@@ -275,25 +277,29 @@ interface DiscoState {
 }
 interface Context { p: DiscoParams; s: DiscoState; f: EffectFrame; now: number; literal: Colour[] | null }
 
-const dark = (at: number): Lamp => ({ from: rgb(0, 0, 0), fromLevel: 0, to: rgb(0, 0, 0), toLevel: 0, start: at, end: at, commanded: false });
+const dark = (at: number): Lamp => ({ fromBackground: 0, toBackground: 0, from: rgb(0, 0, 0), fromLevel: 0, to: rgb(0, 0, 0), toLevel: 0, start: at, end: at, commanded: false });
 
 // Colour and level blend linearly together, as the stream fades both at once.
 // Past its end a lamp holds its target; before its start, its origin.
-function sample(lamp: Lamp, t: number): { colour: Colour; level: number } {
-  if (!(t < lamp.end)) return { colour: { ...lamp.to }, level: lamp.toLevel };
+function sample(lamp: Lamp, t: number): { colour: Colour; level: number; background: BackgroundField } {
+  if (!(t < lamp.end)) return { colour: { ...lamp.to }, level: lamp.toLevel, background: ambient(lamp.to, lamp.toLevel * lamp.toBackground, lamp.toBackground) };
   const k = t <= lamp.start ? 0 : (t - lamp.start) / (lamp.end - lamp.start);
   const mix = (a: number | undefined, b: number | undefined) => Math.round((a ?? 0) + ((b ?? 0) - (a ?? 0)) * k);
   const { from, to } = lamp;
-  return { colour: { r: mix(from.r, to.r), g: mix(from.g, to.g), b: mix(from.b, to.b), w: mix(from.w, to.w), a: mix(from.a, to.a), uv: mix(from.uv, to.uv) },
-    level: lamp.fromLevel + (lamp.toLevel - lamp.fromLevel) * k };
+  const colour = { r: mix(from.r, to.r), g: mix(from.g, to.g), b: mix(from.b, to.b), w: mix(from.w, to.w), a: mix(from.a, to.a), uv: mix(from.uv, to.uv) };
+  const level = lamp.fromLevel + (lamp.toLevel - lamp.fromLevel) * k;
+  const coverage = lamp.fromBackground + (lamp.toBackground - lamp.fromBackground) * k;
+  return { colour, level, background: ambient(colour, level * coverage, coverage) };
 }
 
 // A command takes over from wherever the lamp is at its start time.
-function setLamp(lamp: Lamp, colour: Colour, level: number, at: number, duration: number): void {
+function setLamp(lamp: Lamp, colour: Colour, level: number, at: number, duration: number, background = false): void {
   const current = sample(lamp, at);
   // A dark lamp has no colour to fade from: fading from black would dim the rise twice.
   lamp.from = current.level > 0 ? current.colour : solid(colour);
   lamp.fromLevel = current.level;
+  lamp.fromBackground = current.background.coverage;
+  lamp.toBackground = Number(background);
   lamp.to = solid(colour);
   lamp.toLevel = level;
   lamp.start = at;
@@ -312,7 +318,7 @@ function schedule(s: DiscoState, due: number, slots: readonly number[], colour: 
 function drain(s: DiscoState, now: number): void {
   while (s.pending.length && s.pending[0].due <= now) {
     const cmd = s.pending.shift()!;
-    for (const i of cmd.slots) if (s.lamps[i]) setLamp(s.lamps[i], cmd.colour, cmd.level, cmd.due, cmd.duration);
+    for (const i of cmd.slots) if (s.lamps[i]) setLamp(s.lamps[i], cmd.colour, cmd.level, cmd.due, cmd.duration, true);
   }
 }
 
@@ -402,7 +408,7 @@ function idleIfDue(c: Context, ch: number): void {
   // Spectrum idles a batch; Peak and Neural wash their whole group.
   const targets = ch < 3 ? pickBatch(c, ch, group, c.s.layout.caps[ch]) : group;
   const { hit } = hitColours(c, ch, 255);
-  for (const i of targets) setLamp(c.s.lamps[i], hit, cfg.idleFadeBrightness / FULL, c.now, IDLE_MS);
+  for (const i of targets) setLamp(c.s.lamps[i], hit, cfg.idleFadeBrightness / FULL, c.now, IDLE_MS, true);
 }
 
 function hitSpectrum(c: Context, ch: number, flash: Colour | null, interval: number): void {
@@ -560,7 +566,8 @@ function renderDisco(p: DiscoParams, s: DiscoState, room: Room, f: EffectFrame, 
   // every channel, is its own, dark or not; one it has not reached yet is
   // left to the layer below, as a voice's untouched lamps always are.
   for (let i = 0; i < room.n; i++) {
-    out[i] = { ...sample(s.lamps[i], s.now), strength: s.lamps[i].commanded || !s.layout.grouped[i] ? 1 : 0 };
+    const { background, ...light } = sample(s.lamps[i], s.now);
+    out[i] = { ...light, ...(background.coverage > 0 ? { background } : {}), strength: s.lamps[i].commanded || !s.layout.grouped[i] ? 1 : 0 };
   }
 }
 

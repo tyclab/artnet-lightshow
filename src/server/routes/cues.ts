@@ -1,9 +1,12 @@
+import { z } from 'zod';
 import { getLiveState } from '../state.ts';
 import { cueWriteSchema, cueRestoreSchema, reorderSchema } from '../cues.ts';
 import { validate } from '../validation.ts';
 import { messageOf, statusOf } from '../../errors.ts';
 import type { Express } from 'express';
 import type { RouteContext } from './common.ts';
+
+const recallOptions = z.object({ restoreBackground: z.boolean().optional() }).strict();
 
 /**
  * The cue stack: looks saved under a name, recalled in one press.
@@ -76,15 +79,17 @@ export function attachCueRoutes(app: Express, ctx: RouteContext): void {
   // catalogues are GET /api/state's.
   app.post('/api/cues/by-name/:name/recall', (req, res) => {
     try {
+      const { restoreBackground } = validate(recallOptions, req.body || {}, 'cue-recall');
       const cue = cues.findByName(req.params.name);
-      if (!cue || !cues.recall(cue.id)) return res.status(404).json({ ok: false, error: 'No cue by that name' });
+      if (!cue || !cues.recall(cue.id, restoreBackground)) return res.status(404).json({ ok: false, error: 'No cue by that name' });
       res.json({ ok: true, id: cue.id, state: getLiveState() });
     } catch (err) { res.status(statusOf(err) || 400).json({ ok: false, error: messageOf(err) }); }
   });
 
   app.post('/api/cues/:id/recall', (req, res) => {
     try {
-      if (!cues.recall(req.params.id)) return res.status(404).json({ ok: false, error: 'No such cue' });
+      const { restoreBackground } = validate(recallOptions, req.body || {}, 'cue-recall');
+      if (!cues.recall(req.params.id, restoreBackground)) return res.status(404).json({ ok: false, error: 'No such cue' });
       // recallLook goes through applyPatch, which broadcasts on its own.
       res.json({ ok: true, state: getLiveState() });
     } catch (err) { res.status(statusOf(err) || 400).json({ ok: false, error: messageOf(err) }); }

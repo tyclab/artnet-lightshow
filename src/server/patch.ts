@@ -203,6 +203,7 @@ function applyPatch(rawData: unknown, { beforeCommit, origin = 'hand', paletteOv
   if (data.showDynamics !== undefined) {
     state.showDynamics = data.showDynamics === null ? null : { ...state.showDynamics, ...data.showDynamics };
   }
+  if (data.background !== undefined) state.background = structuredClone(data.background);
   if (data.masterDimmer !== undefined) state.masterDimmer = data.masterDimmer;
   if (data.masterBlackout !== undefined) state.masterBlackout = data.masterBlackout;
   if (data.strobeSpeed !== undefined) state.strobeSpeed = data.strobeSpeed;

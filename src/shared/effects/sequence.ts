@@ -1,3 +1,4 @@
+import type { BackgroundField } from '../background.ts';
 import { canonical, effectContentKey, effectRoom } from './layer.ts';
 import { effectAdmission } from './hardware.ts';
 import { renderEffect } from './render-instance.ts';
@@ -255,7 +256,7 @@ export function resyncPosition(position: number, ts: { beats: number; unit: numb
 
 export interface ClipActivation { clip: string; seed: Seed; startedAtMs: number }
 
-export interface HeldPicture { n: number; light: Float64Array; kinds: (string | null)[]; covered: Uint8Array }
+export interface HeldPicture { backgrounds: (BackgroundField | undefined)[]; n: number; light: Float64Array; kinds: (string | null)[]; covered: Uint8Array }
 
 export interface SequenceRun {
   keys: Map<string, string>;
@@ -267,7 +268,7 @@ export interface SequenceRun {
 export const newSequenceRun = (): SequenceRun => ({ keys: new Map(), activations: new Map(), last: null, shown: null });
 
 export function copySequenceRun(run: SequenceRun): SequenceRun {
-  const shown = run.shown && { n: run.shown.n, light: run.shown.light.slice(), kinds: [...run.shown.kinds], covered: run.shown.covered.slice() };
+  const shown = run.shown && { backgrounds: structuredClone(run.shown.backgrounds), n: run.shown.n, light: run.shown.light.slice(), kinds: [...run.shown.kinds], covered: run.shown.covered.slice() };
   return {
     keys: new Map(run.keys),
     activations: new Map([...run.activations].map(([id, a]) => [id, { ...a, seed: [...a.seed] as Seed }])),
@@ -319,7 +320,7 @@ const BLACK: Colour = { r: 0, g: 0, b: 0, w: 0, a: 0, uv: 0 };
 const HELD_STRIDE = 7;
 
 function freshPicture(run: SequenceRun, n: number): HeldPicture {
-  if (!run.shown || run.shown.n !== n) run.shown = { n, light: new Float64Array(n * HELD_STRIDE), kinds: new Array(n).fill(null), covered: new Uint8Array(n) };
+  if (!run.shown || run.shown.n !== n) run.shown = { backgrounds: new Array(n), n, light: new Float64Array(n * HELD_STRIDE), kinds: new Array(n).fill(null), covered: new Uint8Array(n) };
   else run.shown.covered.fill(0);
   return run.shown;
 }
@@ -348,17 +349,18 @@ export function renderSequenceLayer(rig: Rig, layout: Layout, frame: FrameBase, 
     return run.shown ? replay(run.shown, list, set) : false;
   }
   const picture = freshPicture(run, list.length);
-  const keep = (k: number, colour: Colour, dim: number, strobe: number, kind: string | null, owner?: string) => {
+  const keep = (k: number, colour: Colour, dim: number, strobe: number, kind: string | null, owner?: string, background?: BackgroundField) => {
     const o = k * HELD_STRIDE;
     const l = picture.light;
     l[o] = colour.r; l[o + 1] = colour.g; l[o + 2] = colour.b; l[o + 3] = colour.w || 0; l[o + 4] = colour.a || 0; l[o + 5] = colour.uv || 0;
     l[o + 6] = dim;
     picture.kinds[k] = kind;
+    picture.backgrounds[k] = background;
     picture.covered[k] = 1;
-    set(list[k], colour, dim, strobe, kind, owner);
+    set(list[k], colour, dim, strobe, kind, owner, background);
   };
   const placed = renderPlaced(frame, table, transport, run, stepper, effectRoom(layout, frame.unitSpace), ids, (k, slot, kind) => {
-    if (slot) keep(k, slot.colour, 255 * slot.level, slot.strobe ?? 0, slot.kind ?? kind, slot.owner);
+    if (slot) keep(k, slot.colour, 255 * slot.level, slot.strobe ?? 0, slot.kind ?? kind, slot.owner, slot.background);
     else keep(k, BLACK, 0, 0, null);
   });
   if (placed === null) { endSequence(run, stepper); return false; }
@@ -425,7 +427,7 @@ function replay(picture: HeldPicture, list: readonly number[], set: EffectLayerS
     if (!picture.covered[k]) continue;
     const o = k * HELD_STRIDE;
     const l = picture.light;
-    set(list[k], { r: l[o], g: l[o + 1], b: l[o + 2], w: l[o + 3], a: l[o + 4], uv: l[o + 5] }, l[o + 6], 0, picture.kinds[k]);
+    set(list[k], { r: l[o], g: l[o + 1], b: l[o + 2], w: l[o + 3], a: l[o + 4], uv: l[o + 5] }, l[o + 6], 0, picture.kinds[k], undefined, picture.backgrounds[k]);
     any = true;
   }
   return any;

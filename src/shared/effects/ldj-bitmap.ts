@@ -1,3 +1,4 @@
+import { ambient } from '../background.ts';
 import { z } from 'zod';
 import type { Colour } from '../../types/rig.ts';
 import type { ResolvedGradient } from '../palette-model.ts';
@@ -14,7 +15,7 @@ export const BITMAP_PATTERNS = ['SolidTest', 'SmoothLoop', 'SmoothMirror', 'Vert
   'SolidBGDiagonalLines', 'SolidBlackBGSineWave', 'SolidBlackBGTriangleWave', 'SolidBlackBGDiagonalLines', 'OGGrooveWave'] as const;
 export type BitmapPattern = typeof BITMAP_PATTERNS[number];
 // Generated pixel rows are immutable, so identical rows may share an array.
-export interface BitmapImage { width: number; height: number; rows: number[][] }
+export interface BitmapImage { width: number; height: number; rows: number[][]; backgrounds?: Uint8Array[] }
 
 const f32 = Math.fround;
 // Six bytes fit exactly in a JS number; keeping RGB low preserves native raster bytes.
@@ -124,6 +125,7 @@ function raster(pattern: BitmapPattern, palette: number[], gradient?: ResolvedGr
   const solid = pattern.startsWith('Solid'), segments = solid ? count - 1 : count, shift = Math.floor(count / 2);
   const width = segments * 200;
   const rows = Array.from({ length: height }, () => new Array<number>(width).fill(palette[0]));
+  const backgrounds = Array.from({ length: height }, () => new Uint8Array(width));
   let x = 0, line = height / 2, direction = 1;
   for (let s = 0; s < segments; s++) {
     const from = solid ? s + 1 : s;
@@ -141,6 +143,7 @@ function raster(pattern: BitmapPattern, palette: number[], gradient?: ResolvedGr
       for (let y = 0; y < height; y++) {
         const inside = diagonal ? diagonalBand(y, line, height) : Math.abs(line - y) <= (triangle ? 20 : 8);
         rows[y][x] = inside ? foreground : background;
+        backgrounds[y][x] = inside ? 0 : blackBackground ? 2 : 1;
       }
       x++;
       if (triangle) {
@@ -154,7 +157,7 @@ function raster(pattern: BitmapPattern, palette: number[], gradient?: ResolvedGr
       }
     }
   }
-  return { width, height, rows };
+  return { width, height, rows, backgrounds };
 }
 
 export function buildBitmap(pattern: BitmapPattern, palette: readonly Colour[], random = false, gradient?: ResolvedGradient | null): BitmapImage {
@@ -205,7 +208,12 @@ registerKind<z.infer<typeof schema>, BitmapState>({
       state.image = raster(params.pattern, palette, gradient); state.key = key;
     }
     for (let slot = 0; slot < room.n; slot++) {
-      out[slot] = { colour: sampleBitmap(state.image, params.pattern, room.u[slot], room.v[slot], scroll), level: 1, strength: 1 };
+      const image = state.image, diagonal = params.pattern.endsWith('DiagonalLines');
+      const row = mod(Math.floor(((diagonal ? room.v[slot] : -room.v[slot]) + 1) * image.height / 2), image.height);
+      const col = mod(Math.floor(((diagonal ? -room.u[slot] : room.u[slot]) + 1) * image.height / 2) + mod(scroll, image.width), image.width);
+      const colour = unpack(image.rows[row][col]), role = image.backgrounds?.[row][col] ?? 0;
+      out[slot] = { colour, level: 1, strength: 1,
+        ...(role ? { background: { ...ambient(colour, 1), dark: role === 2 } } : {}) };
     }
   },
 });

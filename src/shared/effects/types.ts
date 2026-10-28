@@ -1,4 +1,5 @@
 import type { ZodType } from 'zod';
+import type { BackgroundField, BackgroundSettings } from '../background.ts';
 import type { AdmissionPolicy, HardwareCaps, OutputNeeds } from '../hardware.ts';
 import type { Colour } from '../../types/rig.ts';
 import type { LampRoom, Room } from '../room.ts';
@@ -36,6 +37,7 @@ export type HdCapability = keyof HdParams | `spatial.${keyof Spatial}` | `trigge
 export type ParsedPaletteEntry = Colour | { random: true };
 
 export interface EffectSpec extends GradientSettings {
+  background?: { version: 1; level: number };
   admission?: AdmissionPolicy;
   kind: string;
   params: Record<string, unknown>;
@@ -47,7 +49,7 @@ export interface EffectSpec extends GradientSettings {
 }
 
 // Slot kind preserves the innermost family so safety guards also cover macro steps.
-export interface EffectSlot { colour: Colour; level: number; strength: number; excluded?: boolean; strobe?: number; kind?: string; owner?: string }
+export interface EffectSlot { background?: BackgroundField; colour: Colour; level: number; strength: number; excluded?: boolean; strobe?: number; kind?: string; owner?: string }
 
 export interface HdMaster {
   sensitivity: number; smoothing: number; attackMs: number; releaseMs: number;
@@ -70,6 +72,7 @@ export interface EffectModulation {
 }
 
 export interface EffectFrame {
+  background?: BackgroundSettings;
   modulation?: EffectModulation;
   pictureFeatures?: PictureFeatures | null;
   hardware?: readonly HardwareCaps[];

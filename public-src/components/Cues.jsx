@@ -19,7 +19,7 @@ function Swatches({ colors, presets }) {
   );
 }
 
-function CueRow({ cue, presets, editing, setEditing }) {
+function CueRow({ cue, presets, editing, setEditing, restoreBackground }) {
   const [draft, setDraft] = useState(cue.name);
 
   // Delete and rebuild-from-scratch are not the same thing, and "×" sits right
@@ -84,7 +84,7 @@ function CueRow({ cue, presets, editing, setEditing }) {
     <div class="cue-row">
       <button
         class={`cue-recall ${cue.blackout ? 'blackout' : ''}`}
-        onClick={() => cueApi(`/${cue.id}/recall`, { method: 'POST' })}
+        onClick={() => cueApi(`/${cue.id}/recall`, { method: 'POST', body: JSON.stringify({ restoreBackground }) })}
         title={`Recall "${cue.name}" — ${cue.pattern} at ${formatBpm(cue.bpm)} BPM`}
       >
         <Swatches colors={cue.colors} presets={presets} />
@@ -119,6 +119,7 @@ export function Cues() {
   const presets = s.colorPresets || [];
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [restoreBackground, setRestoreBackground] = useState(false);
   const [name, setName] = useState('');
 
   const save = async () => {
@@ -135,6 +136,7 @@ export function Cues() {
   return (
     <div class="card">
       <div class="card-title">Cues</div>
+      <label><input type="checkbox" checked={restoreBackground} onChange={(e) => setRestoreBackground(e.target.checked)} /> Restore saved background on recall</label>
 
       {saving ? (
         <div class="cue-save-row">
@@ -164,6 +166,7 @@ export function Cues() {
           <div class="cue-list">
             {cues.map((cue) => (
               <CueRow
+                restoreBackground={restoreBackground}
                 key={cue.id}
                 cue={cue}
                 presets={presets}

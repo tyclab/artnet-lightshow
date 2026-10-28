@@ -190,6 +190,7 @@ function renderInput(): RenderInput {
     strobeSpeed: state.strobeSpeed,
     strobeFunction: state.strobeFunction,
     masterDimmer: state.masterDimmer,
+    background: state.background,
     masterBlackout: state.masterBlackout,
     energy: state.heldEnergy ?? state.energyOverride,
     showDynamics: state.showDynamics,

@@ -1,3 +1,5 @@
+import { ambient } from '../background.ts';
+import type { BackgroundField } from '../background.ts';
 // The entertainment lamp transitions run at 22 Hz. The faster renderer samples their
 // latest output; fractional frame time and pending changes belong to the instance.
 
@@ -39,6 +41,8 @@ interface LampTransition {
   peakBinding?: PaletteBinding;
   /** A hard flash a Hue lamp may take as a pulse, or a rest that cuts one (see FlashHint). */
   mark?: LampMark;
+  backgroundColour?: Colour;
+  backgroundBinding?: PaletteBinding;
 }
 interface PendingLamp { slot: number; delay: number; transition: LampTransition }
 
@@ -48,7 +52,7 @@ interface PendingLamp { slot: number; delay: number; transition: LampTransition 
  * rest level, which cuts a held flash short. Nothing else is marked: a fade,
  * a blend or a background is drawn as authored on every lamp.
  */
-export type LampMark = 'flash' | 'rest';
+export type LampMark = 'flash' | 'rest' | 'background';
 
 /**
  * A lamp's last hard flash, kept for a Hue lamp to take as the strobe's pulse
@@ -123,7 +127,7 @@ export class LdjLamps {
     this.hints = this.lamps.map(() => null);
   }
 
-  set(i: number, colour: Colour, bri: number, env: LdjEnvelope, delayFrames = 0, mark?: LampMark): void {
+  set(i: number, colour: Colour, bri: number, env: LdjEnvelope, delayFrames = 0, mark?: LampMark, backgroundColour?: Colour): void {
     if (!Number.isInteger(i) || i < 0 || i >= this.lamps.length) return;
     const from = env.kind === 'fade' ? level(bri) : env.kind === 'matrix' ? level(env.baseline ?? 0) : 0;
     const to = env.kind === 'fade' ? level(env.baseline ?? 0) : level(bri);
@@ -134,7 +138,7 @@ export class LdjLamps {
       tick: 0, seconds: null, reverse: env.kind === 'twoWay',
       binding: env.kind === 'blend' ? undefined : paletteBinding(colour),
       peakBinding: env.kind === 'matrix' && env.peakColour ? paletteBinding(env.peakColour) : undefined,
-      ...(mark ? { mark } : {}),
+      ...(mark ? { mark } : {}), ...(backgroundColour ? { backgroundColour: { ...backgroundColour }, backgroundBinding: paletteBinding(backgroundColour) } : {}),
     };
     if (env.kind === 'blend') state.colour = state.fromColour = { ...(this.lamps[i]?.colour ?? BLACK) };
     const delay = Number.isFinite(delayFrames) ? Math.max(0, Math.floor(delayFrames)) : 0;
@@ -162,7 +166,7 @@ export class LdjLamps {
       hint.floor = Math.max(hint.floor, state.to);
       return;
     }
-    if (!state.mark) this.hints[i] = null;
+    if (state.mark !== 'rest') this.hints[i] = null;
   }
 
   private install(i: number, state: LampTransition, atMs: number): boolean {
@@ -191,6 +195,7 @@ export class LdjLamps {
   resolveColours(access: PaletteAccess): void {
     const resolve = (state: LampTransition | null) => {
       if (!state) return;
+      if (state.backgroundBinding) state.backgroundColour = { ...access.colour(state.backgroundBinding.index, state.backgroundBinding.key) };
       if (state.binding) state.fromColour = state.toColour = { ...access.colour(state.binding.index, state.binding.key) };
       const env = state.env;
       if (env.kind === 'matrix') {
@@ -234,6 +239,24 @@ export class LdjLamps {
       }
     }
     return frames;
+  }
+
+  background(i: number, colour?: Colour): BackgroundField | undefined {
+    const state = this.lamps[i];
+    if (!state) return undefined;
+    const env = state.env;
+    if (state.mark === 'background') {
+      if (env.kind === 'blend') {
+        const t = Math.min(1, state.tick / Math.max(1, Math.floor((state.seconds ?? 0) * 22)));
+        return ambient(state.toColour, state.bri * t, t, state.bri);
+      }
+      return ambient(colour ?? state.colour, state.bri);
+    }
+    if (state.backgroundColour) return ambient(state.backgroundColour, 0, 0, 1);
+    const floor = env.kind === 'fade' || env.kind === 'matrix' ? env.baseline ?? 0 : 0;
+    if (!floor) return undefined;
+    const coverage = Math.max(0, Math.min(1, (1 - state.bri) / Math.max(1e-6, 1 - floor)));
+    return ambient(colour ?? state.colour, floor * coverage, coverage, floor);
   }
 
   read(i: number): { colour: Colour; bri: number } {
@@ -485,7 +508,7 @@ export function makeLdjKind(name: string, row: LdjRow): EffectKindDef<LdjParams,
         const colour = row.outputColour?.(ctx, i, lamp) ?? lamp.colour;
         state.lamps.observe(i, colour);
         const tail = pulse && room.hue[i] ? state.lamps.pulse(i) : null;
-        out[i] = tail ? { colour: { ...tail.colour }, level: tail.bri, strength: 1 } : { colour, level: lamp.bri, strength: 1 };
+        out[i] = tail ? { colour: { ...tail.colour }, level: tail.bri, strength: 1 } : { colour, level: lamp.bri, strength: 1, background: state.lamps.background(i, colour) };
       }
     },
   };
