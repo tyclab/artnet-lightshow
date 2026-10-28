@@ -181,3 +181,17 @@ test('Stop uncovers the complete authored bed beneath an active chase lamp', () 
   const stopped = e.draw(0, { programmePlaying: false, running: false });
   for (let i = 0; i < stopped.length; i += 6) assert.deepEqual(stopped.slice(i, i + 6), running.slice(6, 12));
 });
+
+test('Visualizer spike baseline and colour handoff are ambient; Off keeps no five-percent residue', () => {
+  const effect = validateSpec({ kind: 'ldj.visualizer', params: { active: 'flash', mellow: 'none' } });
+  const a = engine({ effect, audioMode: 'reactive' }), b = engine({ effect, audioMode: 'reactive', background: off });
+  const audio = (t, beat) => ({ t, party: { full: 1, bass: 1, mid: 1, high: 1 },
+    spl: { db: 0, level: 0, section: 'soft', beat, eventT: t } });
+  a.draw(0); b.draw(0);
+  a.draw(100, { audio: audio(1, 'loud') }); b.draw(100, { audio: audio(1, 'loud') });
+  assert.ok(lit(a.draw(140, { audio: audio(1, 'loud') })));
+  assert.ok(lit(b.draw(140, { audio: audio(1, 'loud') })), 'Off retains the flash foreground');
+  const baseline = a.draw(500, { audio: audio(1, 'loud') });
+  assert.ok(lit(baseline), 'negative control: the authored handoff still emits light');
+  assert.ok(dark(b.draw(500, { audio: audio(1, 'loud') })), 'Off removes the handoff baseline');
+});
