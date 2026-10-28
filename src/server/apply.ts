@@ -199,6 +199,7 @@ function createApplier({ midi, spotify, smtc, live = null, midiClock = null, dee
   }
 
   // Start disarmed and clear voices on disarm so restarts or later arming cannot revive a strobe.
+  // A disarm leaves the look playing: freezing it here left every later effect pick unseen behind Look · Frozen.
   function applyOutputs({ boot = false, origin }: { boot?: boolean; origin?: ArmOrigin } = {}) {
     let wanted = !!settings.get('outputs.armed');
     if (boot) {
@@ -216,10 +217,10 @@ function createApplier({ midi, spotify, smtc, live = null, midiClock = null, dee
       outputsLog.info(from, 'armed: frames go out to the rig');
       return;
     }
-    outputsLog.info(from, 'disarmed: the streams are being ended and the patterns stopped');
+    outputsLog.info(from, 'disarmed: the streams are being ended');
     voices.stopAll();
     state.heldEnergy = null;
-    applyPatch({ running: false, energyOverride: null });
+    applyPatch({ energyOverride: null });
   }
 
   const HANDLERS: { match: (key: string) => boolean; run: (origin: ArmOrigin | undefined) => unknown }[] = [

@@ -629,7 +629,7 @@ test('disarm (apply.ts) stops every voice', (t) => {
   m.setHidden(m.start(latched({ spec: { kind: 'energy.glow' } })).id, true);
   applier.applyChanged(settings.update({ outputs: { armed: false } }));
   assert.equal(m.size, 0, 'held, waiting, latched and hidden alike');
-  assert.deepEqual(applied, [{ running: false, energyOverride: null }]);
+  assert.deepEqual(applied, [{ energyOverride: null }], 'the voices go; the look plays on');
 
   // A rehearsal plays voices while disarmed; a disarm asked for again stops them.
   m.start(latched());
