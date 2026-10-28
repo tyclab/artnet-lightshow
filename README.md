@@ -879,7 +879,10 @@ area is released. An enabled, configured bridge whose stream fails degrades heal
 while outputs are armed. Starts require a verified application identity and a readable
 bridge-wide ownership check; unknown or conflicting ownership leaves output stopped.
 Stop waits for release before a replacement can start, including a removed and re-added
-bridge. A release failure remains visible and blocks reconnection until reconciled.
+bridge or one renamed while keeping the same host. Duplicate configured hostnames
+cannot start simultaneous sessions; host matching ignores case and a final DNS dot,
+but does not assume different DNS aliases refer to the same bridge. Shutdown awaits
+removed sessions too. A release failure remains visible and blocks reconnection until reconciled.
 A timed-out DTLS handshake reopens the Entertainment
 session after checking ownership again; retrying only the socket can leave a
 stalled bridge unresponsive. Up to five one-second handshakes are attempted; then the session

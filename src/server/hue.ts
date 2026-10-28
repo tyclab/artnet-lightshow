@@ -550,6 +550,9 @@ export interface ApplicationIdentity {
 export type ApplicationIdSink = (identity: ApplicationIdentity) => void;
 interface OwnedSession { config: HueBridgeConfig; identity: string }
 
+// DNS names are case insensitive and a final dot denotes the same absolute name.
+// Do not guess whether different addresses or aliases identify the same bridge.
+function physicalHost(host: string): string { return host.trim().toLowerCase().replace(/\.$/, ''); }
 
 class HueSession {
   readonly id: string;
@@ -568,11 +571,14 @@ class HueSession {
   private resolvedApplicationId: string | null = null;
   private lastChannels: number[] = [];
   private readonly sink: () => ApplicationIdSink | null;
+  private readonly owners: Map<string, HueSession>;
+  private claimedHost: string | null = null;
 
-  constructor(config: HueBridgeConfig, sink: () => ApplicationIdSink | null = () => null) {
+  constructor(config: HueBridgeConfig, sink: () => ApplicationIdSink | null = () => null, owners = new Map<string, HueSession>()) {
     this.id = config.id;
     this.config = { ...config };
     this.sink = sink;
+    this.owners = owners;
   }
 
   private get name(): string { return this.config.label || this.id; }
@@ -622,6 +628,27 @@ class HueSession {
     void task.finally(() => { if (this.connecting === task) this.connecting = null; }).catch(() => {});
   }
 
+  private async claimHost(host: string, current: () => boolean): Promise<void> {
+    const key = physicalHost(host);
+    while (current()) {
+      const owner = this.owners.get(key);
+      if (!owner || owner === this) {
+        this.owners.set(key, this);
+        this.claimedHost = key;
+        return;
+      }
+      // A pending STOP belongs to the physical bridge, even when its logical ID
+      // was removed. Starting under a new ID before it settles loses the stream.
+      if (owner.releasing) await owner.releasing;
+      else throw new Error('this physical bridge is already managed by another configured bridge');
+    }
+  }
+
+  private releaseHost(): void {
+    if (this.claimedHost && this.owners.get(this.claimedHost) === this) this.owners.delete(this.claimedHost);
+    this.claimedHost = null;
+  }
+
   private async connect(): Promise<void> {
     if (this.status === CONNECTING || this.status === STREAMING) return;
     if (!this.config.enabled || !this.isConfigured()) return;
@@ -630,6 +657,8 @@ class HueSession {
     const epoch = ++this.connectEpoch;
     const current = () => this.connectEpoch === epoch && this.status === CONNECTING;
     if (this.sessionConfig) await this.releaseAfter();
+    if (!current()) return;
+    await this.claimHost(config.host, current);
     if (!current()) return;
     let identity = config.applicationId || this.resolvedApplicationId;
     if (!identity) {
@@ -750,11 +779,12 @@ class HueSession {
     const release = (async () => {
       if (pending) await pending.catch(() => {});
       const owned = this.sessionConfig;
-      if (!owned) return;
+      if (!owned) { this.releaseHost(); return; }
       const { config, identity } = owned;
       const holder = await ownership(config, identity);
       if (holder.kind === 'owned') await setStreaming(config.host, config.username, config.entertainmentId, false);
       if (this.sessionConfig === owned) this.sessionConfig = null;
+      this.releaseHost();
     })();
     this.releasing = release;
     void release.finally(() => { if (this.releasing === release) this.releasing = null; }).catch(() => {});
@@ -840,6 +870,7 @@ class HueSession {
 
 const sessions = new Map<string, HueSession>();
 const retiring = new Map<string, HueSession>();
+const physicalOwners = new Map<string, HueSession>();
 
 let onApplicationId: ApplicationIdSink | null = null;
 function setApplicationIdSink(fn: ApplicationIdSink | null): void { onApplicationId = fn; }
@@ -858,7 +889,7 @@ function configureBridges(list: readonly HueBridgeConfig[]): void {
     if (session) {
       session.configure(bridge);
       sessions.set(bridge.id, session);
-    } else sessions.set(bridge.id, new HueSession(bridge, () => onApplicationId));
+    } else sessions.set(bridge.id, new HueSession(bridge, () => onApplicationId, physicalOwners));
   }
 }
 
@@ -880,17 +911,23 @@ function sendFrames(frames: ReadonlyMap<string, readonly HueChannelColour[]>): b
   return sent;
 }
 
-async function stopAll(): Promise<void> {
-  await Promise.all(listSessions().map((s) => s.stop()));
+async function finishAll(operation: 'stop' | 'close'): Promise<void> {
+  const all = new Set([...sessions.values(), ...retiring.values()]);
+  const results = await Promise.allSettled([...all].map((s) => s[operation]()));
+  const errors = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected').map(result => result.reason);
+  if (errors.length) throw new AggregateError(errors, 'could not release all Hue sessions');
 }
 
+async function stopAll(): Promise<void> { await finishAll('stop'); }
+
 async function closeAll(): Promise<void> {
-  await Promise.all(listSessions().map((s) => s.close()));
+  await finishAll('close');
 }
 
 function _reset(): void {
   sessions.clear();
   retiring.clear();
+  physicalOwners.clear();
   onApplicationId = null;
 }
 

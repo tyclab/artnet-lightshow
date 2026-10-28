@@ -423,6 +423,64 @@ test('reliability: stop waits for release and re-addition cannot overtake it', a
   await stopping;
 });
 
+test('reliability: renamed bridge waits for the same physical host release', async (t) => {
+  quiet(t);
+  let release;
+  let deferStop = true;
+  const calls = fakeBridge(t, { put: ({ body }) => ({ status: 200, body: { data: [] },
+    ...(body.action === 'stop' && deferStop ? { defer: respond => { release = respond; } } : {}) }) });
+  const sockets = fakeDtls(t);
+  t.after(() => hue._reset());
+  hue.configureBridges([{ ...PAIRED, host: 'Bridge.Invalid.' }]);
+  hue.getSession(PAIRED.id).sendFrame(RED);
+  await settle();
+  sockets[0].emit('connected');
+  hue.configureBridges([{ ...PAIRED, id: 'renamed', host: 'bridge.invalid' }]);
+  hue.getSession('renamed').sendFrame(RED);
+  await settle();
+  assert.deepStrictEqual(actions(calls), ['start', 'stop']);
+  assert.strictEqual(sockets.length, 1);
+  deferStop = false;
+  release();
+  await settle();
+  assert.deepStrictEqual(actions(calls), ['start', 'stop', 'start']);
+  assert.strictEqual(sockets.length, 2);
+  await hue.stopAll();
+});
+
+test('reliability: duplicate physical hosts cannot acquire two sessions', async (t) => {
+  quiet(t);
+  const calls = fakeBridge(t);
+  const sockets = fakeDtls(t);
+  t.after(() => hue._reset());
+  hue.configureBridges([PAIRED, { ...PAIRED, id: 'duplicate' }]);
+  hue.sendFrames(new Map([[PAIRED.id, RED], ['duplicate', RED]]));
+  await settle();
+  assert.deepStrictEqual(actions(calls), ['start']);
+  assert.strictEqual(sockets.length, 1);
+  assert.match(hue.getSession('duplicate').getStatus().error, /already managed/);
+  await hue.stopAll();
+});
+
+for (const operation of ['stopAll', 'closeAll']) test(`reliability: ${operation} waits for retired sessions`, async (t) => {
+  quiet(t);
+  let release;
+  fakeBridge(t, { put: ({ body }) => ({ status: 200, body: { data: [] },
+    ...(body.action === 'stop' ? { defer: respond => { release = respond; } } : {}) }) });
+  fakeDtls(t);
+  t.after(() => hue._reset());
+  hue.configureBridges([PAIRED]);
+  hue.getSession(PAIRED.id).sendFrame(RED);
+  await settle();
+  hue.configureBridges([]);
+  let complete = false;
+  const stopping = hue[operation]().then(() => { complete = true; });
+  await settle();
+  assert.strictEqual(complete, false);
+  release();
+  await stopping;
+});
+
 test('reliability: an old send callback cannot fail a replacement socket', async (t) => {
   quiet(t);
   fakeBridge(t);
