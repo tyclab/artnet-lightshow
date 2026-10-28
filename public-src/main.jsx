@@ -156,7 +156,7 @@ function Root() {
   const Panel = PANELS[mode];
   // The strip — arm, picture source, auto show, blackout, master — sits above every live view.
   const live = LIVE_VIEWS.has(mode);
-  // Show and Perform carry their own transport: no command bar, no drawer.
+  // Show uses the header's look controls; Perform also carries its own transport.
   const bare = mode === 'show' || mode === 'perform';
   useFirstRun();
   useTapShortcut();

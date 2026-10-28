@@ -145,7 +145,7 @@ test('unacknowledged strobe notices follow server safety state', () => {
 test('the header flags a frozen look only while the look is what plays', () => {
   given({ running: false });
   assert.match(ui.html(ui.h(ui.Header, {})),
-    /class="stat-pill energy frozen" title="[^"]*frozen[^"]*Play look[^"]*"><span class="label">Look<\/span><span>Frozen<\/span>/);
+    /<button[^>]*aria-label="Look playback"[^>]*aria-pressed="false"[^>]*title="Play look:[^"]*"><span class="label">Look<\/span><span>Frozen<\/span><\/button>/);
   given({ running: true });
   assert.doesNotMatch(ui.html(ui.h(ui.Header, {})), /Frozen/);
   given({ running: false, sequence: { loaded: { id: 'set', name: 'Set' }, playing: true, lanes: [] } });

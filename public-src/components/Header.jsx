@@ -1,5 +1,5 @@
 import { NowPlaying } from './NowPlaying.jsx';
-import { connectedSig, pick } from '../state.js';
+import { api, connectedSig, pick, send } from '../state.js';
 import { formatBpm, clockSource } from '../utils.js';
 import { driverOf } from '../transport-model.js';
 import { useState } from 'preact/hooks';
@@ -82,8 +82,8 @@ export function Header() {
   const connected = connectedSig.value;
   const s = pick(['bpm', 'clock', 'running', 'masterDimmer', 'masterBlackout', 'energyOverride', 'flashLimit', 'autoShow', 'armed', 'sequence', 'showOn']);
   const blackout = !!s.masterBlackout;
-  // Only while the look is what plays: under a sequence or a show the frozen base is not the picture.
-  const frozen = s.running === false && driverOf(s) === 'look';
+  const manual = driverOf(s) === 'look';
+  const frozen = s.running === false;
   const energy = s.energyOverride;
   const auto = s.autoShow && s.autoShow.status;
 
@@ -99,27 +99,30 @@ export function Header() {
 
       <div class="header-stats">
         {s.armed != null && (
-          <div class={`stat-pill ${s.armed ? 'live' : ''}`}
-            title={s.armed ? 'Outputs armed: frames go out to the rig' : 'Outputs disarmed: nothing goes out to the rig — arm them in Perform or Settings → Show'}>
+          <button type="button" class={`stat-pill control ${s.armed ? 'live' : ''}`} disabled={!connected}
+            aria-label={s.armed ? 'Disarm outputs' : 'Arm outputs'} aria-pressed={!!s.armed}
+            onClick={() => api(s.armed ? '/api/outputs/disarm' : '/api/outputs/arm', { method: 'POST' })}
+            title={s.armed ? 'Disarm outputs: stop sending frames and freeze the look' : 'Arm outputs: send frames to the rig'}>
             <span class="label">Outputs</span>
             <span>{s.armed ? 'Armed' : 'Disarmed'}</span>
-          </div>
+          </button>
         )}
-        {frozen && (
-          <div class="stat-pill energy frozen"
-            title="The look is frozen and holds its last picture (a disarm freezes it too) — press Play look in Perform to run it again">
+        {manual && (
+          <button type="button" class={`stat-pill control${frozen ? ' energy frozen' : ''}`} disabled={!connected}
+            aria-label="Look playback" aria-pressed={!frozen} onClick={() => send({ running: frozen })}
+            title={frozen ? 'Play look: animate the look; outputs stay as they are' : 'Freeze look: hold the current picture; pads still play'}>
             <span class="label">Look</span>
-            <span>Frozen</span>
-          </div>
+            <span>{frozen ? 'Frozen' : 'Playing'}</span>
+          </button>
         )}
         {s.bpm != null && <BpmPill bpm={s.bpm} running={!!s.running} source={s.clock && s.clock.source} />}
         {!blackout && <MasterPill master={s.masterDimmer} blackout={blackout} />}
-        {blackout && (
-          <div class="stat-pill alert" title="Master blackout active">
-            <span class="label">Blackout</span>
-            <span>ON</span>
-          </div>
-        )}
+        <button type="button" class={`stat-pill control${blackout ? ' alert' : ''}`} disabled={!connected}
+          aria-label="Master blackout" aria-pressed={blackout} onClick={() => send({ masterBlackout: !blackout })}
+          title={blackout ? 'Release blackout: restore the current look' : 'Blackout: darken every light'}>
+          <span class="label">Blackout</span>
+          <span>{blackout ? 'ON' : 'OFF'}</span>
+        </button>
         {energy && (
           <div class="stat-pill energy" title={`Energy override: ${energy}`}>
             <span class="label">Energy</span>

@@ -1,4 +1,4 @@
-import { computed, signal } from '@preact/signals';
+import { computed, effect, signal } from '@preact/signals';
 import { io } from 'socket.io-client';
 import { createVoiceHolds } from './hold-control.js';
 import { timelinePosition } from './timeline-state.js';
@@ -37,10 +37,20 @@ export const autoPositionSig = signal({ positionMs: 0, running: false, updatedAt
 export const autoTimelineSig = signal({ data: null, key: null, status: 'idle', error: null });
 
 // Shared by the stage preview in both views so they never disagree; a drag stays in the component.
+function readPreviewLook() {
+  try { return localStorage.getItem('lightshow.previewLook') === 'true'; } catch { return false; }
+}
+
 export const stagePreviewSig = signal({
-  edit: false, rehearsal: false, playing: false, position: 0, preview: false,
+  edit: false, rehearsal: false, playing: false, position: 0, preview: readPreviewLook(),
   // So a remount on a view switch is not taken for a new track.
   trackId: undefined,
+});
+
+const previewLook = computed(() => stagePreviewSig.value.preview);
+effect(() => {
+  const enabled = previewLook.value;
+  try { localStorage.setItem('lightshow.previewLook', String(enabled)); } catch { /* private mode */ }
 });
 
 // From public/auth.js, loaded first; guarded in case it is not.
