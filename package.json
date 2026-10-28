@@ -51,7 +51,7 @@
   "devDependencies": {
     "@companion-module/base": "~2.0.4",
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.56.1",
+    "@playwright/test": "^1.63.0",
     "@preact/signals": "^2.11.2",
     "@types/compression": "^1.8.1",
     "@types/express": "^5.0.6",
