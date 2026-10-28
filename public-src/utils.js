@@ -52,7 +52,7 @@ export function fmtNum(v, digits = 2) {
   return v.toFixed(digits);
 }
 
-const cellsOfProfile = (profile) => (profile && Array.isArray(profile.cells) && profile.cells.length >= 2
+export const cellsOfProfile = (profile) => (profile && Array.isArray(profile.cells) && profile.cells.length >= 2
   ? profile.cells : null);
 
 function overrideLight(fix, state) {

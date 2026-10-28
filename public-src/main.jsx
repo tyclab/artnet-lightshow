@@ -58,9 +58,14 @@ function ModeTabs({ mode, setMode }) {
   // Subscribes here rather than in Root, so an auto-show status change re-renders
   // this tab strip alone instead of the whole tree.
   const strip = useRef(null);
+  // Measured in the next frame, whose layout is due anyway: read here, offsetLeft
+  // forced layout of the view that had just mounted.
   useEffect(() => {
-    const tab = document.getElementById(`tab-${mode}`);
-    if (tab && strip.current) strip.current.scrollLeft = tab.offsetLeft - strip.current.offsetLeft;
+    const frame = requestAnimationFrame(() => {
+      const tab = document.getElementById(`tab-${mode}`);
+      if (tab && strip.current) strip.current.scrollLeft = tab.offsetLeft - strip.current.offsetLeft;
+    });
+    return () => cancelAnimationFrame(frame);
   }, [mode]);
   const autoShow = field('autoShow').value;
   const autoActive = !!(autoShow && autoShow.status && autoShow.status !== 'idle');
@@ -132,6 +137,9 @@ function AutoView() {
   );
 }
 
+// The bars stacked above a view, whose heights the sticky offsets in style.css read.
+const BARS = [['header', '.app-header'], ['commands', '.command-bar'], ['views', '.mode-nav'], ['effects', '.effects-tools']];
+
 const LIVE_VIEWS = new Set(VIEWS.filter((view) => view.group === 'live').map((view) => view.id));
 
 const PANELS = {
@@ -161,15 +169,27 @@ function Root() {
   useFirstRun();
   useTapShortcut();
 
+  // The bars' heights as the ResizeObserver reports them, from the layout the
+  // frame computes anyway; measuring them on a switch forced style and layout of
+  // the whole view that had just mounted.
   useEffect(() => {
-    const bars = ['header', 'commands', 'views', 'effects'];
-    const elements = ['.app-header', '.command-bar', '.mode-nav', '.effects-tools'].map((selector) => document.querySelector(selector));
-    const measure = () => elements.forEach((element, i) => {
-      document.documentElement.style.setProperty(`--${bars[i]}-height`, `${element?.getBoundingClientRect().height || 0}px`);
+    const root = document.documentElement.style;
+    const names = new Map();
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const box = entry.borderBoxSize && entry.borderBoxSize[0];
+        root.setProperty(`--${names.get(entry.target)}-height`, `${box ? box.blockSize : entry.target.getBoundingClientRect().height}px`);
+      }
     });
-    const observer = new ResizeObserver(measure);
-    elements.filter(Boolean).forEach((element) => observer.observe(element));
-    measure();
+    for (const [name, selector] of BARS) {
+      const element = document.querySelector(selector);
+      if (element) {
+        names.set(element, name);
+        observer.observe(element);
+      } else {
+        root.setProperty(`--${name}-height`, '0px');
+      }
+    }
     return () => observer.disconnect();
   }, [mode]);
 

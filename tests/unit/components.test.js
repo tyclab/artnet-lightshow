@@ -878,7 +878,7 @@ test('the strip carries the arm, picture, auto show and blackout switches and th
     assert.ok(strip.includes(text), text);
   }
   const show = ui.html(ui.h(ui.Show));
-  for (const text of ['stage3d-canvas', 'effects-deck']) assert.ok(show.includes(text), text);
+  for (const text of ['stage3d-host', 'effects-deck']) assert.ok(show.includes(text), text);
   assert.strictEqual(count(show, 'role="switch"'), 0, 'the switches are the strip\'s, not the view\'s');
   assert.ok(!show.includes('stage-room-panel'), 'the room panel stays in Stage');
 
