@@ -158,7 +158,7 @@ test('a retry leaves the bridge alone when ownership cannot be verified', async 
   assert.match(session.getStatus().error, /could not verify.*ownership/);
   assert.deepStrictEqual(actions(calls), ['start']);
   assert.strictEqual(sockets.length, 1);
-  await session.stop();
+  await assert.rejects(session.stop(), /could not verify.*ownership/);
   assert.deepStrictEqual(actions(calls), ['start']);
 });
 
@@ -195,10 +195,11 @@ for (const pendingAction of ['stop', 'start']) {
     session.sendFrame(RED);
     await until(t, () => !!respond, 2000);
     assert.ok(respond);
-    await session.stop();
+    const stopping = session.stop();
     session.sendFrame(RED);
     assert.strictEqual(starts, pendingAction === 'start' ? 2 : 1, 'a pending retry must settle first');
     respond();
+    await stopping;
     await settle();
     assert.strictEqual(session.getStatus().status, 'idle');
     assert.strictEqual(sockets.length, 1);
@@ -211,7 +212,8 @@ for (const pendingAction of ['stop', 'start']) {
 test('stop() resets the backoff', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
   quiet(t);
-  const calls = fakeBridge(t, { put: () => ({ status: 503, body: { errors: [{ description: 'bridge busy' }] } }) });
+  const calls = fakeBridge(t, { put: ({ body }) => body.action === 'start'
+    ? { status: 503, body: { errors: [{ description: 'bridge busy' }] } } : { status: 200, body: { data: [] } } });
   fakeDtls(t);
   const session = new hue.HueSession(PAIRED);
   const starts = () => actions(calls).filter((a) => a === 'start').length;
@@ -253,8 +255,7 @@ test('an area another app is streaming is reported as held, and left to it', asy
   assert.ok(calls.some((c) => c.method === 'GET' && c.path.endsWith('/entertainment_configuration')));
 });
 
-// An unreadable area must not cost the stream: the check is advisory.
-test('an area that cannot be read does not block the handshake', async (t) => {
+test('an area that cannot be read blocks the handshake', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
   quiet(t);
   fakeBridge(t, { area: () => ({ status: 500, body: { errors: [{ description: 'internal error' }] } }) });
@@ -262,8 +263,8 @@ test('an area that cannot be read does not block the handshake', async (t) => {
   const session = new hue.HueSession(PAIRED);
 
   session.sendFrame(RED);
-  await until(t, () => session.getStatus().status === 'streaming', 1000);
-  assert.strictEqual(session.getStatus().status, 'streaming');
+  await until(t, () => session.getStatus().status === 'failed', 1000);
+  assert.strictEqual(session.getStatus().status, 'failed');
   await session.stop();
 });
 
@@ -300,7 +301,7 @@ test('ownership changed during start is reported without stopping the new owner'
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
   quiet(t);
   let reads = 0;
-  const calls = fakeBridge(t, { area: () => ({ status: 200, body: ++reads === 1 ? { data: [] } : { data: [OTHER_AREA] } }) });
+  const calls = fakeBridge(t, { area: () => ({ status: 200, body: ++reads === 1 ? { data: [{ id: AREA, status: 'inactive' }] } : { data: [OTHER_AREA] } }) });
   const sockets = fakeDtls(t);
   const session = new hue.HueSession(PAIRED);
   session.sendFrame(RED);
@@ -320,7 +321,7 @@ test('an unknown application identity never takes an already active area', async
   const session = new hue.HueSession({ ...PAIRED, applicationId: '' });
   session.sendFrame(RED);
   await until(t, () => session.getStatus().status === 'failed', 1000);
-  assert.match(session.getStatus().error, /already in use/);
+  assert.match(session.getStatus().error, /application identity/);
   assert.deepStrictEqual(actions(calls), []);
   assert.strictEqual(sockets.length, 0);
 });
@@ -334,8 +335,9 @@ test('disarming during the ownership check cannot start a session later', async 
   session.sendFrame(RED);
   await settle();
   assert.ok(respond);
-  await session.stop();
+  const stopping = session.stop();
   respond();
+  await stopping;
   await settle();
   assert.strictEqual(session.getStatus().status, 'idle');
   assert.deepStrictEqual(actions(calls), []);
@@ -363,4 +365,230 @@ test('reconfiguration during start releases the old area on the old bridge', asy
   assert.ok(stops[0].path.endsWith(AREA));
   assert.strictEqual(sockets.length, 0);
   assert.strictEqual(session.getStatus().status, 'idle');
+});
+
+test('reliability: unreadable ownership after release prevents a second start', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+  quiet(t);
+  let released = false;
+  const calls = fakeBridge(t, {
+    put: ({ body }) => { released ||= body.action === 'stop'; return { status: 200, body: { data: [] } }; },
+    area: () => released ? { status: 503, body: { errors: [{ description: 'unavailable' }] } } : { status: 200, body: OURS },
+  });
+  const sockets = fakeDtls(t);
+  const session = new hue.HueSession(PAIRED);
+  session.sendFrame(RED);
+  await until(t, () => released, 1200);
+  await settle();
+  assert.deepStrictEqual(actions(calls), ['start', 'stop']);
+  assert.strictEqual(sockets.length, 1);
+  assert.strictEqual(session.getStatus().status, 'failed');
+});
+
+test('reliability: HTTP200 CLIP errors are not ownership evidence', async (t) => {
+  quiet(t);
+  const calls = fakeBridge(t, { area: () => ({ status: 200, body: { data: [], errors: [{ description: 'denied' }] } }) });
+  const sockets = fakeDtls(t);
+  const session = new hue.HueSession(PAIRED);
+  session.sendFrame(RED);
+  await settle();
+  assert.deepStrictEqual(actions(calls), []);
+  assert.strictEqual(sockets.length, 0);
+  assert.strictEqual(session.getStatus().status, 'failed');
+});
+
+test('reliability: stop waits for release and re-addition cannot overtake it', async (t) => {
+  quiet(t);
+  let release;
+  const calls = fakeBridge(t, { put: ({ body }) => ({ status: 200, body: { data: [] },
+    ...(body.action === 'stop' ? { defer: respond => { release = respond; } } : {}) }) });
+  const sockets = fakeDtls(t);
+  hue.configureBridges([PAIRED]);
+  const session = hue.getSession(PAIRED.id);
+  session.sendFrame(RED);
+  await settle();
+  sockets[0].emit('connected');
+  let stopped = false;
+  const stopping = session.stop().then(() => { stopped = true; });
+  t.after(async () => { if (release) release(); await stopping; hue._reset(); });
+  await settle();
+  hue.configureBridges([]);
+  hue.configureBridges([PAIRED]);
+  hue.getSession(PAIRED.id).sendFrame(RED);
+  await settle();
+  assert.strictEqual(stopped, false);
+  assert.deepStrictEqual(actions(calls), ['start', 'stop']);
+  assert.strictEqual(sockets.length, 1);
+  release();
+  await stopping;
+});
+
+test('reliability: renamed bridge waits for the same physical host release', async (t) => {
+  quiet(t);
+  let release;
+  let deferStop = true;
+  const calls = fakeBridge(t, { put: ({ body }) => ({ status: 200, body: { data: [] },
+    ...(body.action === 'stop' && deferStop ? { defer: respond => { release = respond; } } : {}) }) });
+  const sockets = fakeDtls(t);
+  t.after(() => hue._reset());
+  hue.configureBridges([{ ...PAIRED, host: 'Bridge.Invalid.' }]);
+  hue.getSession(PAIRED.id).sendFrame(RED);
+  await settle();
+  sockets[0].emit('connected');
+  hue.configureBridges([{ ...PAIRED, id: 'renamed', host: 'bridge.invalid' }]);
+  hue.getSession('renamed').sendFrame(RED);
+  await settle();
+  assert.deepStrictEqual(actions(calls), ['start', 'stop']);
+  assert.strictEqual(sockets.length, 1);
+  deferStop = false;
+  release();
+  await settle();
+  assert.deepStrictEqual(actions(calls), ['start', 'stop', 'start']);
+  assert.strictEqual(sockets.length, 2);
+  await hue.stopAll();
+});
+
+test('reliability: a renamed bridge retries failed retirement after ownership recovers', async (t) => {
+  quiet(t);
+  let unreadable = false;
+  const calls = fakeBridge(t, { area: () => unreadable
+    ? { status: 503, body: { errors: [{ description: 'unavailable' }] } }
+    : { status: 200, body: OURS } });
+  const sockets = fakeDtls(t);
+  t.after(() => hue._reset());
+  hue.configureBridges([PAIRED]);
+  hue.getSession(PAIRED.id).sendFrame(RED);
+  await settle();
+  sockets[0].emit('connected');
+  unreadable = true;
+  hue.configureBridges([{ ...PAIRED, id: 'renamed' }]);
+  await settle();
+  assert.deepStrictEqual(actions(calls), ['start']);
+  unreadable = false;
+  hue.getSession('renamed').sendFrame(RED);
+  await settle();
+  assert.deepStrictEqual(actions(calls), ['start', 'stop', 'start']);
+  assert.strictEqual(sockets.length, 2);
+  await hue.stopAll();
+});
+
+test('reliability: duplicate physical hosts cannot acquire two sessions', async (t) => {
+  quiet(t);
+  const calls = fakeBridge(t);
+  const sockets = fakeDtls(t);
+  t.after(() => hue._reset());
+  hue.configureBridges([PAIRED, { ...PAIRED, id: 'duplicate' }]);
+  hue.sendFrames(new Map([[PAIRED.id, RED], ['duplicate', RED]]));
+  await settle();
+  assert.deepStrictEqual(actions(calls), ['start']);
+  assert.strictEqual(sockets.length, 1);
+  assert.match(hue.getSession('duplicate').getStatus().error, /already managed/);
+  await hue.stopAll();
+});
+
+for (const operation of ['stopAll', 'closeAll']) test(`reliability: ${operation} waits for retired sessions`, async (t) => {
+  quiet(t);
+  let release;
+  fakeBridge(t, { put: ({ body }) => ({ status: 200, body: { data: [] },
+    ...(body.action === 'stop' ? { defer: respond => { release = respond; } } : {}) }) });
+  fakeDtls(t);
+  t.after(() => hue._reset());
+  hue.configureBridges([PAIRED]);
+  hue.getSession(PAIRED.id).sendFrame(RED);
+  await settle();
+  hue.configureBridges([]);
+  let complete = false;
+  const stopping = hue[operation]().then(() => { complete = true; });
+  await settle();
+  assert.strictEqual(complete, false);
+  release();
+  await stopping;
+});
+
+test('reliability: an old send callback cannot fail a replacement socket', async (t) => {
+  quiet(t);
+  fakeBridge(t);
+  const sockets = fakeDtls(t);
+  const session = new hue.HueSession(PAIRED);
+  session.sendFrame(RED);
+  await settle();
+  sockets[0].emit('connected');
+  let finish;
+  sockets[0].send = (_frame, callback) => { finish = callback; };
+  session.sendFrame(RED);
+  await session.stop();
+  await settle();
+  session.sendFrame(RED);
+  await settle();
+  sockets[1].emit('connected');
+  finish(new Error('old socket failure'));
+  assert.strictEqual(session.getStatus().status, 'streaming');
+  assert.strictEqual(sockets[1].closed, false);
+  await session.stop();
+});
+
+test('reliability: delayed application identity never persists into a replacement config', async (t) => {
+  quiet(t);
+  let respond;
+  const writes = [];
+  fakeBridge(t, { area: () => ({ status: 200, body: {}, defer: reply => { respond = reply; } }) });
+  const original = https.request;
+  t.mock.method(https, 'request', (options, callback) => original(options, res => {
+    res.headers = { 'hue-application-id': 'old-app' };
+    callback(res);
+  }));
+  const session = new hue.HueSession({ ...PAIRED, applicationId: '' }, () => (...args) => { writes.push(args); });
+  session.sendFrame(RED);
+  await settle();
+  session.configure({ host: 'replacement.invalid', username: 'new-key', applicationId: 'new-app' });
+  respond();
+  await settle();
+  assert.deepStrictEqual(writes, []);
+  assert.strictEqual(session.getConfig().applicationId, 'new-app');
+  await session.stop();
+});
+
+test('reliability: an aborted REST response settles without an unhandled stream error', async (t) => {
+  let response;
+  t.mock.method(https, 'request', (_options, onResponse) => {
+    const req = new EventEmitter();
+    req.write = () => {};
+    req.destroy = error => { if (error) req.emit('error', error); };
+    req.end = () => {
+      response = new EventEmitter();
+      response.statusCode = 200;
+      response.headers = {};
+      onResponse(response);
+      response.emit('data', Buffer.from('{'));
+    };
+    return req;
+  });
+  let settled = false;
+  const lookup = hue.fetchApplicationId('bridge.invalid', 'dummy').then(value => { settled = true; return value; });
+  response.emit('aborted');
+  assert.doesNotThrow(() => response.emit('error', new Error('aborted')));
+  await settle();
+  assert.strictEqual(settled, true);
+  assert.strictEqual(await lookup, null);
+});
+
+test('reliability: a stalled release times out and keeps replacement output blocked', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+  quiet(t);
+  const calls = fakeBridge(t, { put: ({ body }) => ({ status: 200, body: { data: [] },
+    ...(body.action === 'stop' ? { defer: () => {} } : {}) }) });
+  const sockets = fakeDtls(t, [10]);
+  const session = new hue.HueSession(PAIRED);
+  session.sendFrame(RED);
+  await until(t, () => session.getStatus().status === 'streaming', 100);
+  const stopped = assert.rejects(session.stop(), /within 5000ms/);
+  await settle();
+  t.mock.timers.tick(5000);
+  await settle();
+  await stopped;
+  assert.strictEqual(session.getStatus().status, 'failed');
+  session.sendFrame(RED);
+  await settle();
+  assert.deepStrictEqual(actions(calls), ['start', 'stop']);
+  assert.strictEqual(sockets.length, 1);
 });

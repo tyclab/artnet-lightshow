@@ -101,10 +101,12 @@ function createApplier({ midi, spotify, smtc, live = null, midiClock = null, dee
   function applyHue() {
     const config = settings.group('hue');
     output.configureHue(config);
-    output.onHueApplicationId((bridgeId, applicationId) => {
+    output.onHueApplicationId(({ source, applicationId }) => {
+      const bridgeId = source.id;
       const bridges = settings.group('hue').bridges;
       const bridge = bridges.find((b) => b.id === bridgeId);
-      if (!bridge || bridge.applicationId === applicationId) return;
+      if (!bridge || bridge.host !== source.host || bridge.username !== source.username
+        || bridge.applicationId !== source.applicationId || bridge.applicationId === applicationId) return;
       try {
         settings.update({ hue: { bridges: bridges.map((b) => (b.id === bridgeId ? { ...b, applicationId } : b)) } });
       } catch (err) {
