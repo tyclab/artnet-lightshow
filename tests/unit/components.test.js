@@ -132,7 +132,8 @@ test('the strip has the outputs switch, saying what disarmed means', () => {
 
 test('unacknowledged strobe notices follow server safety state', () => {
   const views = () => [ui.html(ui.h(ui.Header, {})), ui.html(ui.h(ui.Perform, {}))];
-  const notice = /<button type="button" class="[^"]*" data-safety="ask"[^>]*>(?:<[^>]+>)*Strobes off until acknowledged/;
+  // The header pill carries the notice as its accessible name; Perform shows it as text.
+  const notice = /<button type="button" class="[^"]*" data-safety="ask"(?:[^>]*aria-label="Strobes off until acknowledged"[^>]*>|[^>]*>(?:<[^>]+>)*Strobes off until acknowledged)/;
   given({ safety: { photosensitivityAcknowledged: false, hdFlashIntervalMs: 350, strobeMaxLatchSec: 60 } });
   for (const html of views()) assert.match(html, notice);
   assert.match(views()[1], /tap to acknowledge/);
@@ -174,7 +175,7 @@ test('every header pill keeps its place in every state', () => {
     given(state);
     const html = ui.html(ui.h(ui.Header, {}));
     for (const label of LABELS) assert.match(html, new RegExp(`<span class="label">${label}</span>`), `${name}: ${label}`);
-    assert.match(html, /<span class="label">Strobes<\/span>|Strobes off until acknowledged/, `${name}: Strobes`);
+    assert.match(html, /<span class="label">Strobes<\/span>/, `${name}: Strobes`);
     assert.match(html, /<span>(Online|Offline)<\/span>/, `${name}: connection`);
   }
   given({ masterBlackout: true, masterDimmer: 128 });
