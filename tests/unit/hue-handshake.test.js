@@ -448,6 +448,30 @@ test('reliability: renamed bridge waits for the same physical host release', asy
   await hue.stopAll();
 });
 
+test('reliability: a renamed bridge retries failed retirement after ownership recovers', async (t) => {
+  quiet(t);
+  let unreadable = false;
+  const calls = fakeBridge(t, { area: () => unreadable
+    ? { status: 503, body: { errors: [{ description: 'unavailable' }] } }
+    : { status: 200, body: OURS } });
+  const sockets = fakeDtls(t);
+  t.after(() => hue._reset());
+  hue.configureBridges([PAIRED]);
+  hue.getSession(PAIRED.id).sendFrame(RED);
+  await settle();
+  sockets[0].emit('connected');
+  unreadable = true;
+  hue.configureBridges([{ ...PAIRED, id: 'renamed' }]);
+  await settle();
+  assert.deepStrictEqual(actions(calls), ['start']);
+  unreadable = false;
+  hue.getSession('renamed').sendFrame(RED);
+  await settle();
+  assert.deepStrictEqual(actions(calls), ['start', 'stop', 'start']);
+  assert.strictEqual(sockets.length, 2);
+  await hue.stopAll();
+});
+
 test('reliability: duplicate physical hosts cannot acquire two sessions', async (t) => {
   quiet(t);
   const calls = fakeBridge(t);

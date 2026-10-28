@@ -573,6 +573,7 @@ class HueSession {
   private readonly sink: () => ApplicationIdSink | null;
   private readonly owners: Map<string, HueSession>;
   private claimedHost: string | null = null;
+  private retired = false;
 
   constructor(config: HueBridgeConfig, sink: () => ApplicationIdSink | null = () => null, owners = new Map<string, HueSession>()) {
     this.id = config.id;
@@ -602,6 +603,7 @@ class HueSession {
 
   // Close the old session before reconfiguration because a bridge allows only one active stream.
   configure(next: Partial<HueBridgeConfig> | null | undefined): HueBridgeConfig {
+    this.retired = false;
     const previous = this.config;
     this.config = { ...this.config, ...next, id: this.id };
 
@@ -640,13 +642,19 @@ class HueSession {
       // A pending STOP belongs to the physical bridge, even when its logical ID
       // was removed. Starting under a new ID before it settles loses the stream.
       if (owner.releasing) await owner.releasing;
-      else throw new Error('this physical bridge is already managed by another configured bridge');
+      else if (owner.status !== CONNECTING && owner.status !== STREAMING
+        && (owner.retired || !owner.config.enabled || physicalHost(owner.config.host) !== key)) {
+        // Retry failed cleanup of an inactive owner using its captured credentials.
+        // A failed configured duplicate remains exclusive to its existing session.
+        await owner.stop();
+      } else throw new Error('this physical bridge is already managed by another configured bridge');
     }
   }
 
   private releaseHost(): void {
     if (this.claimedHost && this.owners.get(this.claimedHost) === this) this.owners.delete(this.claimedHost);
     this.claimedHost = null;
+    if (this.retired && retiring.get(this.id) === this) retiring.delete(this.id);
   }
 
   private async connect(): Promise<void> {
@@ -815,6 +823,8 @@ class HueSession {
     }
   }
 
+  retire(): Promise<void> { this.retired = true; return this.stop(); }
+
   async close(): Promise<void> {
     if (this.status === STREAMING && this.socket && this.lastChannels.length) {
       this.sequence = (this.sequence + 1) & 0xff;
@@ -881,7 +891,7 @@ function configureBridges(list: readonly HueBridgeConfig[]): void {
     if (keep.has(id)) continue;
     retiring.set(id, session);
     sessions.delete(id);
-    void session.stop().then(() => { if (retiring.get(id) === session) retiring.delete(id); }).catch(() => {});
+    void session.retire().catch(() => {});
   }
   for (const bridge of list) {
     const session = sessions.get(bridge.id) || retiring.get(bridge.id);
