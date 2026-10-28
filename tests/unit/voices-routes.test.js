@@ -467,6 +467,28 @@ test('a disarm asked for stops every voice, even with the outputs disarmed alrea
   assert.deepEqual(ids(), []);
 });
 
+test('a disarm and re-arm leave the look playing, so the effect picked next reaches the rig', async (t) => {
+  // The operator's report: after a disarm, every later effect pick showed nothing and the header read Look · Frozen.
+  const s = await serve(t);
+  applyPatch({ pattern: 'chase', colorA: 0, colorB: 0, colorC: 0, colorD: 0, running: true, masterDimmer: 255, masterBlackout: false });
+  renderFrame();
+  assert.equal(blue(), 0, 'the look: red, no blue');
+  assert.equal((await s.call('POST', '/api/outputs/arm')).body.armed, true);
+  assert.equal((await s.call('POST', '/api/outputs/disarm')).body.armed, false);
+  assert.equal(state.running, true, 'a disarm ends the streams; it does not freeze the look');
+  assert.equal((await s.call('POST', '/api/outputs/arm')).body.armed, true);
+  assert.equal(state.running, true, 'still playing after the re-arm');
+  // The next effect, sent as the Effects tab sends a tap: a socket set naming it.
+  const { socket } = await s.page();
+  socket.emit('set', { pattern: 'solid', colorA: 5 });
+  await until(() => state.pattern === 'solid' && state.colorA === 5, 'the picked effect in the state');
+  renderFrame();
+  assert.ok(blue() > 0, `the effect picked after the re-arm is on the rig (blue ${blue()})`);
+  // The frame buffer is shared: leave it red, since a later test freezes the look and reads the held picture.
+  applyPatch({ pattern: 'solid', colorA: 0 });
+  renderFrame();
+});
+
 test("disarm leaves sequence transport running", async (t) => {
   const s = await serve(t);
   const sequencer = s.integrations.sequence.sequencer;
@@ -475,7 +497,7 @@ test("disarm leaves sequence transport running", async (t) => {
   const beat = () => sequencer.status().beat;
   await s.call('POST', '/api/outputs/arm');
   assert.equal((await s.call('POST', '/api/outputs/disarm')).body.armed, false);
-  assert.deepEqual([state.running, ids()], [false, []]);
+  assert.deepEqual([state.running, ids()], [true, []], 'the voices go; the look plays on');
   const glow = { id: 'set-1', name: 'Set one', lanes: [{ id: 'a', kind: 'shared', name: 'a', mute: false, solo: false }],
     clips: [{ id: 'A', laneId: 'a', startBeat: 0, lengthBeats: 1e6, effect: { kind: 'energy.glow', params: {} }, targets: 'lane', mute: false }] };
   assert.equal((await s.call('PUT', '/api/sequence', glow)).status, 200);
@@ -483,9 +505,9 @@ test("disarm leaves sequence transport running", async (t) => {
   frame();
   await wait(120);
   frame();
-  assert.equal(state.running, false);
+  assert.equal(state.running, true, 'the disarm left the look playing');
   assert.ok(beat() > 0.1, `after a disarm: the sequence counts its beats (beat ${beat()})`);
-  // Disarmed again while it plays: the patterns stop, the sequence plays on.
+  // Disarmed again while it plays: the look and the sequence play on.
   await s.call('POST', '/api/outputs/arm');
   assert.equal((await s.call('POST', '/api/outputs/disarm')).body.armed, false);
   assert.equal(freeClockRuns(), true);

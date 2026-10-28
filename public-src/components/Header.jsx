@@ -102,7 +102,7 @@ export function Header() {
           <button type="button" class={`stat-pill control ${s.armed ? 'live' : ''}`} disabled={!connected}
             aria-label={s.armed ? 'Disarm outputs' : 'Arm outputs'} aria-pressed={!!s.armed}
             onClick={() => api(s.armed ? '/api/outputs/disarm' : '/api/outputs/arm', { method: 'POST' })}
-            title={s.armed ? 'Disarm outputs: stop sending frames and freeze the look' : 'Arm outputs: send frames to the rig'}>
+            title={s.armed ? 'Disarm outputs: stop sending frames; the look keeps playing' : 'Arm outputs: send frames to the rig'}>
             <span class="label">Outputs</span>
             <span>{s.armed ? 'Armed' : 'Disarmed'}</span>
           </button>
