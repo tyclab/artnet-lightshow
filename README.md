@@ -188,8 +188,8 @@ They say **Live output** once outputs are armed.
 
 The sticky header keeps **Outputs**, **Look** play/freeze and **Blackout** clickable
 in every view, including while scrolling through Show. Look playback appears when
-the manual look drives the room. Disarming still freezes it; use **Look** to resume
-the preview without arming outputs.
+the manual look drives the room. Disarming does not freeze it: the look keeps playing
+in the preview and is on the rig again as soon as the outputs are armed.
 
 **Audition effects** in Stage or the fixture plot plays any current or saved effect
 against a deterministic 124 BPM demo: build, drop, breakdown and groove, with
@@ -1444,10 +1444,10 @@ from POST/PUT/DELETE actions.
 
 Disarm when releasing the rig to the house. Blackout alone does not release
 Hue Entertainment, WLED realtime control or OpenRGB ownership. Every restart
-is disarmed; an integration must deliberately re-arm. A disarm also freezes the
-look and arming leaves it frozen: the header shows Look · Frozen until Play
-look (or `POST /api/play`). An arm with no patterns
-running (they run from start), no voice, no sequence playing (a paused one
+is disarmed; an integration must deliberately re-arm. A disarm ends the streams
+and clears the voices and the energy effect; it leaves the look playing, so the
+header reads Look · Frozen only after Freeze look (or `POST /api/stop`). An arm
+with no patterns running (they run from start), no voice, no sequence playing (a paused one
 counts as stopped), no auto show and no pixel input at every 10 s check for
 `outputs.idleDisarmMin` minutes (15) is disarmed as `/api/outputs/disarm`
 would. Surface a 409 safety refusal to the operator instead of retrying it as
@@ -1596,7 +1596,7 @@ Transport routes answer `{ ok, status }`; with no sequence loaded they answer
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/outputs/arm` · `/api/outputs/disarm` · `/api/outputs/toggle` | Whether anything leaves the machine (`{ armed }` back). Disarm ends every stream — a black frame, the sACN terminate, a dark frame to each WLED, a dark frame to each OpenRGB device and its connection closed, a dark frame and the session closed on each Hue bridge — stops the patterns and clears every voice; arm resumes transmit. Stored as `outputs.armed`, applied at once, always off at start |
+| POST | `/api/outputs/arm` · `/api/outputs/disarm` · `/api/outputs/toggle` | Whether anything leaves the machine (`{ armed }` back). Disarm ends every stream — a black frame, the sACN terminate, a dark frame to each WLED, a dark frame to each OpenRGB device and its connection closed, a dark frame and the session closed on each Hue bridge — and clears every voice; the look keeps playing; arm resumes transmit. Stored as `outputs.armed`, applied at once, always off at start |
 | GET | `/api/artnet/nodes` | The Art-Net nodes that answered, with the universes each outputs, and whether frames are being routed by them; `?scan=1` asks the network now |
 | GET | `/api/network/interfaces` | This machine's IPv4 addresses and their broadcast addresses, for sACN's network and the Art-Net target |
 | POST | `/api/artnet/identify` | `{ address, universes?, seconds? }`: send the node ArtAddress *locate* (and *normal* after), and identify the fixtures on the universes it outputs |

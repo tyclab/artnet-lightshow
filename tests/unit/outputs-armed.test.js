@@ -237,7 +237,7 @@ test('startup ignores stored arming and subsequent saves toggle output', (t) => 
     state.heldEnergy = 'blinder';
     applier.applyChanged(settings.update({ outputs: { armed: false } }));
     assert.equal(isArmed(), false);
-    assert.deepEqual(applied, [{ running: false, energyOverride: null }], 'disarming stops the patterns and clears the effect');
+    assert.deepEqual(applied, [{ energyOverride: null }], 'disarming clears the effect and leaves the look playing');
     assert.equal(state.heldEnergy, null);
   } finally {
     log.mock.restore();
@@ -262,7 +262,7 @@ test('the routes arm, disarm and toggle; the state and the health report carry i
   assert.equal((await call('GET', '/api/health')).body.outputs.armed, true);
 
   assert.deepEqual((await call('POST', '/api/outputs/disarm')).body, { ok: true, armed: false });
-  assert.deepEqual(applied, [{ running: false, energyOverride: null }]);
+  assert.deepEqual(applied, [{ energyOverride: null }], 'a disarm does not freeze the look');
   const quiet = (await call('GET', '/api/health')).body;
   assert.equal(quiet.outputs.armed, false);
   assert.ok(quiet.problems.some((p) => p.level === 'info' && /outputs are disarmed/.test(p.what)), 'said among the problems, as information');
