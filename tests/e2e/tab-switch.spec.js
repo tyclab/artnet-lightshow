@@ -17,11 +17,16 @@ function countContexts() {
   });
 }
 
-// Every shader program the page links, by the material three.js names in its source.
+// Every shader program the page links, by the material three.js names in its source, and every draw call.
 function countPrograms() {
   window.programLinks = [];
+  window.draws = 0;
   for (const Context of [window.WebGL2RenderingContext, window.WebGLRenderingContext]) {
     if (!Context) continue;
+    for (const name of ['drawElements', 'drawElementsInstanced', 'drawArrays', 'drawArraysInstanced']) {
+      const draw = Context.prototype[name];
+      if (draw) Context.prototype[name] = function (...args) { window.draws++; return draw.apply(this, args); };
+    }
     const { shaderSource, attachShader, linkProgram } = Context.prototype;
     const named = new WeakMap();
     Context.prototype.shaderSource = function (shader, source) {
@@ -38,6 +43,14 @@ function countPrograms() {
     };
   }
 }
+
+/** A digest of the cell layer's pixels: two pictures that differ anywhere give different digests. */
+const cellDigest = (page) => page.locator('canvas.stage-cells-canvas').evaluate((canvas) => {
+  const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+  let digest = 0;
+  for (let i = 0; i < data.length; i++) digest = (Math.imul(digest, 31) + data[i]) | 0;
+  return digest;
+});
 
 /** Red and green pixels on the stage plot's cell layer. */
 const cellPixels = (page) => page.locator('canvas.stage-cells-canvas').evaluate((canvas) => {
@@ -133,7 +146,7 @@ test('the bars above each view are measured again for the sticky offsets after a
   }
 });
 
-test('the Rig plan paints bar cells on one canvas from the live feed, reading no layout per frame', async ({ page, request }) => {
+test('the Rig plan paints bar cells on one canvas that follows the live feed, with no getBoundingClientRect per frame', async ({ page, request }) => {
   await page.addInitScript(() => {
     const read = window.Element.prototype.getBoundingClientRect;
     window.layoutReads = 0;
@@ -150,9 +163,17 @@ test('the Rig plan paints bar cells on one canvas from the live feed, reading no
     await expect(plan.locator('.stage-cell.first')).toHaveCount(4);
     await expect(plan.locator('.stage-cell:not(.first)')).toHaveCount(0);
     await expect.poll(async () => (await cellPixels(page)).red).toBeGreaterThan(500);
-    // A picture that changes on every frame of the feed.
+    await set(request, { basePalette: { colours: ['#00FF00'] } });
+    await expect.poll(async () => cellPixels(page)).toMatchObject({ red: 0 });
+    expect((await cellPixels(page)).green).toBeGreaterThan(500);
+    const lamps = plan.locator('.stage-fixture.bar');
+    await expect(lamps).toHaveCount(4);
+    expect(await lamps.evaluateAll((nodes) => nodes.map((node) => node.style.getPropertyValue('--light')))).toEqual(Array(4).fill('rgb(0,255,0)'));
+    // A picture that changes on every frame of the feed: the canvas follows it.
     await set(request, { pattern: 'plasma' });
     await page.waitForTimeout(500);
+    const sample = await cellDigest(page);
+    await expect.poll(() => cellDigest(page)).not.toBe(sample);
     const start = { frames, reads: await page.evaluate(() => window.layoutReads) };
     await page.waitForTimeout(2000);
     expect(frames - start.frames).toBeGreaterThan(20);
@@ -163,7 +184,7 @@ test('the Rig plan paints bar cells on one canvas from the live feed, reading no
   }
 });
 
-test('a return to Show keeps the room the scene built: nothing is rebuilt or compiled again', async ({ page, request }) => {
+test('a return to Show draws the room the scene built, rebuilding and compiling nothing again', async ({ page, request }) => {
   test.setTimeout(60_000);
   await page.addInitScript(countPrograms);
   const fixture = (await state(request)).fixtures[0];
@@ -196,8 +217,11 @@ test('a return to Show keeps the room the scene built: nothing is rebuilt or com
     for (let round = 0; round < 3; round++) {
       await page.locator('#tab-effects').click();
       await expect(page.getByRole('group', { name: 'Stage layout, viewed from the audience' })).toBeVisible();
+      const drawn = await page.evaluate(() => window.draws);
       await page.locator('#tab-show').click();
       await expect(page.getByRole('img', { name: /The rig in 3D/ })).toBeVisible();
+      // The kept scene draws the room again in its new place.
+      await expect.poll(() => page.evaluate(() => window.draws)).toBeGreaterThan(drawn);
       await page.waitForTimeout(500);
     }
     expect(await page.evaluate((from) => window.programLinks.slice(from), linked)).toEqual([]);

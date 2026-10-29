@@ -2787,8 +2787,9 @@ input[type=range]::-moz-range-thumb {
   box-shadow: var(--glow), 0 0 14px -2px var(--light, transparent);
 }
 
-/* An LED bar: its cells along its line, each lit as the rig lights it, with
-   the bar's number riding at its centre rather than a lamp above it. */
+/* A bar cell as an element: 7 px with 2 px corners, lit by --light with a glow
+   of its colour. The plots paint their cells to these measures on a canvas
+   (below); the element is left only as the Rig plan's first-cell ring. */
 .stage-cell {
   position: absolute;
   width: 7px;
@@ -2799,8 +2800,8 @@ input[type=range]::-moz-range-thumb {
   box-shadow: 0 0 6px -1px var(--light, transparent);
   pointer-events: none;
 }
-/* The stage plot draws its bars' cells, as the rule above describes them, on one
-   canvas over the surface (StagePreview.jsx, stage-cells.js). */
+/* The stage plot (StagePreview.jsx) and the Rig plan (PlanEditor.jsx) paint their
+   bars' cells on one canvas over the surface (cell-layer.js, stage-cells.js). */
 .stage-cells-canvas {
   position: absolute;
   inset: 0;
@@ -2808,6 +2809,7 @@ input[type=range]::-moz-range-thumb {
   height: 100%;
   pointer-events: none;
 }
+/* An LED bar's number rides at its centre rather than a lamp above it. */
 .stage-fixture.bar .stage-glow,
 .stage-fixture.bar .stage-lamp {
   top: 50%;
