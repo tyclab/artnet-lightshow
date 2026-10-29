@@ -5,13 +5,13 @@ import { fmtTime, rigLights, stageMode } from '../utils.js';
 import { useDmxFeed } from '../use-dmx.js';
 import { useTimeline } from '../use-timeline.js';
 import { useRehearsalTrack, useRehearsalSampler, useUnitSpace } from '../rehearsal.js';
-import { placeRig, roomRig, hasBeams, lightRGB, STAGE_W, STAGE_D, TRUSS_H } from '../stage3d/world.js';
-import { buildRig, rigSignature } from '../../src/shared/rig.ts';
+import { hasBeams, lightRGB, STAGE_W, STAGE_D, TRUSS_H } from '../stage3d/world.js';
 import { Audition } from './Audition.jsx';
 import { StagePreview } from './StagePreview.jsx';
 import { auditionSig, setAudition, useAuditionSampler } from '../audition.js';
 import { StageRoomPanel } from './StageRoomPanel.jsx';
 import { scenePool } from '../stage3d/scene-pool.js';
+import { keptRig } from '../stage3d/kept-rig.js';
 import { knownRoom, loadRoom } from '../stage-room.js';
 
 const VIEWS = [
@@ -28,19 +28,6 @@ const readHaze = () => {
     return 60;
   }
 };
-
-// The rig and its placement last built, kept with the pooled scene: a return to
-// the view with the patch and the room unchanged hands the scene the placement
-// it already shows, and it builds nothing (scene.js setRig).
-const kept = { rig: { deps: null }, placed: { deps: null } };
-function keep(slot, deps, make) {
-  const held = kept[slot];
-  if (!held.deps || deps.some((value, i) => !Object.is(value, held.deps[i]))) {
-    held.value = make();
-    held.deps = deps;
-  }
-  return held.value;
-}
 
 /** `compact`: the stage alone, for the Show view — the room loads here, its panel and the notes stay in Stage. */
 export function StageView({ compact = false } = {}) {
@@ -77,10 +64,7 @@ export function StageView({ compact = false } = {}) {
   useRehearsalTrack(s.autoShow);
   useDmxFeed(!rehearsing && !auditioning);
 
-  // A profile refresh can change cells without changing its ID or the fixtures.
-  const signature = rigSignature(fixtures);
-  const rig = keep('rig', [signature, profiles], () => buildRig(fixtures, (f) => profiles[f.profileId] || null));
-  const placed = keep('placed', [rig, room, fixtures, profiles], () => (room ? roomRig(fixtures, rig, room, profiles) : placeRig(fixtures, profiles, rig)));
+  const { rig, placed } = keptRig(fixtures, profiles, room);
   const space = useUnitSpace(rig, [rig], room);
   const sample = useRehearsalSampler(data, space, rehearsing && format === '3d');
   const auditionSample = useAuditionSampler(space, auditioning && format === '3d');
