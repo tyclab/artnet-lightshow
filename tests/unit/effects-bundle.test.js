@@ -14,6 +14,7 @@ import { registerKind, requiresAcknowledgement, validateSpec } from '../../src/s
 import { renderEffect } from '../../src/shared/effects/render.ts';
 import { EffectStepper } from '../../src/shared/effects/stepper.ts';
 import { HD_MASTER_DEFAULTS } from '../../src/shared/effects/types.ts';
+import { HD_DEFAULTS } from '../../src/shared/effects/hd.ts';
 import { seedFrom } from '../../src/shared/effects/hash.ts';
 import { buildRoom } from '../../src/shared/room.ts';
 import { resolveDetectors } from '../../src/server/audio-features.ts';
@@ -178,4 +179,16 @@ test("over-deep nesting exposes no playing leaves", () => {
   let deep = paintSpec(1);
   for (let i = 0; i <= MAX_NEST_DEPTH; i++) deep = { kind: 'macro', params: { steps: [{ effect: deep, beats: 1 }], loopBeats: 1 } };
   assert.deepEqual(playingLeaves(deep, 0.5, 0, IDS), []);
+});
+
+test("an HD clip's gaps stay the pad's own black and carry their background field", () => {
+  const kind = 'hd.twinkle';
+  const gap = { kind, params: { ...HD_DEFAULTS[kind].params, probability: 0, trigger: { ...HD_DEFAULTS[kind].params.trigger, mode: 'timeline' } } };
+  const table = { revision: 0, lanes: [lane('shared:0')], clips: [clip('gap', 'shared:0', gap, 0, 4)] };
+  const [out] = draw(bundle(false, table), [1]);
+  for (const slot of out) {
+    assert.equal(slot.strength, 1, 'the gap is owned black, never the look beneath the pad');
+    assert.equal(slot.level, 0);
+    assert.ok(slot.background, 'the field rides along so a Fixed background can fill the gap');
+  }
 });

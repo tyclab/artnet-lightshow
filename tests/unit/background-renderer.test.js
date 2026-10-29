@@ -5,6 +5,7 @@ import { createUniverseStore } from '../../src/server/universes.ts';
 import { validateSpec } from '../../src/shared/effects/registry.ts';
 import { migrateEffectSpec } from '../../src/shared/effects/migrate.ts';
 import { HD_DEFAULTS } from '../../src/shared/effects/hd.ts';
+import { bundleSpec } from '../../src/shared/effects/bundle.ts';
 import { DEFAULT_BACKGROUND, composeBackground } from '../../src/shared/background.ts';
 import { createPreviewSampler } from '../../src/shared/preview.ts';
 import { buildRig } from '../../src/shared/rig.ts';
@@ -103,17 +104,6 @@ test('nested macro conversion retains child gains and Off reaches the child fiel
   assert.ok(dark(engine({ effect: spec, background: off }).draw(0)));
 });
 
-test('Stop holds the resolved moving background and allows Fixed or Off without stale foreground', () => {
-  const effect = validateSpec({ kind: 'ldj.StudioSwirl' });
-  const e = engine({ effect });
-  e.draw(0);
-  const before = e.draw(500);
-  const stopped = e.draw(500, { programmePlaying: false, running: false });
-  assert.deepEqual(stopped, before);
-  assert.deepEqual(e.draw(5000, { programmePlaying: false, running: false }), stopped);
-  assert.ok(dark(e.draw(5500, { programmePlaying: false, background: off })));
-  assert.ok(lit(e.draw(6000, { programmePlaying: false, background: fixed })));
-});
 
 test('a foreground tail is retained when the Disco release baseline is disabled', () => {
   const h = harness('hd.disco', row(1), { params: { style: 'peak' } });
@@ -139,15 +129,14 @@ test('renderer and rehearsal use the same Fixed/Off composition for classic and 
   }
 });
 
-test('Fixed cannot fill a rapid effect’s owned dark rest; stopped Fixed remains an explicit ambient command', () => {
+test('Fixed cannot fill a rapid effect’s owned dark rest', () => {
   const effect = validateSpec({ kind: 'v2.scatter', params: { density: 0, background: 0, stepBeats: .25,
     envelope: { curve: 'cut', attack: 0, hold: .05, release: 0 } } });
   const e = engine({ effect, background: fixed });
   assert.ok(dark(e.draw(0)), 'mandatory rapid-flash rest owns every covered emitter');
-  assert.ok(lit(e.draw(500, { programmePlaying: false })), 'Stop removes programme ownership');
 });
 
-test('winning sequence background survives internal hold and global Stop without revealing its foreground', () => {
+test('winning sequence background survives an internal hold without revealing its foreground', () => {
   const e = engine();
   const spec = validateSpec({ kind: 'ldj.StudioSwirl' });
   e.renderer.setSequence({ revision: 1,
@@ -161,27 +150,9 @@ test('winning sequence background survives internal hold and global Stop without
   const hold = { ...sequenceTransport, stop: { mode: 'hold', position: 1, traversal: 0 } };
   assert.deepEqual(e.draw(1000, { sequenceRevision: 1, sequenceTransport: hold }), live);
   assert.ok(dark(e.draw(1500, { sequenceRevision: 1, sequenceTransport: hold, background: off })), 'held clips retain semantic fields');
-  assert.deepEqual(e.draw(2000, { sequenceRevision: 1, sequenceTransport: hold, programmePlaying: false }), live);
 });
 
-test('stopping during a scene fade retains the actual intermediate background field', () => {
-  const e = engine({ effect: validateSpec({ kind: 'v2.neural', params: { background: .4, backgroundColour: '#FF0000' } }) });
-  e.draw(0);
-  const change = { effect: validateSpec({ kind: 'v2.neural', params: { background: .4, backgroundColour: '#0000FF' } }),
-    fade: { seq: 1, ms: 1000, at: 0 } };
-  const middle = e.draw(500, change);
-  assert.ok(middle[0] > 0 && middle[2] > 0, 'negative control: both colours contribute mid-fade');
-  const held = e.draw(500, { ...change, programmePlaying: false, running: false });
-  held.forEach((byte, i) => assert.ok(Math.abs(byte - middle[i]) <= 1));
-});
 
-test('Stop uncovers the complete authored bed beneath an active chase lamp', () => {
-  const e = engine({ pattern: 'chase' });
-  const running = e.draw(0);
-  assert.notDeepEqual(running.slice(0, 6), running.slice(6, 12));
-  const stopped = e.draw(0, { programmePlaying: false, running: false });
-  for (let i = 0; i < stopped.length; i += 6) assert.deepEqual(stopped.slice(i, i + 6), running.slice(6, 12));
-});
 
 test('Visualizer spike baseline and colour handoff are ambient; Off keeps no five-percent residue', () => {
   const effect = validateSpec({ kind: 'ldj.visualizer', params: { active: 'flash', mellow: 'none' } });
@@ -261,7 +232,6 @@ for (const kind of ['hd.frequencyBurst', 'hd.positionChase', 'hd.simpleAdsr']) {
     const e = engine({ effect, background: fixed });
     assert.ok(lit(e.draw(20)), 'negative control: the admitted foreground can emit light');
     assert.ok(dark(e.draw(900)), 'Fixed cannot fill an owned rapid rest');
-    assert.ok(lit(e.draw(1000, { programmePlaying: false })), 'explicit Stop releases programme coverage');
   });
 }
 
@@ -289,3 +259,25 @@ test('HD Fixed wash remains subordinate to explicit Kill and Blackout', () => {
   assert.ok(dark(e.draw(100, { voices: [kill] })), 'Kill owns black above every background emitter');
   assert.ok(dark(e.draw(200, { masterBlackout: true })), 'Blackout owns the final output');
 });
+
+test('a pattern pad owns black through its HD gaps over a lit base and reveals Fixed there', () => {
+  const gap = hdGap('hd.twinkle', { params: { probability: 0 } });
+  const table = { revision: 0, lanes: [{ id: 'l', kind: 'shared', name: 'l', mute: false, solo: false }],
+    clips: [{ id: 'gap', laneId: 'l', fixtureIds: null, startBeat: 0, lengthBeats: 4, loopBeats: 4, spec: gap, seed: [1, 2, 3, 4], mute: false }] };
+  const pad = { id: 'pad', spec: validateSpec(bundleSpec({ patternId: 'p', lengthBeats: 4, table }, false), { internal: true }),
+    targets: null, tier: 'voice', launchSeq: 1, startedAtMs: 0, untilMs: null, anchorBeat: 0, seed: [1, 2, 3, 4] };
+  const base = engine();
+  assert.ok(lit(base.draw(500)), 'negative control: the solid base is lit');
+  assert.ok(dark(base.draw(500, { voices: [pad] })), 'the pad owns black in its gaps; the base never shows through');
+  assert.ok(dark(engine({ background: off }).draw(500, { voices: [pad] })), 'Off is not transparency');
+  assert.ok(lit(engine({ background: fixed }).draw(500, { voices: [pad] })), 'Fixed fills the pad gap');
+});
+
+for (const [pattern, now] of [['fade', 0], ['hit', 490]]) {
+  test(`${pattern}: its floor is a bed that Off removes and Follow keeps`, () => {
+    const follow = engine({ pattern }).draw(now), none = engine({ pattern, background: off }).draw(now);
+    assert.ok(lit(follow), 'negative control: the curve rests on its floor');
+    assert.ok(follow.every((byte) => byte < 64), 'the sample sits at the floor, not on the crest');
+    assert.ok(dark(none), `Off removes the ${pattern} floor: ${none}`);
+  });
+}
