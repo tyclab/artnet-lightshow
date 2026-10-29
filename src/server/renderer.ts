@@ -78,7 +78,6 @@ export interface SyncTestRequest {
 
 export interface RenderInput {
   background?: BackgroundSettings;
-  programmePlaying?: boolean;
   hardware?: HardwareSettings;
   running: boolean;
   pattern: string;
@@ -336,7 +335,6 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
   const seqLight: (UnitLight | null)[] = [];
   const baseBackground: (BackgroundField | undefined)[] = [];
   const seqBackground: (BackgroundField | undefined)[] = [];
-  const lastBackground: (BackgroundField | undefined)[] = [];
   const shownBackground: (BackgroundField | undefined)[] = [];
   let fadeBackground: (BackgroundField | undefined)[] = [];
   const seqKind: (string | null)[] = [];
@@ -572,7 +570,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     seqLight.length = count;
     while (seqKind.length < count) seqKind.push(null);
     seqKind.length = count;
-    baseBackground.length = seqBackground.length = lastBackground.length = shownBackground.length = count;
+    baseBackground.length = seqBackground.length = shownBackground.length = count;
   }
 
   function setUnitColor(u: number, color: Colour, dim: number, strobe: number, background?: BackgroundField): void {
@@ -801,16 +799,12 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     shownBackground[u] = fade ? blendBackground(fadeBackground[u], baseBackground[u], fadeT) : baseBackground[u];
     const clip = seqUnits ? seqLight[u] : null;
     const selected = clip && !unchanged ? composeBackground(clip, clip.dim / 255, seqBackground[u], input?.background) : null;
-    const stopped = input?.programmePlaying === false;
-    if (!stopped) lastBackground[u] = clip ? seqBackground[u] : shownBackground[u];
-    const resting = stopped ? composeBackground(raw, 0, lastBackground[u], input?.background, true) : null;
-    const below = resting ? { ...resting.colour, dim: resting.level * 255, strobe: 0 }
-      : pixel ? { ...pixel, dim: 255, strobe: 0 } : selected ? { ...selected.colour, dim: selected.level * 255, strobe: clip!.strobe } : clip ?? layer;
+    const below = pixel ? { ...pixel, dim: 255, strobe: 0 } : selected ? { ...selected.colour, dim: selected.level * 255, strobe: clip!.strobe } : clip ?? layer;
 
     let col: Colour; let dim: number; let strobe: number;
     if (energy) {
       col = energy.col; dim = energy.dim; strobe = energy.strobe;
-    } else if (!stopped && fix.override && (fix.override.enabled || fix.override.blackout)) {
+    } else if (fix.override && (fix.override.enabled || fix.override.blackout)) {
       const ov = fix.override;
       if (ov.blackout) {
         col = { r: 0, g: 0, b: 0, w: 0, a: 0, uv: 0 }; dim = 0; strobe = 0;
@@ -825,8 +819,8 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     }
 
     const pinned = fix.override && fix.override.enabled;
-    if (!stopped && !pixel && !energy && !pinned && !ridesLevel(clip ? seqKind[u] : baseKind[u])) dim *= expression.level;
-    if (!stopped && !pixel && target?.level === 0 && !energy && !pinned) dim = 0;
+    if (!pixel && !energy && !pinned && !ridesLevel(clip ? seqKind[u] : baseKind[u])) dim *= expression.level;
+    if (!pixel && target?.level === 0 && !energy && !pinned) dim = 0;
     return { col, dim, strobe };
   }
 
@@ -838,7 +832,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
   function strobeRequest(input: RenderInput, energy: EnergyLook | null, strobe: number, clip = false): StrobeRequest | null {
     // Force standard strobe for energies and clips so they cannot inherit a prior ramp or break function.
     const own = !!energy || clip;
-    let raw = own ? strobe : (input.programmePlaying === false ? 0 : input.pattern === 'strobe' ? input.strobeSpeed : strobe);
+    let raw = own ? strobe : (input.pattern === 'strobe' ? input.strobeSpeed : strobe);
     if (!(raw > 0)) return null;
     if (input.flashLimit && !capabilities.length) raw = Math.min(raw, FLASH_LIMIT_STROBE);
     return { raw, fnId: own ? 'standard' : input.strobeFunction,
@@ -1053,7 +1047,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     const pixelOwners: (string | null)[] = new Array(rigNow.units.length).fill(null);
     // The room picture paints units without a live pixel stream, below voices and overrides.
     // Both come from a screen: their bytes are lifted off the black point, decoded first when asked.
-    const art = input.programmePlaying !== false && input.safety.acknowledged && input.picture && now < input.picture.expiresAt
+    const art = input.safety.acknowledged && input.picture && now < input.picture.expiresAt
       && input.picture.data instanceof Uint8Array && input.picture.data.length === rigNow.units.length * 3 ? input.picture : null;
     const { levels, gains } = liftFor(input);
     const watch = !!voiceTop || baseKinds || seqUnits;
@@ -1063,7 +1057,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       const overridden = !!fix.override && (fix.override.enabled || fix.override.blackout);
       const lights: LightValue[] = [];
       const profile = profileOf(fix), stream = pixels.get(fix.id);
-      const pixel = input.programmePlaying !== false && stream && profile.grid?.columns === stream.width && profile.grid.rows === stream.height
+      const pixel = stream && profile.grid?.columns === stream.width && profile.grid.rows === stream.height
         && profile.cells?.length === stream.width * stream.height ? stream : null;
       const painted = art && !pixel ? art : null;
       const hueGraded = !!painted && !!input.pictureGrade?.enabled && hueLamp(fix);
