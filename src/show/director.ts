@@ -357,6 +357,7 @@ class ShowDirector {
       intent.pixelPattern = null; intent.panelPattern = null; intent.pixelMap = 'stage'; intent.split = null;
       intent.strobeSpeed = 0;
       intent.pixelSpan = null; intent.pixelFrom = null;
+      if (pattern === 'v2.fallingWall') intent.pixelSpan = look.fillBeats(pattern);
       if (pattern === 'v2.risingWall') {
         const start = build?.t ?? section?.start, end = build ? endOf(build) : section?.end;
         if (start !== undefined && end !== undefined && end > start) {

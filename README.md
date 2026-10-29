@@ -342,10 +342,12 @@ flowchart LR
 
 Rising Wall fills from the floor with build-section progress. Falling Wall releases
 that fill from ceiling to floor over one bar before a drop detonates into a shockwave,
-fireworks or colliding orbs. The automatic director and default pads use these
-spatial looks. Strobe overlays select all lights, steps, scattered segments or zones
-over the underlying look. Popcorn is absent from the chooser; its old ids resolve
-to Scatter Fade so saved sequences still load.
+fireworks or colliding orbs. The shows schedule each wall once; picked as a look or
+from a pad, Rising Wall starts again every four bars without section progress and
+Falling Wall releases again on every bar line. The automatic director and default
+pads use these spatial looks. Strobe overlays select all lights, steps, scattered
+segments or zones over the underlying look. Popcorn is absent from the chooser; its
+old ids resolve to Scatter Fade so saved sequences still load.
 Automatic shows admit particle looks after sampling their paths against the current
 room geometry: two cycles with a fixed seed, every eighth beat, with no sampled
 all-dark gap longer than one bar. This is a geometric coverage policy, not a

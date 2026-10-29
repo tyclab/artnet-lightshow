@@ -1,4 +1,4 @@
-import { automaticPattern, pickPattern, burstFor, goldenStep } from './look.ts';
+import { automaticPattern, fillBeats, pickPattern, burstFor, goldenStep } from './look.ts';
 import { messageOf } from '../errors.ts';
 import type { Character } from './look.ts';
 import type { LiveEvent, LiveReading } from '../live-input.ts';
@@ -242,7 +242,7 @@ class LiveDirector {
         this._building = true;
         if (this._available.has('v2.risingWall')) {
           this._look = { ...this._look, pattern: 'v2.risingWall', beatDivision: 2, pixelPattern: null, panelPattern: null,
-            pixelMap: 'stage', pixelSpan: null, pixelFrom: null, split: null };
+            pixelMap: 'stage', pixelSpan: fillBeats('v2.risingWall'), pixelFrom: null, split: null };
           this._apply(this._look);
         } else this._apply({ beatDivision: 2 });
         break;

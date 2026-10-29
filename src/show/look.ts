@@ -129,6 +129,11 @@ const PARTICLE_PATHS = new Set(V2_PRESETS.filter((p) => p.spec.kind === 'v2.part
 
 // Particle eligibility comes from sampled room coverage, independently of fixture count or pixel capability.
 export const automaticPattern = (id: string, particles?: ReadonlySet<string>): boolean => !INPUT_ONLY.has(id) && (!PARTICLE_PATHS.has(id) || !!particles?.has(id));
+// A show plays a wall once over its own length by scheduling that span; picked by hand it repeats.
+export const fillBeats = (id: string): number | null => {
+  const spec = V2_PRESETS.find((p) => p.id === id)?.spec;
+  return spec?.kind === 'v2.sweep' && spec.params.profile === 'fill' ? Number(spec.params.lengthBeats) : null;
+};
 export const SPATIAL_AUTO_PATTERNS = V2_PRESETS.filter((p) => !p.id.endsWith('.2d') && !INPUT_ONLY.has(p.id) && !requiresAcknowledgement(p.spec))
   .map(({ id, name, desc }) => ({ id, name, desc }));
 for (const id of [...RHYTHMIC]) for (const spatial of SPATIAL_MATCH[id] ?? []) RHYTHMIC.add(spatial);
