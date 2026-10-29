@@ -387,7 +387,7 @@ explicit background has its own colour, independent of colour A. Rotation blends
 its sector boundaries, including the emitter's size, to avoid a hard wall-wide
 colour jump.
 
-The **Background** card separates ambient light from the effect. **Follow effect**
+The **Background** card, in the Show and Effects views, separates ambient light from the effect. **Follow effect**
 uses the effect's authored background colours and movement; **Fixed colour** replaces
 that field with your RGB, white, amber and UV values; **Off** removes its contribution.
 The background level is independent of the effect editor's foreground brightness.

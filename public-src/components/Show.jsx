@@ -2,6 +2,7 @@ import { StrobesOff } from './Photosensitivity.jsx';
 import { StageView } from './StageView.jsx';
 import { Effects } from './Effects.jsx';
 import { Colors } from './Colors.jsx';
+import { Background } from './Background.jsx';
 
 /**
  * The view the app opens on: the room as the rig paints it and the looks to
@@ -15,7 +16,7 @@ export function Show() {
       <StrobesOff perform />
       <div class="show-body">
         <div class="show-room"><StageView compact /></div>
-        <div class="show-looks"><Effects /><Colors /></div>
+        <div class="show-looks"><Effects /><Colors /><Background /></div>
       </div>
     </div>
   );
