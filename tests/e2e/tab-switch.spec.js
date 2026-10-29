@@ -17,6 +17,28 @@ function countContexts() {
   });
 }
 
+// Every shader program the page links, by the material three.js names in its source.
+function countPrograms() {
+  window.programLinks = [];
+  for (const Context of [window.WebGL2RenderingContext, window.WebGLRenderingContext]) {
+    if (!Context) continue;
+    const { shaderSource, attachShader, linkProgram } = Context.prototype;
+    const named = new WeakMap();
+    Context.prototype.shaderSource = function (shader, source) {
+      named.set(shader, (/#define SHADER_(?:TYPE|NAME) (\S+)/.exec(source) || [])[1]);
+      return shaderSource.call(this, shader, source);
+    };
+    Context.prototype.attachShader = function (program, shader) {
+      named.set(program, named.get(shader));
+      return attachShader.call(this, program, shader);
+    };
+    Context.prototype.linkProgram = function (program) {
+      window.programLinks.push(named.get(program));
+      return linkProgram.call(this, program);
+    };
+  }
+}
+
 /** Red and green pixels on the stage plot's cell layer. */
 const cellPixels = (page) => page.locator('canvas.stage-cells-canvas').evaluate((canvas) => {
   const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
@@ -138,5 +160,51 @@ test('the Rig plan paints bar cells on one canvas from the live feed, reading no
   } finally {
     await remove();
     await restore(request, before);
+  }
+});
+
+test('a return to Show keeps the room the scene built: nothing is rebuilt or compiled again', async ({ page, request }) => {
+  test.setTimeout(60_000);
+  await page.addInitScript(countPrograms);
+  const fixture = (await state(request)).fixtures[0];
+  const roomOf = async () => (await request.get('/api/stage/room')).json();
+  const replace = async (next) => {
+    const { revision } = await roomOf();
+    const result = next ? await request.put('/api/stage/room', { headers: { 'If-Match': revision }, data: next })
+      : await request.delete('/api/stage/room', { headers: { 'If-Match': revision } });
+    expect(result.ok()).toBe(true);
+  };
+  // A wall, and a lamp shade lit by its binding: plain and lit materials, as a scanned room has.
+  await replace({
+    version: 1, name: 'Switch room', bounds: { width: 6, depth: 4, height: 2.5 },
+    rooms: [{ id: 'floor', label: 'Floor', polygon: [[-3, -2], [3, -2], [3, 2], [-3, 2]] }],
+    objects: [
+      { id: 'wall', kind: 'box', role: 'wall', position: { x: -2.9, y: 1.25, z: 0 }, size: { x: 0.2, y: 2.5, z: 4 } },
+      { id: 'shade', kind: 'box', role: 'furniture', position: { x: 0, y: 1, z: 0 }, size: { x: 0.4, y: 0.4, z: 0.4 }, lightBindingId: 'lamp' },
+    ],
+    bindings: [{ id: 'lamp', fixtureId: fixture.id, position: { x: 0, y: 1.2, z: 0 }, confidence: 'estimated' }],
+  });
+  const rooms = [];
+  page.on('response', (response) => { if (new URL(response.url()).pathname === '/api/stage/room') rooms.push(response.status()); });
+  try {
+    await open(page, 'show');
+    await expect(page.getByRole('img', { name: /The rig in 3D/ })).toBeVisible();
+    // Settled: the room and the rig are drawn, every material linked once.
+    await expect.poll(() => page.evaluate(() => window.programLinks.filter((name) => name === 'MeshLambertMaterial').length)).toBe(1);
+    await page.waitForTimeout(500);
+    const linked = await page.evaluate(() => window.programLinks.length);
+    for (let round = 0; round < 3; round++) {
+      await page.locator('#tab-effects').click();
+      await expect(page.getByRole('group', { name: 'Stage layout, viewed from the audience' })).toBeVisible();
+      await page.locator('#tab-show').click();
+      await expect(page.getByRole('img', { name: /The rig in 3D/ })).toBeVisible();
+      await page.waitForTimeout(500);
+    }
+    expect(await page.evaluate((from) => window.programLinks.slice(from), linked)).toEqual([]);
+    // Each view still asks whether the room changed; the server answers that it has not.
+    expect(rooms.length).toBeGreaterThan(3);
+    expect(rooms.slice(1).every((status) => status === 304)).toBe(true);
+  } finally {
+    await replace(null);
   }
 });

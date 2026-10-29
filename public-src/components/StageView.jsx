@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { effect } from '@preact/signals';
-import { api, pick, connectedSig, dmxSig, field, pictureImageSig, stagePreviewSig } from '../state.js';
+import { pick, connectedSig, dmxSig, field, pictureImageSig, stagePreviewSig } from '../state.js';
 import { fmtTime, rigLights, stageMode } from '../utils.js';
 import { useDmxFeed } from '../use-dmx.js';
 import { useTimeline } from '../use-timeline.js';
@@ -12,6 +12,7 @@ import { StagePreview } from './StagePreview.jsx';
 import { auditionSig, setAudition, useAuditionSampler } from '../audition.js';
 import { StageRoomPanel } from './StageRoomPanel.jsx';
 import { scenePool } from '../stage3d/scene-pool.js';
+import { knownRoom, loadRoom } from '../stage-room.js';
 
 const VIEWS = [
   { id: 'audience', label: 'Audience' },
@@ -27,6 +28,19 @@ const readHaze = () => {
     return 60;
   }
 };
+
+// The rig and its placement last built, kept with the pooled scene: a return to
+// the view with the patch and the room unchanged hands the scene the placement
+// it already shows, and it builds nothing (scene.js setRig).
+const kept = { rig: { deps: null }, placed: { deps: null } };
+function keep(slot, deps, make) {
+  const held = kept[slot];
+  if (!held.deps || deps.some((value, i) => !Object.is(value, held.deps[i]))) {
+    held.value = make();
+    held.deps = deps;
+  }
+  return held.value;
+}
 
 /** `compact`: the stage alone, for the Show view — the room loads here, its panel and the notes stay in Stage. */
 export function StageView({ compact = false } = {}) {
@@ -45,7 +59,7 @@ export function StageView({ compact = false } = {}) {
   const [status, setStatus] = useState('loading');   // loading | ready | nowebgl | error
   const [view, setView] = useState('audience');
   const [haze, setHaze] = useState(readHaze);
-  const [roomState, setRoomState] = useState({ room: null, revision: null });
+  const [roomState, setRoomState] = useState(() => knownRoom() || { room: null, revision: null });
   const [cutaway, setCutaway] = useState(true);
   const room = roomState.room;
   const host = useRef(null);
@@ -57,7 +71,7 @@ export function StageView({ compact = false } = {}) {
   useEffect(() => {
     if (!compact) return undefined;
     let live = true;
-    api('/api/stage/room').then((result) => { if (live && result.ok) setRoomState(result); });
+    loadRoom().then((result) => { if (live && result.ok) setRoomState(result); });
     return () => { live = false; };
   }, [compact]);
   useRehearsalTrack(s.autoShow);
@@ -65,8 +79,8 @@ export function StageView({ compact = false } = {}) {
 
   // A profile refresh can change cells without changing its ID or the fixtures.
   const signature = rigSignature(fixtures);
-  const rig = useMemo(() => buildRig(fixtures, (f) => profiles[f.profileId] || null), [signature, profiles]);
-  const placed = useMemo(() => room ? roomRig(fixtures, rig, room, profiles) : placeRig(fixtures, profiles, rig), [rig, room, fixtures, profiles]);
+  const rig = keep('rig', [signature, profiles], () => buildRig(fixtures, (f) => profiles[f.profileId] || null));
+  const placed = keep('placed', [rig, room, fixtures, profiles], () => (room ? roomRig(fixtures, rig, room, profiles) : placeRig(fixtures, profiles, rig)));
   const space = useUnitSpace(rig, [rig], room);
   const sample = useRehearsalSampler(data, space, rehearsing && format === '3d');
   const auditionSample = useAuditionSampler(space, auditioning && format === '3d');
