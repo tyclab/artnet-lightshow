@@ -11,7 +11,7 @@ import type { AudioFrame } from './audio-frame.ts';
 import type { EffectKindDef, Seed } from './types.ts';
 import { paletteBinding } from './palette.ts';
 import type { PaletteAccess, PaletteBinding } from './palette.ts';
-import { requiresAcknowledgement } from './registry.ts';
+import { strobeRests } from './registry.ts';
 
 export const LDJ_FRAME_MS = 1000 / 22;
 export type LdjEnvelope = { kind: 'instant' } | { kind: 'fade'; beats: number; baseline?: number }
@@ -407,6 +407,8 @@ export interface LdjCtx {
 }
 export interface LdjRow {
   cadence: number | 'wall:50'; channels?: LdjChannels; rapidFlash?: boolean; beats?: number;
+  /** Every lamp always holds a foreground or a bed (backlit rows, whole-room fills): no gap to reveal. */
+  gapless?: boolean;
   step(ctx: LdjCtx): void;
   /** A variable wall schedule starts at launch and adds each delay to its last deadline. */
   nextDelayMs?(ctx: LdjCtx): number;
@@ -424,6 +426,7 @@ export function makeLdjKind(name: string, row: LdjRow): EffectKindDef<LdjParams,
     kind: `ldj.${name}`, level: 'lamp', app: 'ldj', schema: paramsSchema,
     defaults: { params: { cadence: typeof row.cadence === 'number' ? row.cadence : 1, beats: row.beats ?? 32 } },
     rapidFlash: row.rapidFlash, stateful: true, rollOf: (state) => state.roll,
+    gapsApply: (_params, spec) => !row.gapless && !strobeRests(spec),
     ...(row.cadence === 'wall:50' ? { wallClock: true } : {}),
     rapidFlashWhen: (params) => row.cadence === 'wall:50' || (!row.nextDelayMs && params.cadence <= .25),
     init: (_params, room) => ({ lamps: new LdjLamps(room.n), lastIter: null, lastPick: null, recent: [], perm: null, roll: 0, scratch: {} }),
@@ -509,7 +512,7 @@ export function makeLdjKind(name: string, row: LdjRow): EffectKindDef<LdjParams,
       // A Hue lamp in pulse mode takes a row's marked hard flashes as the
       // strobe's pulse; everything else, and every other lamp, as drawn.
       // A rapid row's rests are strobe rests: never revealed.
-      const pulse = frame.hueStrobe === 'pulse', reveal = frame.revealGaps === true && !requiresAcknowledgement(frame.spec);
+      const pulse = frame.hueStrobe === 'pulse', reveal = frame.revealGaps === true && !strobeRests(frame.spec);
       for (let i = 0; i < room.n; i++) {
         const lamp = state.lamps.read(i);
         const colour = row.outputColour?.(ctx, i, lamp) ?? lamp.colour;

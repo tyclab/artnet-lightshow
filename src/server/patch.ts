@@ -2,6 +2,7 @@ import { state, getFixture, setDefaultUniverse, latchEnergy, reconcileFreeClock 
 import { beginFade, resolveEffect } from './engine.ts';
 import { conductor } from './conductor.ts';
 import { safety } from './safety.ts';
+import { storedBackground } from '../shared/background.ts';
 import { anchorStep } from '../shared/beat-clock.ts';
 import { parseHex } from '../shared/effects/palette.ts';
 import { energyEffectSpec } from '../shared/effects/catalogue.ts';
@@ -203,7 +204,7 @@ function applyPatch(rawData: unknown, { beforeCommit, origin = 'hand', paletteOv
   if (data.showDynamics !== undefined) {
     state.showDynamics = data.showDynamics === null ? null : { ...state.showDynamics, ...data.showDynamics };
   }
-  if (data.background !== undefined) state.background = structuredClone(data.background);
+  if (data.background !== undefined) state.background = storedBackground(structuredClone(data.background));
   if (data.masterDimmer !== undefined) state.masterDimmer = data.masterDimmer;
   if (data.masterBlackout !== undefined) state.masterBlackout = data.masterBlackout;
   if (data.strobeSpeed !== undefined) state.strobeSpeed = data.strobeSpeed;

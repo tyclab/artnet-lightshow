@@ -10,7 +10,7 @@ import { parseHex, toHex, HEX_COLOUR } from '../../src/shared/palette-model.ts';
 import { FieldInput } from './setup/FieldInput.jsx';
 import { useVoicePads } from '../voice-pad.js';
 import { useSafetyGate } from './Photosensitivity.jsx';
-import { familyGaps, requiresAcknowledgement } from '../../src/shared/effects/registry.ts';
+import { chooseGaps, familyGaps, gapsApply, requiresAcknowledgement } from '../../src/shared/effects/registry.ts';
 
 /**
  * The preset picked in the Effects list, with every setting its family can
@@ -620,16 +620,18 @@ export function Inspector({ id, onSelect, onPlay, onClose, inline = null, onAppl
         <UnitField label="Foreground brightness" path="brightness" value={spec.brightness ?? 1} onChange={(v) => setSpec('brightness', v)} />
         <UnitField label="Authored background level" path="background.level" value={spec.background?.level ?? spec.brightness ?? 1}
           onChange={(v) => setSpec('background', { ...spec.background, version: 1, level: v })} />
-        <SelectField label="Between effect hits" path="background.gaps" value={spec.background?.gaps ?? (spec.kind === 'macro' ? '' : familyGaps(spec.kind))}
-          options={gapOptions(spec.kind)} onChange={(v) => {
-            const { gaps: _gaps, ...rest } = spec.background ?? { version: 1, level: spec.brightness ?? 1 };
-            setSpec('background', v ? { ...rest, gaps: v } : rest);
-          }} />
+        {gapsApply(spec) ? <SelectField label="Between effect hits" path="background.gaps"
+          value={spec.background?.gaps ?? (spec.kind === 'macro' ? '' : familyGaps(spec.kind))}
+          options={gapOptions(spec.kind)} onChange={(v) => setSpec('background', chooseGaps(spec, v))} />
+          : <Field label="Between effect hits" path="background.gaps">
+            <select id={fid('background.gaps')} disabled><option>No gaps to fill</option></select>
+          </Field>}
         <HardwareFit spec={spec} />
       </div>
-      <p class="effect-inspector-desc">Authored background level scales this effect’s own ambient beds. Between its hits, Keep dark leaves
-        the gaps black; Reveal background lets the Background card’s colour into them. Explicit dark cues stay dark. Background Off
-        removes the ambient layer, while effects can still produce light.</p>
+      <p class="effect-inspector-desc">Authored background level scales this effect’s own ambient beds. {gapsApply(spec)
+        ? 'Between its hits, Keep dark leaves the gaps black; Reveal background lets the Background card’s colour into them.'
+        : 'Between effect hits does not apply: this effect’s dark rests are strobe rests or beds, or it plays a continuous field.'} Explicit
+        dark cues stay dark. Background Off removes the ambient layer, while effects can still produce light.</p>
       {!spatial && advancedControls}
       {ask && (
         <div class="insp-ask" role="group" aria-label="Recommended settings">

@@ -73,23 +73,23 @@ export const LDJ_CHANNEL_ROWS: Record<string, LdjRow> = {
     each(ctx, (slot, channel) => ctx.lamps.set(slot, at(ctx, 1, channel), 1, channel === mod(ctx.iter, 4) ? { kind: 'fade', beats: 2 } : INSTANT, 0, channel === mod(ctx.iter, 4) ? undefined : 'background'));
     refreshCount(ctx, mod(ctx.iter, 4));
   } },
-  FillCycle: { cadence: .5, step(ctx) {
+  FillCycle: { cadence: .5, gapless: true, step(ctx) {
     const phase = mod(ctx.iter, 8), p = primary(ctx), s = at(ctx, 0, 1);
     const filling = phase < 4 ? p : s, background = phase < 4 ? s : p;
     each(ctx, (slot, channel) => ctx.lamps.set(slot, channel <= phase % 4 ? filling : background, 1, INSTANT, 0, channel <= phase % 4 ? undefined : 'background', background));
     if (phase % 4 === 0) ctx.refresh(phase);
   } },
-  Split: { cadence: 1, channels: 2, step(ctx) {
+  Split: { cadence: 1, gapless: true, channels: 2, step(ctx) {
     each(ctx, (slot, channel) => ctx.lamps.set(slot, at(ctx, mod(ctx.iter + channel, 2)), 1, INSTANT)); refreshCount(ctx, 2);
   } },
-  Flip: { cadence: 2, step(ctx) {
+  Flip: { cadence: 2, gapless: true, step(ctx) {
     each(ctx, (slot, channel) => {
       const sum = mod(ctx.iter, 4) + channel;
       ctx.lamps.set(slot, at(ctx, sum === 0 || sum === 3 ? 0 : 1), 1, INSTANT);
     });
     refreshCount(ctx, 2);
   } },
-  CrossFade: { cadence: 4, channels: 1, step(ctx) {
+  CrossFade: { cadence: 4, gapless: true, channels: 1, step(ctx) {
     // A rerolled palette changes the destination, never the colour at which
     // the preceding blend was supposed to finish.
     const from = ctx.state.scratch.crossTarget as Colour | undefined ?? at(ctx, mod(ctx.iter, 2));
@@ -97,7 +97,7 @@ export const LDJ_CHANNEL_ROWS: Record<string, LdjRow> = {
     each(ctx, (slot) => blend(ctx, slot, from, to));
     ctx.state.scratch.crossTarget = { ...to }; ctx.refresh(mod(ctx.iter + 1, 2));
   } },
-  Blur: { cadence: 4, step(ctx) {
+  Blur: { cadence: 4, gapless: true, step(ctx) {
     // Four cache keys stay independent even when they share two palette entries.
     // Only the inactive pair is refreshed, so both diagonals meet their endpoints.
     const wells = [0, 1, 2, 3].map((key) => at(ctx, key % 2, key));
@@ -125,7 +125,7 @@ export const LDJ_CHANNEL_ROWS: Record<string, LdjRow> = {
     });
     if (phase === 4 || phase === 12) ctx.refresh(phase === 4 ? 0 : 1);
   } },
-  RotatingHalfs: { cadence: 1, channels: 2, step(ctx) {
+  RotatingHalfs: { cadence: 1, gapless: true, channels: 2, step(ctx) {
     const phase = mod(ctx.iter, 4), channels = ldjChannels(ctx.room, phase % 2 ? 'width' : 'depth');
     each(ctx, (slot) => ctx.lamps.set(slot, at(ctx, channels[slot] === (phase === 0 || phase === 3 ? 1 : 0) ? 1 : 0), 1, INSTANT));
     refreshCount(ctx, 2);
@@ -167,7 +167,7 @@ export const LDJ_CHANNEL_ROWS: Record<string, LdjRow> = {
     if (mod(ctx.iter, 4) === 0) ctx.refresh(0);
   } },
   DoSiDo: { cadence: .5, step: (ctx) => strobeCycle(ctx, true) },
-  Trance: { cadence: 2, channels: 1, step(ctx) {
+  Trance: { cadence: 2, gapless: true, channels: 1, step(ctx) {
     const slow = ctx.n > 20 ? 2 : 1;
     if (mod(ctx.iter, slow)) return;
     all(ctx, at(ctx, mod(Math.floor(ctx.iter / slow), 2), 0)); refreshCount(ctx, 4);
@@ -185,7 +185,7 @@ export const LDJ_CHANNEL_ROWS: Record<string, LdjRow> = {
       ctx.refresh(pick);
     }
   } },
-  America: { cadence: 2, channels: 1, step(ctx) {
+  America: { cadence: 2, gapless: true, channels: 1, step(ctx) {
     const slow = ctx.n > 20 ? 2 : 1;
     if (mod(ctx.iter, slow)) return;
     all(ctx, AMERICA[mod(Math.floor(ctx.iter / slow), 3)]);
@@ -195,7 +195,7 @@ export const LDJ_CHANNEL_ROWS: Record<string, LdjRow> = {
   SMStudioN3Fill: studioFill(4),
   SMStudioN4Fill: studioFill(6),
   SMStudioN5Fill: studioFill(8),
-  MatrixSolid: { cadence: 1, channels: 'colours', step(ctx) {
+  MatrixSolid: { cadence: 1, gapless: true, channels: 'colours', step(ctx) {
     each(ctx, (slot, channel) => ctx.lamps.set(slot, at(ctx, channel), 1, INSTANT));
   } },
   QuickFlash: { cadence: 4, rapidFlash: true, step(ctx) {

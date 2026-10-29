@@ -390,7 +390,7 @@ const ALONG_KINDS = new Set(['hd.positionChase', 'hd.bouncingScan', 'hd.streak']
 const LAMP_KINDS = new Set([...ALONG_KINDS, 'hd.twinkle', 'hd.frequencyBurst']);
 for (const kind of KINDS) registerKind<HdParams, HdState>({
   kind, level: LAMP_KINDS.has(kind) ? 'lamp' : 'cell', app: 'hd', schema: hdSchema, defaults: HD_DEFAULTS[kind], capabilities: HD_CAPABILITIES[kind],
-  rapidFlash: kind === 'hd.frequencyBurst', stateful: true,
+  rapidFlash: kind === 'hd.frequencyBurst', stateful: true, gapsApply: (_params, spec) => kind !== 'hd.frequencyBurst' && !spec.rapidFlash,
   ...(ALONG_KINDS.has(kind) ? { renderCells: (params: HdParams, state: HdState, lamps: LampRoom, frame: EffectFrame, out: EffectSlot[]) =>
     renderHd(kind, params, state, lamps, frame, out, lamps) } : {}),
   init: initHd, render: (params, state, room, frame, out) => renderHd(kind, params, state, room, frame, out),

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { neuralReading } from '../disco.ts';
 import type { NeuralReading } from '../disco.ts';
 import { registerKind } from '../registry.ts';
-import { accentStrobes, azimuthAround, centreOf, distanceTo, farthestCorner, paint, pointIn, positionsOf, triggerLevel, v2CommonSchema } from './common.ts';
+import { accentStrobes, azimuthAround, centreOf, distanceTo, farthestCorner, gapsWithoutFloor, paint, pointIn, positionsOf, triggerLevel, v2CommonSchema } from './common.ts';
 import type { Point, Positions } from './common.ts';
 import type { EffectFrame, EffectSlot } from '../types.ts';
 import type { Room } from '../../room.ts';
@@ -83,7 +83,7 @@ function renderNeural(p: NeuralParams, s: NeuralState, room: Room, f: EffectFram
 }
 
 registerKind<NeuralParams, NeuralState>({
-  kind: 'v2.neural', app: 'own', level: 'cell', schema: neuralSchema,
+  kind: 'v2.neural', app: 'own', level: 'cell', schema: neuralSchema, gapsApply: gapsWithoutFloor,
   defaults: { params: neuralSchema.parse({}), brightness: 1 }, stateful: true,
   rapidFlashWhen: accentStrobes,
   init: () => ({ bands: null, reading: null }),

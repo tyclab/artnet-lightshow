@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { sampleEnvelope } from '../envelope.ts';
 import { registerKind } from '../registry.ts';
-import { accentStrobes, azimuthAround, centreOf, distanceTo, isFlashEnvelope, paint, pointIn, positionsOf, soft, triggerLevel, v2CommonSchema } from './common.ts';
+import { accentStrobes, azimuthAround, centreOf, distanceTo, gapsWithoutFloor, isFlashEnvelope, paint, pointIn, positionsOf, soft, triggerLevel, v2CommonSchema } from './common.ts';
 import type { EffectFrame } from '../types.ts';
 import type { Room } from '../../room.ts';
 import type { Positions } from './common.ts';
@@ -61,7 +61,7 @@ function renderStems(p: ZonesParams, room: Room, pos: Positions, f: EffectFrame,
 }
 
 registerKind<ZonesParams, ReturnType<typeof partitionOf>>({
-  kind: 'v2.zones', app: 'own', level: 'cell', schema: zonesSchema,
+  kind: 'v2.zones', app: 'own', level: 'cell', schema: zonesSchema, gapsApply: gapsWithoutFloor,
   defaults: { params: zonesSchema.parse({}), brightness: 1 },
   rapidFlashWhen: (p) => accentStrobes(p) || (p.stepBeats <= 0.25 && isFlashEnvelope(p.envelope)),
   init: partitionOf,

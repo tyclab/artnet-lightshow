@@ -15,7 +15,7 @@ import { BAND_HZ_MAX, perBinFloorDb, validBand } from '../spectrum-bands.ts';
 import type { AudioFrame } from './audio-frame.ts';
 import { hash01 } from './hash.ts';
 import { parseHex, toHex } from './palette.ts';
-import { registerKind, requiresAcknowledgement } from './registry.ts';
+import { registerKind, strobeRests } from './registry.ts';
 import type { EffectFrame, EffectSlot } from './types.ts';
 
 export type DiscoBand = 'bass' | 'voice' | 'treble';
@@ -568,7 +568,7 @@ function renderDisco(p: DiscoParams, s: DiscoState, room: Room, f: EffectFrame, 
   // Idle washes and releases are beds; when the Disco reveals its gaps, an
   // owned lamp's share that neither its bed nor its level covers takes the
   // Background too.
-  const reveal = f.revealGaps === true && !requiresAcknowledgement(f.spec);
+  const reveal = f.revealGaps === true && !strobeRests(f.spec);
   for (let i = 0; i < room.n; i++) {
     const { background, ...light } = sample(s.lamps[i], s.now);
     const owned = s.lamps[i].commanded || !s.layout.grouped[i];
@@ -585,5 +585,6 @@ registerKind<DiscoParams, DiscoState>({
   kind: 'hd.disco', level: 'lamp', app: 'hd', schema: discoSchema, defaults: { params: DISCO_DEFAULTS, brightness: 1 }, stateful: true,
   // The automatic strobe's five-a-second limit is the instance's own (lastFlash), where the style can flash at all.
   pacesOwnFlashes: (p) => (p.style === 'spectrum' && !!p.allowStrobe) || (p.style === 'peak' && !!p.channels?.[3]?.strobeOn),
+  gapsApply: (_params, spec) => !strobeRests(spec),
   init: initDisco, render: renderDisco,
 });

@@ -393,10 +393,11 @@ that field with your RGB, white, amber and UV values; **Off** removes its contri
 The background level is independent of the effect editor's foreground brightness.
 Effects without an ambient field stay dark between their notes in Follow mode.
 Wash, Breathe, Fire and continuous gradients remain effect content. Required dark
-rests stay dark even with a Fixed background. Fixed fills the gaps of the classic
-patterns, the V2 generators and the HD effects; the LDJ, Disco and bitmap families
-keep their authored rests dark, so a Fixed colour shows there only where they
-author an ambient field. An effect changes this with **Between effect hits**, below.
+rests stay dark even with a Fixed background. Fixed replaces the beds of the
+classic patterns and fills the gaps of the V2 generators and the HD effects; the
+LDJ, Disco and bitmap families keep their authored rests dark, so a Fixed colour
+shows there only where they author an ambient field. An effect changes this with
+**Between effect hits**, below.
 
 **Fixtures** chooses what the card reaches: **Whole rig** (the default), **Wash
 fixtures** or **Selected fixtures…**, ticked from the patch. Wash fixtures are the
@@ -406,7 +407,9 @@ the bars. There is no wash role to assign; the auto show's split wash is a separ
 setting. Fixtures outside the scope keep the effect's own background, as Follow
 effect at 100 % leaves it. Overrides, a fixture's blackout, Kill and the master
 blackout win inside the scope as everywhere, and the rehearsal preview applies the
-same scope as the rig.
+same scope as the rig. Selected fixtures are stored by fixture id, which belongs to
+one patch: a cue recalled with **Restore saved background on recall** under another
+patch reaches whichever fixtures carry those ids there; the card shows how many.
 
 **Between effect hits**, beside **Authored background level** in the effect editor,
 decides what a Fixed colour does where an effect is dark. Each dark or partly dark
@@ -423,23 +426,32 @@ pixel is one of three things:
   fades without a baseline, the unlit share of a Disco lamp it owns, a bitmap's black
   background. **Keep dark** leaves the gap the effect's own black; **Reveal
   background** lets the Fixed colour into it, in proportion to the uncovered share.
-  Follow and Off put nothing there under either setting.
+  Follow and Off put nothing there under either setting, on every profile, a
+  dimmer-only lamp included. A wave's trough or a dark sector of a rotation is not
+  a gap: the LDJ continuous fields (waves, rotations, noise) and Studio publish
+  none, so Reveal changes nothing there.
 - An **explicit dark cue**: black the effect authors, dark under both settings and
   in every mode. The rests of an effect that needs the photosensitivity
   acknowledgement (one marked Rapid flash, and kinds that always flash fast:
   Frequency Burst, the LDJ matrix and visualizer rows, rows at a quarter beat or
-  faster, a fast-scrolling bitmap), a foreground drawn black at full opacity (a black
-  palette entry, the Blackout scene), and the strobe and energy effects, which author
-  no background.
+  faster, a fast-scrolling bitmap) or paces an automatic strobe of its own (a Disco
+  with its strobe on), a foreground drawn black at full opacity (a black palette
+  entry, the Blackout scene), and the strobe and energy effects, which author no
+  background.
 
 A gap stays owned: a pattern pad's or a sequence clip's gap is its own black, never
 the look beneath. An effect that chooses nothing plays its family's default, which is
 how each family played before the setting: **Reveal background** for the V2
 generators and the HD effects, **Keep dark** for the LDJ, Disco and bitmap families.
-Classic patterns have no editor and play as before: Fixed replaces their beds, and
-the rests of those that author none (the flash, ramp and scatter patterns, sparkle,
-confetti, fire) stay dark. A macro's choice reaches the steps that make none; a
-step's own choice wins.
+Picking the default stores no choice. A macro's choice reaches the steps that make
+none; a step's own choice wins. The editor offers the choice only where it can change
+the output; elsewhere it reads **No gaps to fill**: the strobe and energy effects,
+effects whose rests are strobe rests, the backlit and whole-room LDJ rows, Studio,
+the Visualizer, the LDJ continuous fields, generators with an authored floor, and
+bitmaps without a black background. Classic patterns have no editor and play as
+before: Fixed replaces their beds, and the rests of those that author none stay dark
+(13 of 59: the flash patterns, ramp, ramp-scatter, decay-scatter, ring-strobe,
+sparkle, confetti, twinkle and fire).
 
 Changing effects keeps the operator's background setting. Cue recall also keeps it
 unless **Restore saved background on recall** is selected. The restart record saves
@@ -457,7 +469,21 @@ background field on their first save after the upgrade, and its fixture scope on
 one is chosen, so keep a copy of the writable configuration before upgrading.
 Restore that copy when rolling back to a build without background support: its
 strict look and library readers cannot load the new fields and version and would
-move the files aside.
+move the files aside. The same holds for the sequences file once a clip or a
+pattern pad carries a **Between effect hits** choice, and for a cue or restart
+record with a fixture scope: a build without them cannot read those files, and only
+the effect library keeps an older copy by itself. The whole rig and the family
+defaults store nothing new.
+
+Known limitations of the background, pending the operator's decision because fixing
+them changes Off, Fixed or Follow output against earlier builds:
+
+- A Disco automatic-strobe flash on a lamp whose last command was a release keeps
+  that release's bed ramp, so Off removes part of the flash's fall (a fifth of it
+  40 ms in) and Fixed replaces that part.
+- With Follow at 100 %, a bitmap's black background (the SolidBlackBG patterns,
+  kept dark) sends a dimmer-only lamp its full level: the pixel is black at level 1,
+  and a profile without colour channels outputs only the level (255).
 
 For an incoming visualizer, select **Picture → Colour + motion** and a Visualizer
 Flow or Drift look. The room sender supplies frames; the effect extracts dominant

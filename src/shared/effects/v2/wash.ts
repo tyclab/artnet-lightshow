@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { sampleEnvelope } from '../envelope.ts';
 import { registerKind } from '../registry.ts';
-import { accentStrobes, intervalAge, paint, triggerLevel, v2CommonSchema } from './common.ts';
+import { accentStrobes, gapsWithoutFloor, intervalAge, paint, triggerLevel, v2CommonSchema } from './common.ts';
 
 export const washSchema = v2CommonSchema.extend({
   shape: z.enum(['steady', 'breathe', 'envelope']).default('steady'),
@@ -11,7 +11,7 @@ export const washSchema = v2CommonSchema.extend({
 type WashParams = z.output<typeof washSchema>;
 
 registerKind<WashParams, null>({
-  kind: 'v2.wash', app: 'own', level: 'cell', schema: washSchema,
+  kind: 'v2.wash', app: 'own', level: 'cell', schema: washSchema, gapsApply: gapsWithoutFloor,
   defaults: { params: washSchema.parse({}), brightness: 1 },
   rapidFlashWhen: (p) => accentStrobes(p) || (p.shape === 'envelope' && p.cycleBeats <= 0.25),
   init: () => null,

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { registerKind } from '../registry.ts';
-import { accentStrobes, lengthIn, paint, positionsOf, triggerLevel, v2CommonSchema } from './common.ts';
+import { accentStrobes, gapsWithoutFloor, lengthIn, paint, positionsOf, triggerLevel, v2CommonSchema } from './common.ts';
 
 export const noiseSchema = v2CommonSchema.extend({
   scaleM: z.number().min(0.1).max(20).default(1.8),
@@ -28,7 +28,7 @@ export function noise3(x: number, y: number, z: number, seed: number): number {
 }
 
 registerKind<NoiseParams, null>({
-  kind: 'v2.noise', app: 'own', level: 'cell', schema: noiseSchema,
+  kind: 'v2.noise', app: 'own', level: 'cell', schema: noiseSchema, gapsApply: gapsWithoutFloor,
   defaults: { params: noiseSchema.parse({}), brightness: 1 }, rapidFlashWhen: accentStrobes,
   init: () => null,
   render(p, _state, room, f, out) {

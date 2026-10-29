@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRenderer, withInputDefaults } from '../../src/server/renderer.ts';
 import { createUniverseStore } from '../../src/server/universes.ts';
-import { KINDS, familyGaps, gapsOf, validateSpec } from '../../src/shared/effects/registry.ts';
+import { KINDS, chooseGaps, familyGaps, gapsApply, gapsOf, strobeRests, validateSpec } from '../../src/shared/effects/registry.ts';
 import { CATALOGUE, presetById } from '../../src/shared/effects/index.ts';
 import { HD_DEFAULTS } from '../../src/shared/effects/hd.ts';
 import { bundleSpec } from '../../src/shared/effects/bundle.ts';
@@ -12,7 +12,8 @@ import { DEFAULT_BACKGROUND, composeBackground } from '../../src/shared/backgrou
 import { createPreviewSampler } from '../../src/shared/preview.ts';
 import { buildRig } from '../../src/shared/rig.ts';
 import { COLOR_PRESETS } from '../../src/server/presets.ts';
-import { harness, row } from '../helpers/ldj-harness.js';
+import { harness, row, square } from '../helpers/ldj-harness.js';
+import { parseHex } from '../../src/shared/effects/palette.ts';
 
 const emitters = ['red', 'green', 'blue', 'white', 'amber', 'uv'];
 const profile = { id: 'six-emitter-gaps', channelCount: 6, channelMap: Object.fromEntries(emitters.map((c, i) => [c, i])) };
@@ -212,4 +213,110 @@ test('the rehearsal preview reveals the same gaps as the renderer', () => {
       wire.forEach((value, index) => assert.ok(Math.abs(value - shown[index]) <= 1, `${effect.kind} byte ${index} at ${now}: ${value}/${shown[index]}`));
     }
   }
+});
+
+test('a Disco whose automatic strobe can flash keeps its strobe rests dark under Reveal', () => {
+  const audio = (t, hit) => ({ t, generation: 1, party: { full: 1, bass: 1, mid: 1, high: 1 }, spl: null, disco: { peakHit: hit } });
+  const play = (gaps) => {
+    const h = harness('hd.disco', row(1), { params: { style: 'peak' }, spec: { background: { version: 1, level: 1, gaps } } });
+    h.inst.spec.params.channels[3].strobeOn = true;
+    h.draw({ nowMs: 0, beatPos: 0, audioMode: 'reactive', audio: audio(0, false), acknowledged: true });
+    const shown = [];
+    for (let ms = 100; ms <= 1500; ms += 50) {
+      const [slot] = h.draw({ nowMs: ms, beatPos: ms / 500, audioMode: 'reactive', audio: audio(ms / 1000, ms % 400 === 100), acknowledged: true });
+      const light = composeBackground(slot.colour, slot.level, slot.background, fixed);
+      shown.push([light.level, light.colour.r, light.colour.g]);
+    }
+    return shown;
+  };
+  const kept = play('dark');
+  assert.ok(kept.some(([level]) => level > .9) && kept.some(([level]) => level < .2), 'negative control: the strobe flashes and rests');
+  assert.deepEqual(play('reveal'), kept, 'the rests between automatic flashes are strobe rests');
+});
+
+test('a revealed bitmap black background emits nothing under Follow and Off on dimmer-only and colour lamps', () => {
+  const dimmerOnly = { id: 'gaps-dimmer', channelCount: 1, channelMap: { dimmer: 0 } };
+  const rgbd = { id: 'gaps-rgbd', channelCount: 4, channelMap: { red: 0, green: 1, blue: 2, dimmer: 3 } };
+  const profiles = { [dimmerOnly.id]: dimmerOnly, [rgbd.id]: rgbd };
+  const rigOf = (profileOf) => Array.from({ length: 8 }, (_, id) => ({ ...fixtures[id], address: id * 4 + 1, profileId: profileOf(id) }));
+  const mixed = rigOf((id) => (id % 2 ? rgbd.id : dimmerOnly.id)), colourOnly = rigOf(() => rgbd.id);
+  const draw = (rig, effect, background) => {
+    const renderer = createRenderer({ profileOf: (f) => profiles[f.profileId], profilesRevision: () => 0, now: 0 });
+    const store = createUniverseStore();
+    return [0, 500].map((now) => {
+      renderer.frame(withInputDefaults({ ...look, fixtures: rig, effect, background }), { beatPos: now / 500, bpm: 120, epoch: 0 }, now, store);
+      return [...store.getBuffer(0).slice(0, 32)];
+    });
+  };
+  const lamp = (rig, frame, id) => frame.slice(id * 4, id * 4 + (rig[id].profileId === rgbd.id ? 4 : 1));
+  const spec = validateSpec({ kind: 'ldj.bitmap', params: { pattern: 'SolidBlackBGSineWave' } }), revealed = with_(spec, 'reveal');
+  // Which lamps sit on the black background, read from colour lamps in the same places.
+  const black = draw(colourOnly, spec, DEFAULT_BACKGROUND).map((frame) => colourOnly.map((_, id) => lamp(colourOnly, frame, id).slice(0, 3).every((b) => b === 0)));
+  const keptFull = draw(mixed, spec, DEFAULT_BACKGROUND);
+  assert.ok(keptFull.some((frame, k) => mixed.some((f, id) => black[k][id] && f.profileId === dimmerOnly.id && lamp(mixed, frame, id)[0] === 255)),
+    'negative control and README known limitation: Keep dark at Follow 100 % keeps main’s full dimmer on black pixels');
+  for (const background of [DEFAULT_BACKGROUND, follow, off]) {
+    const after = draw(mixed, revealed, background), before = draw(mixed, spec, background);
+    after.forEach((frame, k) => mixed.forEach((_, id) => {
+      if (black[k][id]) assert.ok(lamp(mixed, frame, id).every((b) => b === 0), `${background.mode} ${background.level}: black lamp ${id} stays dark`);
+      else assert.deepEqual(lamp(mixed, frame, id), lamp(mixed, before[k], id), `${background.mode} ${background.level}: lamp ${id} unchanged`);
+    }));
+  }
+  const filled = draw(mixed, revealed, fixed);
+  assert.ok(filled.some((frame, k) => mixed.some((_, id) => black[k][id] && lamp(mixed, frame, id).some((b) => b > 0))), 'Fixed still fills the gap');
+});
+
+test('the choice is offered only where it can change the output', () => {
+  const on = (raw) => gapsApply(validateSpec(raw));
+  for (const raw of [{ kind: 'ldj.FadeCycle' }, { kind: 'hd.twinkle' }, { kind: 'v2.scatter', params: { background: 0 } }, { kind: 'hd.disco' },
+    { kind: 'ldj.bitmap', params: { pattern: 'SolidBlackBGSineWave' } }, { kind: 'ldj.matrixBoard', params: { mode: 'cycle', colours: ['#FFFFFF'] } },
+    { kind: 'macro', params: { steps: [{ beats: 4, effect: { kind: 'ldj.FadeCycle', params: {} } }], loopBeats: 4 } }]) assert.ok(on(raw), raw.kind);
+  for (const raw of [{ kind: 'strobe' }, { kind: 'energy.glow' }, { kind: 'ldj.StudioN1' }, { kind: 'ldj.visualizer' }, { kind: 'ldj.BLFadeCycle' },
+    { kind: 'ldj.GrooveWave' }, { kind: 'ldj.Swirl' }, { kind: 'ldj.ScatterStrobe' }, { kind: 'hd.frequencyBurst' }, { kind: 'hd.twinkle', rapidFlash: true },
+    { kind: 'v2.neural', params: { idle: .2 } }, { kind: 'v2.scatter', params: { background: .3 } }, { kind: 'ldj.bitmap', params: { pattern: 'SmoothLoop' } },
+    { kind: 'ldj.bitmap', params: { pattern: 'SolidBlackBGSineWave', speed: 3 } }, { kind: 'ldj.matrixBoard', params: { mode: 'solid', colours: ['#FFFFFF'] } }])
+    assert.ok(!on(raw), raw.kind);
+  const disco = validateSpec({ kind: 'hd.disco' });
+  assert.ok(!gapsApply({ ...disco, params: { ...disco.params, allowStrobe: true } }), 'a Disco that paces its own strobe');
+  assert.ok(!gapsApply(presetById('ldj.Blackout').spec), 'the Blackout scene');
+  for (const preset of CATALOGUE) {
+    if (preset.legacy || !preset.spec || gapsApply(preset.spec)) continue;
+    for (const background of [fixed, { ...fixed, level: 1 }]) {
+      assert.deepEqual(run({ effect: with_(preset.spec, 'reveal'), background }, [0, 250, 900, 2000]),
+        run({ effect: with_(preset.spec, 'dark'), background }, [0, 250, 900, 2000]), `${preset.id}: disabled, so both choices must play alike`);
+    }
+  }
+});
+
+test('an LDJ row is marked gapless exactly when no palette or room makes it publish a gap', () => {
+  const palettes = [['#FF0000'], ['#FF0000', '#00FF00'], ['#FF0000', '#00FF00', '#0000FF']].map((p) => p.map(parseHex));
+  for (const [kind, def] of KINDS) {
+    if (!kind.startsWith('ldj.') || !('cadence' in (def.defaults.params ?? {}))) continue;
+    const spec = with_(validateSpec({ kind }), 'reveal');
+    if (strobeRests(spec)) { assert.ok(!gapsApply(spec), `${kind}: strobe rests`); continue; }
+    let gaps = 0;
+    for (const palette of palettes) for (const room of [row(1), row(4), row(7), square()]) {
+      const h = harness(kind, room, { palette, spec: { background: spec.background } });
+      for (let beat = 0; beat <= 16 && !gaps; beat += .25) {
+        for (const slot of h.draw(beat)) if (slot.background && !slot.background.dark && !(slot.background.fullLevel > 0) && slot.background.coverage > 0) gaps++;
+      }
+    }
+    assert.equal(gapsApply(spec), gaps > 0, `${kind}: ${gaps ? 'publishes gaps' : 'never leaves a gap'}`);
+  }
+});
+
+test('picking the family default stores no choice, so an enclosing macro’s choice still reaches the effect', () => {
+  const fade = validateSpec({ kind: 'ldj.FadeCycle', brightness: .6 });
+  assert.deepEqual(chooseGaps(fade, 'reveal'), { version: 1, level: .6, gaps: 'reveal' });
+  assert.deepEqual(chooseGaps(with_(fade, 'reveal'), 'dark'), { version: 1, level: .6 }, 'Keep dark is LDJ’s default: no choice');
+  const twinkle = validateSpec({ kind: 'hd.twinkle' });
+  assert.deepEqual(chooseGaps(twinkle, 'reveal'), twinkle.background, 'Reveal is HD’s default');
+  assert.deepEqual(chooseGaps(twinkle, 'dark'), { ...twinkle.background, gaps: 'dark' });
+  const macro = validateSpec({ kind: 'macro', params: { steps: [{ beats: 4, effect: { kind: 'ldj.FadeCycle', params: {} } }], loopBeats: 4 } });
+  assert.equal(chooseGaps(macro, 'reveal').gaps, 'reveal', 'a macro has no family default: each pick is a choice');
+  assert.equal(chooseGaps(with_(macro, 'reveal'), '').gaps, undefined, '“Each step’s own” is no choice');
+  const inside = validateSpec({ ...macro, background: { version: 1, level: 1, gaps: 'reveal' },
+    params: { ...macro.params, steps: [{ beats: 4, effect: validateSpec({ kind: 'ldj.FadeCycle', background: chooseGaps(with_(fade, 'reveal'), 'dark') }) }] } });
+  const unlit = run({ effect: inside, background: fixed }, TIMES).flatMap(lamps).filter(dark).length;
+  assert.equal(unlit, 0, 'the step picked back to its default follows the macro again');
 });

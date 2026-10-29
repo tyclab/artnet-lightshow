@@ -1,6 +1,6 @@
 import { useRef } from 'preact/hooks';
 import { pick, send } from '../state.js';
-import { DEFAULT_BACKGROUND } from '../../src/shared/background.ts';
+import { DEFAULT_BACKGROUND, storedBackground } from '../../src/shared/background.ts';
 import { cellsOf } from '../../src/shared/rig.ts';
 import { parseHex, toHex } from '../../src/shared/palette-model.ts';
 
@@ -28,11 +28,16 @@ export function Background() {
   const { background, fixtures = [], profiles = {} } = pick(['background', 'fixtures', 'profiles']);
   const value = background ?? DEFAULT_BACKGROUND;
   const sent = useRef(null);
+  // The pick leaves the stored setting while another scope is chosen; this page keeps it to offer again.
+  const lastPick = useRef(null);
+  if (value.selected) lastPick.current = value.selected;
   // Echoed, or never will be (rejected, lost): edits build on the server's value again.
   if (sent.current && (same(sent.current.value, value) || Date.now() - sent.current.at > LOST_ECHO_MS)) sent.current = null;
   const base = () => (sent.current && Date.now() - sent.current.at <= LOST_ECHO_MS ? sent.current.value : value);
   const update = (patch) => {
-    const next = { ...base(), ...patch };
+    const merged = { ...base(), ...patch };
+    if (merged.fixtures === 'selected' && !merged.selected) merged.selected = lastPick.current ?? [];
+    const next = storedBackground(merged);
     sent.current = send({ background: next }) ? { value: next, at: Date.now() } : null;
   };
   const setColour = (patch) => update({ colour: { ...base().colour, ...patch } });

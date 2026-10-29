@@ -193,3 +193,15 @@ test('a background saved before scopes existed reads as the whole rig; invalid s
   assert.deepEqual(state.background, fixed);
   applyPatch({ background: DEFAULT_BACKGROUND });
 });
+
+test('the stored setting leaves out the whole rig and an unused pick, so a build without scopes still reads it', () => {
+  const base = { version: 1, mode: 'fixed', level: .3, colour };
+  applyPatch({ background: { ...base, fixtures: 'rig', selected: [1, 2] } });
+  assert.deepEqual(state.background, base, 'whole rig: the record has exactly the fields it had before scopes');
+  assert.deepEqual(captureLook().background, base);
+  applyPatch({ background: { ...base, fixtures: 'wash', selected: [1, 2] } });
+  assert.deepEqual(state.background, { ...base, fixtures: 'wash' });
+  applyPatch({ background: { ...base, fixtures: 'selected', selected: [2, 1] } });
+  assert.deepEqual(state.background, { ...base, fixtures: 'selected', selected: [2, 1] });
+  applyPatch({ background: DEFAULT_BACKGROUND });
+});

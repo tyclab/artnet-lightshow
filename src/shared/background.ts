@@ -6,7 +6,7 @@ const channel = z.number().int().min(0).max(255);
 export const BACKGROUND_FIXTURES = ['rig', 'wash', 'selected'] as const;
 export type BackgroundFixtures = typeof BACKGROUND_FIXTURES[number];
 const fixtureId = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER - 1);
-// `fixtures` absent is the whole rig; `selected` is kept while another scope is chosen, so the picker remembers it.
+// `fixtures` absent is the whole rig; storedBackground keeps the scope fields only while they are in use.
 export const backgroundSchema = z.object({
   version: z.literal(1), mode: z.enum(['follow', 'fixed', 'off']), level: z.number().min(0).max(1),
   colour: z.object({ r: channel, g: channel, b: channel, w: channel, a: channel, uv: channel }).strict(),
@@ -34,6 +34,12 @@ export const ambient = (colour: Colour, level: number, coverage = 1, fullLevel =
 export function gap(opacity: number): BackgroundField | undefined {
   const coverage = 1 - Math.max(0, Math.min(1, opacity));
   return coverage > 0 ? { colour: DARK_BACKGROUND, level: 0, fullLevel: 0, coverage } : undefined;
+}
+
+/** The setting as stored and sent: no whole-rig scope and no unused pick, so a build without scopes still reads it. */
+export function storedBackground(settings: BackgroundSettings): BackgroundSettings {
+  const { fixtures, selected, ...rest } = settings;
+  return fixtures === 'wash' ? { ...rest, fixtures } : fixtures === 'selected' ? { ...rest, fixtures, selected: [...selected ?? []] } : rest;
 }
 
 // The patched fixtures the setting reaches, by patch index (null: all). Wash fixtures are the single-light

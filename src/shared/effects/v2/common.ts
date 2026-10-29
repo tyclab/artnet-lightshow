@@ -151,6 +151,9 @@ function backgroundColour(common: V2Common): Colour {
   return cached.colour;
 }
 
+/** A generator with an authored floor has a bed under every slot, so no gap for Between effect hits to change. */
+export const gapsWithoutFloor = (p: { background: number; idle?: number }): boolean => !(Math.max(p.background, p.idle ?? 0) > 0);
+
 /** Write a slot: colour from the palette by colour mode, level over the background floor. */
 export function paint(common: V2Common, frame: EffectFrame, position01: number, level: number, out: EffectSlot): void {
   const pos = common.colour === 'solid' ? 0

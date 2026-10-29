@@ -32,6 +32,23 @@ export function familyGaps(kind: string): GapPolicy {
   return def?.app === 'ldj' || def?.kind === 'hd.disco' ? 'dark' : 'reveal';
 }
 
+/** Rests that are strobe rests: the spec needs the photosensitivity acknowledgement or paces an automatic strobe of its own (Disco). */
+export function strobeRests(spec: EffectSpec): boolean {
+  return requiresAcknowledgement(spec) || pacesOwnFlashes(spec);
+}
+
+/** Whether "Between effect hits" can change what this spec plays; the editor disables the choice where it cannot. */
+export function gapsApply(spec: EffectSpec): boolean {
+  return Boolean(kindOf(spec.kind)?.gapsApply?.(spec.params ?? {}, spec));
+}
+
+/** The spec's background after a pick: its family's default (a macro's: none) is stored as no choice, so a container's choice still reaches it. */
+export function chooseGaps(spec: EffectSpec, choice: GapPolicy | '' | null): NonNullable<EffectSpec['background']> {
+  const { gaps: _gaps, ...rest } = spec.background ?? { version: 1 as const, level: spec.brightness ?? 1 };
+  const unchosen = spec.kind === 'macro' ? null : familyGaps(spec.kind);
+  return choice && choice !== unchosen ? { ...rest, gaps: choice } : rest;
+}
+
 /** A spec's own "Between effect hits" choice, or its family's. */
 export function gapsOf(spec: EffectSpec): GapPolicy {
   return spec.background?.gaps ?? familyGaps(spec.kind);
