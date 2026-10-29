@@ -3391,7 +3391,8 @@ input[type=range]::-moz-range-thumb {
 .stage-fixture.selected .stage-glow { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent), 0 0 14px -2px var(--light, transparent); border-style: solid; }
 .stage-fixture.selected .stage-label { color: var(--text); font-weight: 700; }
 .stage-fixture.identifying .stage-glow { outline: 2px dashed var(--text-amber); outline-offset: 3px; }
-.stage-cell.first { outline: 1px solid var(--text); outline-offset: 1px; }
+/* The ring alone: the plan paints the cell itself on its canvas (PlanEditor.jsx). */
+.stage-cell.first { background: none; box-shadow: none; outline: 1px solid var(--text); outline-offset: 1px; }
 .plan-band { position: absolute; border: 1px dashed var(--accent); background: var(--wash-blue); pointer-events: none; }
 .plan-line { position: absolute; height: 2px; margin-top: -1px; background: var(--accent); transform-origin: 0 50%; pointer-events: none; }
 .plan-end { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; pointer-events: none; }

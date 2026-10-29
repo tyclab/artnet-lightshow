@@ -110,3 +110,33 @@ test('the bars above each view are measured again for the sticky offsets after a
     await expect.poll(offsets).toEqual([]);
   }
 });
+
+test('the Rig plan paints bar cells on one canvas from the live feed, reading no layout per frame', async ({ page, request }) => {
+  await page.addInitScript(() => {
+    const read = window.Element.prototype.getBoundingClientRect;
+    window.layoutReads = 0;
+    window.Element.prototype.getBoundingClientRect = function () { window.layoutReads++; return read.call(this); };
+  });
+  let frames = 0;
+  page.on('websocket', (socket) => socket.on('framereceived', ({ payload }) => { if (typeof payload !== 'string') frames++; }));
+  const before = await state(request);
+  const remove = await redBars(request);
+  try {
+    await open(page, 'rig');
+    const plan = page.getByRole('group', { name: /^Plan of the rig from above/ });
+    await expect(plan.locator('canvas.stage-cells-canvas')).toHaveCount(1);
+    await expect(plan.locator('.stage-cell.first')).toHaveCount(4);
+    await expect(plan.locator('.stage-cell:not(.first)')).toHaveCount(0);
+    await expect.poll(async () => (await cellPixels(page)).red).toBeGreaterThan(500);
+    // A picture that changes on every frame of the feed.
+    await set(request, { pattern: 'plasma' });
+    await page.waitForTimeout(500);
+    const start = { frames, reads: await page.evaluate(() => window.layoutReads) };
+    await page.waitForTimeout(2000);
+    expect(frames - start.frames).toBeGreaterThan(20);
+    expect(await page.evaluate(() => window.layoutReads) - start.reads).toBeLessThan(5);
+  } finally {
+    await remove();
+    await restore(request, before);
+  }
+});
