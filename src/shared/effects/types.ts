@@ -36,8 +36,11 @@ export type HdCapability = keyof HdParams | `spatial.${keyof Spatial}` | `trigge
 // Parsed colours stay outside specs so wire data remains serializable.
 export type ParsedPaletteEntry = Colour | { random: true };
 
+/** Between an effect's hits: keep its gaps black, or let the Background layer into them. */
+export type GapPolicy = 'dark' | 'reveal';
+
 export interface EffectSpec extends GradientSettings {
-  background?: { version: 1; level: number };
+  background?: { version: 1; level: number; gaps?: GapPolicy };
   admission?: AdmissionPolicy;
   kind: string;
   params: Record<string, unknown>;
@@ -73,6 +76,10 @@ export interface EffectModulation {
 
 export interface EffectFrame {
   background?: BackgroundSettings;
+  // The nearest explicit "Between effect hits" choice, from the spec or a container (macro, pad) around it.
+  gaps?: GapPolicy;
+  // Whether this instance's kind publishes its gaps (render-instance.ts sets it; unset is the family default).
+  revealGaps?: boolean;
   modulation?: EffectModulation;
   pictureFeatures?: PictureFeatures | null;
   hardware?: readonly HardwareCaps[];
@@ -112,6 +119,8 @@ export interface EffectKindDef<P = unknown, S = unknown> {
   // Pattern bundles are server-built; public validation must not accept them.
   internal?: boolean;
   rapidFlashWhen?(params: P): boolean;
+  // Whether "Between effect hits" can change this kind's output: it may leave gaps that are not strobe rests.
+  gapsApply?(params: P, spec: EffectSpec): boolean;
   // Fresh instances reset self-paced flash limits, so macros and clips must reject them.
   pacesOwnFlashes?(params: P): boolean;
   command?(state: S, cmd: EffectCommand, arg?: Colour): void;

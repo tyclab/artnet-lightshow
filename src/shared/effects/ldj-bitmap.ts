@@ -1,4 +1,4 @@
-import { ambient } from '../background.ts';
+import { ambient, gap } from '../background.ts';
 import { z } from 'zod';
 import type { Colour } from '../../types/rig.ts';
 import type { ResolvedGradient } from '../palette-model.ts';
@@ -6,7 +6,7 @@ import { tempoOf } from '../look-math.ts';
 import { MAX_LAMP_FLASH_HZ } from '../patterns.ts';
 import { ldjFrameAt } from './ldj-rotation.ts';
 import { hsbToColour, LDJ_RANDOM_HUES } from './palette.ts';
-import { registerKind } from './registry.ts';
+import { registerKind, strobeRests } from './registry.ts';
 
 export const BITMAP_PATTERNS = ['SolidTest', 'SmoothLoop', 'SmoothMirror', 'VertLines',
   'ThickPaletteLoop', 'ThinPaletteLoop', 'ThickPaletteMirror', 'ThinPaletteMirror',
@@ -194,6 +194,7 @@ registerKind<z.infer<typeof schema>, BitmapState>({
   requirements: { pixels: true, channels: ['r', 'g', 'b'] },
   kind: 'ldj.bitmap', app: 'ldj', schema, defaults: { params: { pattern: 'SmoothLoop', speed: 1 } }, stateful: true,
   rapidFlashWhen: (params) => params.speed > RAPID_SPEED,
+  gapsApply: (params, spec) => params.pattern.startsWith('SolidBlackBG') && !strobeRests(spec),
   init: (_params, _room, frame) => ({ originMs: frame.startedAtMs ?? frame.nowMs, key: '', image: null }),
   render(params, state, room, frame, out) {
     const scroll = bitmapScroll(frame.nowMs, state.originMs, frame.bpm, params.speed, params.pattern);
@@ -207,12 +208,14 @@ registerKind<z.infer<typeof schema>, BitmapState>({
     if (state.image === null || state.key !== key) {
       state.image = raster(params.pattern, palette, gradient); state.key = key;
     }
+    // A black background is the raster's gap: kept dark (role 2), or unlit with its whole share revealed; never at a rapid scroll.
+    const reveal = frame.revealGaps === true && !strobeRests(frame.spec);
     for (let slot = 0; slot < room.n; slot++) {
       const image = state.image, diagonal = params.pattern.endsWith('DiagonalLines');
       const row = mod(Math.floor(((diagonal ? room.v[slot] : -room.v[slot]) + 1) * image.height / 2), image.height);
       const col = mod(Math.floor(((diagonal ? -room.u[slot] : room.u[slot]) + 1) * image.height / 2) + mod(scroll, image.width), image.width);
       const colour = unpack(image.rows[row][col]), role = image.backgrounds?.[row][col] ?? 0;
-      out[slot] = { colour, level: 1, strength: 1,
+      out[slot] = role === 2 && reveal ? { colour, level: 0, strength: 1, background: gap(0) } : { colour, level: 1, strength: 1,
         ...(role ? { background: { ...ambient(colour, 1), dark: role === 2 } } : {}) };
     }
   },

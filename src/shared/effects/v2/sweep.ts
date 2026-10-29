@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { hash01 } from '../hash.ts';
 import { registerKind } from '../registry.ts';
-import { accentStrobes, bandGate, directionOf, extentAlong, lengthIn, paint, planDirectionOf, positionsOf, project, soft, triggerLevel, v2CommonSchema } from './common.ts';
+import { accentStrobes, bandGate, directionOf, extentAlong, gapsWithoutFloor, lengthIn, paint, planDirectionOf, positionsOf, project, soft, triggerLevel, v2CommonSchema } from './common.ts';
 import { pathEndpoints } from './path.ts';
 import type { Point, Positions } from './common.ts';
 import type { EffectFrame, EffectSlot } from '../types.ts';
@@ -126,7 +126,7 @@ function renderSweep(p: SweepParams, room: Room, f: EffectFrame, out: EffectSlot
 }
 
 registerKind<SweepParams, Record<string, never>>({
-  kind: 'v2.sweep', app: 'own', level: 'cell', schema: sweepSchema,
+  kind: 'v2.sweep', app: 'own', level: 'cell', schema: sweepSchema, gapsApply: gapsWithoutFloor,
   defaults: { params: sweepSchema.parse({}), brightness: 1 },
   rapidFlashWhen: accentStrobes,
   init: () => ({}),

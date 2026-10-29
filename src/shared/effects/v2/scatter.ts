@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { sampleEnvelope } from '../envelope.ts';
 import { hash01 } from '../hash.ts';
 import { registerKind } from '../registry.ts';
-import { accentStrobes, bandSchema, isFlashEnvelope, paint, positionsOf, triggerLevel, v2CommonSchema } from './common.ts';
+import { accentStrobes, bandSchema, gapsWithoutFloor, isFlashEnvelope, paint, positionsOf, triggerLevel, v2CommonSchema } from './common.ts';
 import type { Positions } from './common.ts';
 import type { EffectFrame, EffectSlot } from '../types.ts';
 import type { Room } from '../../room.ts';
@@ -149,7 +149,7 @@ function renderScatter(p: ScatterParams, s: ScatterState, room: Room, f: EffectF
 }
 
 registerKind<ScatterParams, ScatterState>({
-  kind: 'v2.scatter', app: 'own', level: 'cell', schema: scatterSchema,
+  kind: 'v2.scatter', app: 'own', level: 'cell', schema: scatterSchema, gapsApply: gapsWithoutFloor,
   defaults: { params: scatterSchema.parse({}), brightness: 1 }, stateful: true,
   rapidFlashWhen: scatterRapidFlash,
   init: () => ({ fired: new Map() }),

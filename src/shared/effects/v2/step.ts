@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { sampleEnvelope } from '../envelope.ts';
 import { hash01 } from '../hash.ts';
 import { registerKind } from '../registry.ts';
-import { accentStrobes, azimuthAround, centreOf, directionOf, extentAlong, isFlashEnvelope, paint, planDirectionOf, positionsOf, project, triggerLevel, v2CommonSchema } from './common.ts';
+import { accentStrobes, azimuthAround, centreOf, directionOf, extentAlong, gapsWithoutFloor, isFlashEnvelope, paint, planDirectionOf, positionsOf, project, triggerLevel, v2CommonSchema } from './common.ts';
 import type { Room } from '../../room.ts';
 import type { EffectFrame } from '../types.ts';
 
@@ -36,7 +36,7 @@ function orderOf(p: StepParams, room: Room, f: EffectFrame): Float32Array {
 }
 
 registerKind<StepParams, Float32Array>({
-  kind: 'v2.step', app: 'own', level: 'cell', schema: stepSchema,
+  kind: 'v2.step', app: 'own', level: 'cell', schema: stepSchema, gapsApply: gapsWithoutFloor,
   defaults: { params: stepSchema.parse({}), brightness: 1 },
   rapidFlashWhen: (p) => accentStrobes(p) || (p.stepBeats <= 0.25 && isFlashEnvelope(p.envelope)),
   init: orderOf,

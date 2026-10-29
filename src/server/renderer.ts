@@ -1,4 +1,4 @@
-import { ambient, blendBackground, composeBackground } from '../shared/background.ts';
+import { ambient, backgroundScope, blendBackground, composeBackground } from '../shared/background.ts';
 import type { BackgroundField, BackgroundSettings } from '../shared/background.ts';
 import { fixedColours, colourSlots, resolveGradient } from '../shared/palette-model.ts';
 import type { UnitSpace } from '../shared/space.ts';
@@ -788,17 +788,17 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
   }
 
   function lightOf(u: number, fix: RenderFixture, energy: EnergyLook | null, fadeT: number,
-    target: ShowDynamics | null, pixel: Colour | null = null, input?: FrameInput): LightValue {
+    target: ShowDynamics | null, pixel: Colour | null = null, background?: BackgroundSettings): LightValue {
     // Keep the shown base under bursts so later fades do not capture the burst.
     const raw = unitColors[u];
-    const unchanged = !input?.background || input.background.mode === 'follow' && input.background.level === 1;
-    const resolved = unchanged ? null : composeBackground(raw, raw.dim / 255, baseBackground[u], input?.background);
+    const unchanged = !background || background.mode === 'follow' && background.level === 1;
+    const resolved = unchanged ? null : composeBackground(raw, raw.dim / 255, baseBackground[u], background);
     const current = resolved ? { ...resolved.colour, dim: 255 * resolved.level, strobe: raw.strobe } : raw;
     const layer = fade && fade.from[u] ? blendFixture(fade.from[u], current, fadeT) : current;
     shown[u] = layer;
     shownBackground[u] = fade ? blendBackground(fadeBackground[u], baseBackground[u], fadeT) : baseBackground[u];
     const clip = seqUnits ? seqLight[u] : null;
-    const selected = clip && !unchanged ? composeBackground(clip, clip.dim / 255, seqBackground[u], input?.background) : null;
+    const selected = clip && !unchanged ? composeBackground(clip, clip.dim / 255, seqBackground[u], background) : null;
     const below = pixel ? { ...pixel, dim: 255, strobe: 0 } : selected ? { ...selected.colour, dim: selected.level * 255, strobe: clip!.strobe } : clip ?? layer;
 
     let col: Colour; let dim: number; let strobe: number;
@@ -1051,8 +1051,10 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       && input.picture.data instanceof Uint8Array && input.picture.data.length === rigNow.units.length * 3 ? input.picture : null;
     const { levels, gains } = liftFor(input);
     const watch = !!voiceTop || baseKinds || seqUnits;
+    const scope = backgroundScope(input.background, rigNow.cellMaps, (i) => fixtures[i].id);
     for (let i = 0; i < fixtures.length; i++) {
       const fix = fixtures[i];
+      const background = !scope || scope[i] ? input.background : undefined;
       const { start, count } = rigNow.ranges[i];
       const overridden = !!fix.override && (fix.override.enabled || fix.override.blackout);
       const lights: LightValue[] = [];
@@ -1066,7 +1068,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       for (let u = start; u < start + count; u++) {
         if (seqUnits && seqLight[u] && !overridden && !pixel) clip = true;
         const voice = sync || !voiceTop ? null : voiceTop[u];
-        const resolvedVoice = voice && composeBackground(voice.colour, voice.level, voice.background, input.background);
+        const resolvedVoice = voice && composeBackground(voice.colour, voice.level, voice.background, background);
         const top = sync ?? (voice && resolvedVoice ? { col: resolvedVoice.colour, dim: 255 * resolvedVoice.level, strobe: voice.strobe ?? 0 } : null);
         if (top && !first) first = top;
         let colour: Colour | null = null;
@@ -1082,7 +1084,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
           colour = { r, g, b, w: 0, a: 0, uv: 0 };
           pixelOwners[u] = `picture:${painted.leaseId}`;
         }
-        lights.push(lightOf(u, fix, top, fadeT, target, colour, input));
+        lights.push(lightOf(u, fix, top, fadeT, target, colour, background));
         if (!watch) continue;
         const kind = top ? (voice ? voice.kind ?? null : null) : overridden || pixelOwners[u] ? null : seqUnits && seqLight[u] ? seqKind[u] : baseKind[u];
         topKind[u] = kind;

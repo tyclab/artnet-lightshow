@@ -5,7 +5,7 @@ import { tempoOf } from '../look-math.ts';
 import type { Room } from '../room.ts';
 import { seedFrom } from './hash.ts';
 import { MAX_NEST_DEPTH, anyChildSpec, nestRefusal, registerChildren, withinNest } from './nesting.ts';
-import { pacesOwnFlashes, registerKind, requiresAcknowledgement, validateSpec } from './registry.ts';
+import { gapsApply, pacesOwnFlashes, registerKind, requiresAcknowledgement, validateSpec } from './registry.ts';
 import { renderEffect } from './render-instance.ts';
 import { EffectStepper } from './stepper.ts';
 import type { EffectFrame, EffectSlot, EffectSpec, PaletteEntry, Seed } from './types.ts';
@@ -161,6 +161,7 @@ registerKind<MacroParams, MacroState>({
   kind: 'macro', app: 'own', schema, stateful: true,
   defaults: { params: { steps: [{ effect: { kind: 'energy.glow', params: {} }, beats: 4 }], loopBeats: 4 } },
   rapidFlashWhen: anyStepRapid,
+  gapsApply: (params) => (params.steps ?? []).some((step) => gapsApply(step.effect)),
   init: () => ({ children: new EffectStepper(), active: null, last: null }),
   render: renderMacro,
 });

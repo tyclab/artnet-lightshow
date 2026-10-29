@@ -27,9 +27,11 @@ const DARK_REST: BackgroundField = Object.freeze({ ...COVERED, dark: true });
 
 // HD has no authored ambient colour. Its envelope, spatial kernel and audio gate
 // explicitly define foreground opacity, independently of palette RGB or output
-// brightness. Ordinary gaps expose a Fixed wash; rapid rests still own black.
-function behind(opacity: number, rapid: boolean): BackgroundField {
+// brightness. Ordinary gaps expose a Fixed wash unless the effect keeps them
+// dark; rapid rests still own black.
+function behind(opacity: number, rapid: boolean, reveal: boolean): BackgroundField | undefined {
   if (rapid) return DARK_REST;
+  if (!reveal) return undefined;
   if (opacity <= 0) return EMPTY;
   if (opacity >= 1) return COVERED;
   return { ...EMPTY, coverage: 1 - opacity };
@@ -252,7 +254,7 @@ function renderAdsr(p: HdParams, s: HdState, room: Room, frame: EffectFrame, out
     opacity = level;
     colour = level > 0 ? { r: Math.round(255 * r / level), g: Math.round(255 * g / level), b: Math.round(255 * b / level), w: 0, a: 0, uv: 0 } : BLACK;
   }
-  const background = behind(opacity, !!frame.spec.rapidFlash);
+  const background = behind(opacity, !!frame.spec.rapidFlash, frame.revealGaps !== false);
   for (let i = 0; i < room.n; i++) out[i] = { colour, level, strength: level > 0 ? 1 : 0, background };
 }
 
@@ -360,7 +362,7 @@ function renderHd(kind: HdKind, p: HdParams, state: HdState, room: Room, f: Effe
     });
     const level = composed.strength * reactive;
     out[target] = { colour: f.gradient?.sample(composed.palettePos) ?? samplePalette(f.palette, composed.palettePos), level, strength: level > 0 ? 1 : 0,
-      background: behind(composed.strength * reactive, kind === 'hd.frequencyBurst' || !!f.spec.rapidFlash) };
+      background: behind(composed.strength * reactive, kind === 'hd.frequencyBurst' || !!f.spec.rapidFlash, f.revealGaps !== false) };
   }
 }
 
@@ -388,7 +390,7 @@ const ALONG_KINDS = new Set(['hd.positionChase', 'hd.bouncingScan', 'hd.streak']
 const LAMP_KINDS = new Set([...ALONG_KINDS, 'hd.twinkle', 'hd.frequencyBurst']);
 for (const kind of KINDS) registerKind<HdParams, HdState>({
   kind, level: LAMP_KINDS.has(kind) ? 'lamp' : 'cell', app: 'hd', schema: hdSchema, defaults: HD_DEFAULTS[kind], capabilities: HD_CAPABILITIES[kind],
-  rapidFlash: kind === 'hd.frequencyBurst', stateful: true,
+  rapidFlash: kind === 'hd.frequencyBurst', stateful: true, gapsApply: (_params, spec) => kind !== 'hd.frequencyBurst' && !spec.rapidFlash,
   ...(ALONG_KINDS.has(kind) ? { renderCells: (params: HdParams, state: HdState, lamps: LampRoom, frame: EffectFrame, out: EffectSlot[]) =>
     renderHd(kind, params, state, lamps, frame, out, lamps) } : {}),
   init: initHd, render: (params, state, room, frame, out) => renderHd(kind, params, state, room, frame, out),

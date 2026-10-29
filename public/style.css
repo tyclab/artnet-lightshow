@@ -1652,6 +1652,8 @@ input[type=range]::-moz-range-thumb {
 .insp-unit { font-size: 10px; color: var(--dim); font-family: var(--mono); }
 .insp-check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); min-height: 30px; }
 .insp-check input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; cursor: pointer; }
+/* The Background card's fixture picker: the patch, one check each. */
+.background-fixtures { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0 10px; max-height: 220px; overflow-y: auto; }
 .insp-table-wrap { overflow-x: auto; }
 .insp-table { width: 100%; border-collapse: collapse; font-size: 11px; }
 .insp-table th { text-align: left; font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 2px 4px; white-space: nowrap; }

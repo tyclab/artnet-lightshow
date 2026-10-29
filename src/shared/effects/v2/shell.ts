@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { activeEvents, sampleEnvelope } from '../envelope.ts';
 import { hash01 } from '../hash.ts';
 import { registerKind } from '../registry.ts';
-import { accentPeak, accentStrobes, azimuthAround, isFlashEnvelope, centreOf, distanceTo, farthestCorner, lengthIn, paint, pointIn, positionsOf, soft, triggerLevel, v2CommonSchema } from './common.ts';
+import { accentPeak, accentStrobes, azimuthAround, centreOf, distanceTo, farthestCorner, gapsWithoutFloor, isFlashEnvelope, lengthIn, paint, pointIn, positionsOf, soft, triggerLevel, v2CommonSchema } from './common.ts';
 import type { Point, Positions } from './common.ts';
 import type { EffectFrame, EffectSlot } from '../types.ts';
 import type { Room } from '../../room.ts';
@@ -128,7 +128,7 @@ function renderShell(p: ShellParams, s: ShellState, room: Room, f: EffectFrame, 
 }
 
 registerKind<ShellParams, ShellState>({
-  kind: 'v2.shell', app: 'own', level: 'cell', schema: shellSchema,
+  kind: 'v2.shell', app: 'own', level: 'cell', schema: shellSchema, gapsApply: gapsWithoutFloor,
   defaults: { params: shellSchema.parse({}), brightness: 1 }, stateful: true, rapidFlashWhen: shellStrobes,
   init: () => ({ launched: new Map() }),
   render: (params, state, room, frame, out) => renderShell(params, state, room, frame, out),

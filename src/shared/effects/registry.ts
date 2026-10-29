@@ -4,7 +4,7 @@
 import { z } from 'zod';
 import { admissionPolicySchema } from '../hardware.ts';
 import { HEX_COLOUR, gradientFields, checkGradients, paletteBodySchema } from '../palette-model.ts';
-import type { EffectKindDef, EffectSpec } from './types.ts';
+import type { EffectKindDef, EffectSpec, GapPolicy } from './types.ts';
 
 export const KINDS = new Map<string, EffectKindDef>();
 
@@ -20,6 +20,38 @@ export function kindOf(kind: string): EffectKindDef | null {
 export function requiresAcknowledgement(spec: EffectSpec): boolean {
   const def = kindOf(spec.kind);
   return Boolean(spec.rapidFlash || def?.rapidFlash || def?.rapidFlashWhen?.(spec.params));
+}
+
+/**
+ * What a kind does between its hits when its spec chooses nothing: the LDJ families
+ * (the bitmap raster included) and Disco kept their gaps dark before an effect could
+ * choose, every other family revealed the Background layer in them.
+ */
+export function familyGaps(kind: string): GapPolicy {
+  const def = kindOf(kind);
+  return def?.app === 'ldj' || def?.kind === 'hd.disco' ? 'dark' : 'reveal';
+}
+
+/** Rests that are strobe rests: the spec needs the photosensitivity acknowledgement or paces an automatic strobe of its own (Disco). */
+export function strobeRests(spec: EffectSpec): boolean {
+  return requiresAcknowledgement(spec) || pacesOwnFlashes(spec);
+}
+
+/** Whether "Between effect hits" can change what this spec plays; the editor disables the choice where it cannot. */
+export function gapsApply(spec: EffectSpec): boolean {
+  return Boolean(kindOf(spec.kind)?.gapsApply?.(spec.params ?? {}, spec));
+}
+
+/** The spec's background after a pick: its family's default (a macro's: none) is stored as no choice, so a container's choice still reaches it. */
+export function chooseGaps(spec: EffectSpec, choice: GapPolicy | '' | null): NonNullable<EffectSpec['background']> {
+  const { gaps: _gaps, ...rest } = spec.background ?? { version: 1 as const, level: spec.brightness ?? 1 };
+  const unchosen = spec.kind === 'macro' ? null : familyGaps(spec.kind);
+  return choice && choice !== unchosen ? { ...rest, gaps: choice } : rest;
+}
+
+/** A spec's own "Between effect hits" choice, or its family's. */
+export function gapsOf(spec: EffectSpec): GapPolicy {
+  return spec.background?.gaps ?? familyGaps(spec.kind);
 }
 
 /** Does a kind ride the expression level on a curve of its own (glow), so a layer's level is not multiplied by it again. */
@@ -46,7 +78,7 @@ const specSchema = z.object({
   ])).min(1).max(8).nullable().optional(),
   ...gradientFields,
   brightness: z.number().min(0).max(1).optional(),
-  background: z.object({ version: z.literal(1), level: z.number().min(0).max(1) }).strict().optional(),
+  background: z.object({ version: z.literal(1), level: z.number().min(0).max(1), gaps: z.enum(['dark', 'reveal']).optional() }).strict().optional(),
   rapidFlash: z.boolean().optional(),
   minFlashIntervalMs: z.number().min(0).optional(),
   scope: z.enum(['singleBeat', 'measure']).optional(),

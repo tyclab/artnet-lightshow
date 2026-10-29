@@ -9,7 +9,7 @@ import { ldjChannels, ldjIterationsSchema, makeLdjKind } from './ldj-engine.ts';
 import type { LdjEnvelope, LdjParams, LdjState } from './ldj-engine.ts';
 import { LDJ_ITERATION_ROWS } from './ldj-iteration.ts';
 import { parseHex } from './palette.ts';
-import { registerKind } from './registry.ts';
+import { registerKind, strobeRests } from './registry.ts';
 import type { EffectKindDef } from './types.ts';
 
 type MatrixMode = 'pulse' | 'flash' | 'firework' | 'splotch';
@@ -71,6 +71,7 @@ registerKind<BoardParams, BoardState>({
   kind: 'ldj.matrixBoard', level: 'lamp', app: 'ldj', schema: boardSchema,
   defaults: { params: { colours: ['#FFFFFF'], mode: 'solid' } }, stateful: true,
   rapidFlashWhen: rapidMode, rollOf: (state) => state.child?.roll ?? 0,
+  gapsApply: (params, spec) => params.mode === 'cycle' && !strobeRests(spec),
   init: (params, _room, frame) => ({ key: JSON.stringify(params), mode: params.mode, colours: params.colours.map(parseHex),
     lastSolidAtMs: frame.nowMs, child: null, startedAtMs: frame.startedAtMs ?? frame.nowMs, anchorBeat: frame.anchorBeat }),
   render(params, state, room, frame, out) {

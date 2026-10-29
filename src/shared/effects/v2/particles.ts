@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { registerKind } from '../registry.ts';
-import { accentStrobes, centreOf, lengthIn, paint, pointIn, positionsOf, soft, triggerLevel, v2CommonSchema } from './common.ts';
+import { accentStrobes, centreOf, gapsWithoutFloor, lengthIn, paint, pointIn, positionsOf, soft, triggerLevel, v2CommonSchema } from './common.ts';
 import { pathEndpoints } from './path.ts';
 import { DEFAULT_BOUNDS } from '../../space.ts';
 import type { Point } from './common.ts';
@@ -250,7 +250,7 @@ function renderGroupedParticles(particles: LightParticle[], room: Room, p: Parti
 }
 
 registerKind<ParticlesParams, ParticleState>({
-  kind: 'v2.particles', app: 'own', level: 'cell', schema: particlesSchema,
+  kind: 'v2.particles', app: 'own', level: 'cell', schema: particlesSchema, gapsApply: gapsWithoutFloor,
   defaults: { params: particlesSchema.parse({}), brightness: 1 }, rapidFlashWhen: accentStrobes,
   init: spatialIndex,
   render(p, s, room, f, out) {

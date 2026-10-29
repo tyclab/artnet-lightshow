@@ -39,7 +39,7 @@ function single(ctx: LdjCtx, rank: number, colour: Colour, background?: Colour, 
 }
 
 function strobeRow(scatter: boolean, backlit: boolean, sine = false, cyclePalette = false): LdjRow {
-  return { cadence: sine || cyclePalette ? .5 : backlit ? 1 : .25, step(ctx) {
+  return { cadence: sine || cyclePalette ? .5 : backlit ? 1 : .25, gapless: backlit, step(ctx) {
     const index = cyclePalette ? paletteIndex(ctx, ctx.iter) : backlit ? 0 : 1;
     const key = 0;
     // Matrix colours advance through the palette but share the selected well.
@@ -55,7 +55,7 @@ function strobeRow(scatter: boolean, backlit: boolean, sine = false, cyclePalett
 // Backlighting is a full-brightness RGB blend. Without it, the same selected
 // colour dims toward black and the other lamps relinquish their old fades.
 function fadeRow(scatter: boolean, backlit: boolean): LdjRow {
-  return { cadence: 1, step(ctx) {
+  return { cadence: 1, gapless: backlit, step(ctx) {
     ctx.refresh(0);
     if (backlit && mod(ctx.iter, ctx.n) === 0) ctx.refresh(1);
     const rank = scatter ? pick(ctx) : mod(ctx.iter, ctx.n), from = ctx.colour(0, 0), to = ctx.colour(1, 1);
@@ -67,7 +67,7 @@ function fadeRow(scatter: boolean, backlit: boolean): LdjRow {
 // Both halves retain the selected lamp, while the backlight changes only at
 // the start of a complete pass around the room.
 function growRow(scatter: boolean, backlit: boolean): LdjRow {
-  return { cadence: .5, step(ctx) {
+  return { cadence: .5, gapless: backlit, step(ctx) {
     const half = mod(ctx.iter, 2);
     if (!half) ctx.refresh(0);
     if (backlit && mod(ctx.iter, ctx.n * 2) === 0) ctx.refresh(1);
@@ -213,7 +213,7 @@ export const LDJ_ITERATION_ROWS: Record<string, LdjRow> = {
     if (mod(ctx.iter, 2)) all(ctx, BLACK, { kind: 'fade', beats: 2 });
     else { all(ctx, ctx.colour(index, 0), { kind: 'flare', beats: 2 }); for (let i = 0; i < ctx.n; i++) ctx.refresh(0); }
   } },
-  Popcorn: { cadence: .5, step(ctx) {
+  Popcorn: { cadence: .5, gapless: true, step(ctx) {
     if (!ctx.state.scratch.popcornStarted) { all(ctx, ctx.colour(0, 0)); ctx.state.scratch.popcornStarted = true; }
     ctx.refresh(1);
     if (!POPCORN_HITS[mod(Math.floor(ctx.iter / 16), 2)].includes(mod(ctx.iter, 16))) return;
@@ -231,7 +231,7 @@ export const LDJ_ITERATION_ROWS: Record<string, LdjRow> = {
     const index = paletteIndex(ctx, Math.floor(ctx.iter / 4)); ctx.refresh(index);
     if (mod(ctx.iter, 2)) off(ctx); else all(ctx, ctx.colour(index), INSTANT, 'flash');
   } },
-  PaletteSplit: { cadence: 1, step(ctx) {
+  PaletteSplit: { cadence: 1, gapless: true, step(ctx) {
     const index = paletteIndex(ctx, ctx.iter);
     ctx.state.scratch.framePalette = index;
     all(ctx, ctx.colour(index)); ctx.refresh(index);

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { registerKind } from '../registry.ts';
-import { accentStrobes, azimuthAround, centreOf, lengthIn, paint, positionsOf, soft, triggerLevel, v2CommonSchema } from './common.ts';
+import { accentStrobes, azimuthAround, centreOf, gapsWithoutFloor, lengthIn, paint, positionsOf, soft, triggerLevel, v2CommonSchema } from './common.ts';
 import type { EffectFrame, EffectSlot } from '../types.ts';
 import type { Room } from '../../room.ts';
 
@@ -44,7 +44,7 @@ function render(p: Params, state: Motion, room: Room, f: EffectFrame, out: Effec
 }
 
 registerKind<Params, Motion>({
-  kind: 'v2.visualizer', app: 'own', level: 'cell', schema: visualizerSchema,
+  kind: 'v2.visualizer', app: 'own', level: 'cell', schema: visualizerSchema, gapsApply: gapsWithoutFloor,
   defaults: { params: visualizerSchema.parse({}), brightness: 1 }, stateful: true,
   rapidFlashWhen: accentStrobes, init: () => ({ phase: 0, lastMs: null }), render,
 });
