@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { colourMixer } from './color.ts';
 import type { Colour } from '../types/rig.ts';
 
-const channel = z.number().min(0).max(255);
+const channel = z.number().int().min(0).max(255);
 export const backgroundSchema = z.object({
   version: z.literal(1), mode: z.enum(['follow', 'fixed', 'off']), level: z.number().min(0).max(1),
   colour: z.object({ r: channel, g: channel, b: channel, w: channel, a: channel, uv: channel }).strict(),

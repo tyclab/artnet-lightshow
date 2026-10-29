@@ -111,6 +111,8 @@ export function withRecommended(spec, def) {
   for (const key of ['brightness', 'background', 'rapidFlash', 'minFlashIntervalMs', 'scope', 'palette']) {
     if (d[key] !== undefined) carried[key] = clone(d[key]);
   }
+  // No kind recommends a background level; it follows the recommended brightness, as a fresh spec's does.
+  if (carried.background === undefined) carried.background = { version: 1, level: d.brightness ?? 1 };
   return { ...spec, ...(spec.gradients || d.gradients ? gradientSettings(d) : {}), kind: def.kind, params: clone(d.params) || {}, ...carried };
 }
 

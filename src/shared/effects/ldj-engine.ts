@@ -49,8 +49,8 @@ interface PendingLamp { slot: number; delay: number; transition: LampTransition 
 /**
  * What a row says about a lamp it sets, for Hue lamps in pulse mode: 'flash'
  * is one of its hard flashes (on at full, cut to off), 'rest' its explicit
- * rest level, which cuts a held flash short. Nothing else is marked: a fade,
- * a blend or a background is drawn as authored on every lamp.
+ * rest level, which cuts a held flash short; 'background' its authored ambient
+ * field. A fade or a blend is drawn as authored on every lamp.
  */
 export type LampMark = 'flash' | 'rest' | 'background';
 
