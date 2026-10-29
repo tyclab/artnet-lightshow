@@ -3,6 +3,7 @@ import { stagePreviewSig, librarySig, api, pick } from './state.js';
 import { createPreviewSampler } from '../src/shared/preview.ts';
 import { buildUnitSpace } from '../src/shared/space.ts';
 import { liveVoiceEvents, previewOptions } from './preview-inputs.js';
+import { knownRoom, loadRoom } from './stage-room.js';
 
 // Track identity resets rehearsal; remounting a view must not rewind it.
 export function useRehearsalTrack(autoShow) {
@@ -16,12 +17,12 @@ export function useRehearsalTrack(autoShow) {
 
 /** The rig's unit space from the Stage room, as the engine builds it; `given` is a room already loaded, else it is fetched. */
 export function useUnitSpace(rig, rigDeps, given) {
-  const [loaded, setLoaded] = useState(null);
+  const [loaded, setLoaded] = useState(() => knownRoom()?.room ?? null);
   const fetches = given === undefined;
   useEffect(() => {
     if (!fetches) return undefined;
     let live = true;
-    api('/api/stage/room').then((r) => { if (live && r && r.ok) setLoaded(r.room ?? null); });
+    loadRoom().then((r) => { if (live && r && r.ok) setLoaded(r.room ?? null); });
     return () => { live = false; };
   }, [fetches]);
   const room = fetches ? loaded : given;

@@ -1,6 +1,7 @@
 import { ROOM_SCENE_BODY_LIMIT } from '../../src/shared/room-limits.ts';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api } from '../state.js';
+import { loadRoom, rememberRoom } from '../stage-room.js';
 import { bindingSources } from '../stage3d/world.js';
 
 export const replaceStageRoom = (room, revision) => api('/api/stage/room', {
@@ -54,7 +55,7 @@ export function StageRoomPanel({ snapshot, coverage, fixtures, rig, onChange }) 
     if (!discardDraft()) return;
     const version = ++request.current;
     setBusy(true);
-    const result = await api('/api/stage/room');
+    const result = await loadRoom();
     if (version !== request.current) return;
     setBusy(false);
     if (result.ok) { onChange(result); setDraft(null); setEditingId(null); setError(''); }
@@ -76,6 +77,7 @@ export function StageRoomPanel({ snapshot, coverage, fixtures, rig, onChange }) 
     const version = ++request.current;
     setBusy(true);
     const result = await replaceStageRoom(next, revision);
+    rememberRoom(result);
     if (version !== request.current) return;
     setBusy(false);
     if (result.ok) { onChange(result); setPending(null); setDraft(null); setEditingId(null); setError(''); return true; }

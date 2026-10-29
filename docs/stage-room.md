@@ -111,7 +111,10 @@ of the floor-plan source.
 `GET /api/stage/room` returns `{ ok, room, revision }`. With no imported model,
 `room` is `null` and `revision` is `empty`. GET supports `If-None-Match` and 304
 responses, so clients can check for updates without downloading unchanged
-geometry.
+geometry. The browser keeps the room it last loaded or saved
+(`public-src/stage-room.js`) and asks with `If-None-Match` whenever a view that
+draws it mounts: while the revision stands, Show and Effects keep the same room
+object, and the 3D scene keeps the room and rig it built from it.
 
 `PUT /api/stage/room` accepts the room object above. `DELETE /api/stage/room`
 returns to the generic venue. Both require `If-Match` with the revision from
