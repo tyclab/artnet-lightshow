@@ -1,4 +1,4 @@
-import { ambient } from '../background.ts';
+import { ambient, gap } from '../background.ts';
 import type { BackgroundField } from '../background.ts';
 // The entertainment lamp transitions run at 22 Hz. The faster renderer samples their
 // latest output; fractional frame time and pending changes belong to the instance.
@@ -11,6 +11,7 @@ import type { AudioFrame } from './audio-frame.ts';
 import type { EffectKindDef, Seed } from './types.ts';
 import { paletteBinding } from './palette.ts';
 import type { PaletteAccess, PaletteBinding } from './palette.ts';
+import { requiresAcknowledgement } from './registry.ts';
 
 export const LDJ_FRAME_MS = 1000 / 22;
 export type LdjEnvelope = { kind: 'instant' } | { kind: 'fade'; beats: number; baseline?: number }
@@ -241,9 +242,14 @@ export class LdjLamps {
     return frames;
   }
 
-  background(i: number, colour?: Colour): BackgroundField | undefined {
+  /**
+   * A lamp's field: its authored bed (a background mark, the rest under a backlit
+   * flash, a fade or matrix baseline), else, when the row reveals its gaps, the
+   * share its level leaves unlit (all of a lamp it switched off).
+   */
+  background(i: number, colour?: Colour, reveal = false): BackgroundField | undefined {
     const state = this.lamps[i];
-    if (!state) return undefined;
+    if (!state) return reveal ? gap(0) : undefined;
     const env = state.env;
     if (state.mark === 'background') {
       if (env.kind === 'blend') {
@@ -254,7 +260,7 @@ export class LdjLamps {
     }
     if (state.backgroundColour) return ambient(state.backgroundColour, 0, 0, 1);
     const floor = env.kind === 'fade' || env.kind === 'matrix' ? env.baseline ?? 0 : 0;
-    if (!floor) return undefined;
+    if (!floor) return reveal ? gap(state.bri) : undefined;
     const coverage = Math.max(0, Math.min(1, (1 - state.bri) / Math.max(1e-6, 1 - floor)));
     return ambient(colour ?? state.colour, floor * coverage, coverage, floor);
   }
@@ -502,13 +508,16 @@ export function makeLdjKind(name: string, row: LdjRow): EffectKindDef<LdjParams,
       ctx.nowMs = frame.nowMs; ctx.elapsedMs = frame.nowMs - originMs;
       // A Hue lamp in pulse mode takes a row's marked hard flashes as the
       // strobe's pulse; everything else, and every other lamp, as drawn.
-      const pulse = frame.hueStrobe === 'pulse';
+      // A rapid row's rests are strobe rests: never revealed.
+      const pulse = frame.hueStrobe === 'pulse', reveal = frame.revealGaps === true && !requiresAcknowledgement(frame.spec);
       for (let i = 0; i < room.n; i++) {
         const lamp = state.lamps.read(i);
         const colour = row.outputColour?.(ctx, i, lamp) ?? lamp.colour;
         state.lamps.observe(i, colour);
         const tail = pulse && room.hue[i] ? state.lamps.pulse(i) : null;
-        out[i] = tail ? { colour: { ...tail.colour }, level: tail.bri, strength: 1 } : { colour, level: lamp.bri, strength: 1, background: state.lamps.background(i, colour) };
+        const unlit = tail && reveal ? gap(tail.bri) : undefined;
+        out[i] = tail ? { colour: { ...tail.colour }, level: tail.bri, strength: 1, ...(unlit ? { background: unlit } : {}) }
+          : { colour, level: lamp.bri, strength: 1, background: state.lamps.background(i, colour, reveal) };
       }
     },
   };

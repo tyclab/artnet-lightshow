@@ -345,6 +345,23 @@ test('invalid preset files are quarantined', (t) => {
   assert.deepEqual(library.resolve(good.id), migrateEffectSpec(good.spec));
 });
 
+test("a version-3 library plays every effect at its family default and keeps a .v3 copy when a Between effect hits choice is saved", (t) => {
+  quietly(t);
+  const { file } = place(t);
+  assert.equal(EFFECT_LIBRARY_VERSION, 4);
+  const stored = { id: 'user.0123456789abcdef', name: 'Old fade', spec: validateSpec(FADE), createdAt: '2026-10-28T10:00:00.000Z', updatedAt: '2026-10-28T10:00:00.000Z' };
+  const older = { version: 3, presets: [stored] };
+  fs.writeFileSync(file, JSON.stringify(older));
+  const library = new EffectLibrary(file).load();
+  assert.equal(library.resolve(stored.id).background.gaps, undefined, 'no choice is invented: the family default plays');
+  const revealed = { ...FADE, background: { version: 1, level: 1, gaps: 'reveal' } };
+  const saved = library.update(stored.id, { spec: revealed });
+  assert.equal(saved.spec.background.gaps, 'reveal');
+  assert.deepEqual(onDisk(`${file}.v3`), older, 'the version-3 file an older build reads stays beside the new one');
+  assert.equal(onDisk(file).version, 4);
+  assert.equal(new EffectLibrary(file).load().resolve(stored.id).background.gaps, 'reveal', 'the choice survives a reload');
+});
+
 test("the first save after an upgrade keeps the older library beside the new file", (t) => {
   quietly(t);
   const { file } = place(t);

@@ -158,8 +158,9 @@ export function paint(common: V2Common, frame: EffectFrame, position01: number, 
   const foreground = clamp(level);
   const background = common.background * (1 - foreground);
   const lit = foreground + background;
-  out.background = { colour: backgroundColour(common), level: background, fullLevel: common.background, coverage: 1 - foreground,
-    dark: foreground === 0 && requiresAcknowledgement(frame.spec) };
+  // Without an authored floor the uncovered share is a gap, published only when the effect reveals it.
+  out.background = common.background > 0 || frame.revealGaps !== false ? { colour: backgroundColour(common), level: background,
+    fullLevel: common.background, coverage: 1 - foreground, dark: foreground === 0 && requiresAcknowledgement(frame.spec) } : undefined;
   if (!(lit > 0)) {
     out.colour = { r: 0, g: 0, b: 0, w: 0, a: 0, uv: 0 };
     out.level = 0;

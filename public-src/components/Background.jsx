@@ -78,6 +78,6 @@ export function Background() {
     </fieldset>}
     {hint && <p class="setting-help">{hint}</p>}
     <p class="hint">{value.mode === 'follow' ? 'Uses the effect’s authored ambient colours and movement. Effects without an ambient layer stay dark between notes.'
-      : value.mode === 'fixed' ? 'Fills the effect’s background with this colour. Deliberate dark rests stay dark.' : 'Removes ambient light; the effect and its trails still play.'}</p>
+      : value.mode === 'fixed' ? 'Fills the effect’s background with this colour, and the gaps between hits of an effect set to Reveal background. Deliberate dark rests stay dark.' : 'Removes ambient light; the effect and its trails still play.'}</p>
   </section>;
 }

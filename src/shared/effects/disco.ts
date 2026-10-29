@@ -1,4 +1,4 @@
-import { ambient } from '../background.ts';
+import { ambient, gap } from '../background.ts';
 import type { BackgroundField } from '../background.ts';
 import { HEX_COLOUR } from '../palette-model.ts';
 // Disco: lamps answer the hits in three bands (Spectrum), the loudest peaks
@@ -15,7 +15,7 @@ import { BAND_HZ_MAX, perBinFloorDb, validBand } from '../spectrum-bands.ts';
 import type { AudioFrame } from './audio-frame.ts';
 import { hash01 } from './hash.ts';
 import { parseHex, toHex } from './palette.ts';
-import { registerKind } from './registry.ts';
+import { registerKind, requiresAcknowledgement } from './registry.ts';
 import type { EffectFrame, EffectSlot } from './types.ts';
 
 export type DiscoBand = 'bass' | 'voice' | 'treble';
@@ -565,9 +565,17 @@ function renderDisco(p: DiscoParams, s: DiscoState, room: Room, f: EffectFrame, 
   // Ownership follows the stream: a lamp the Disco has set, or one outside
   // every channel, is its own, dark or not; one it has not reached yet is
   // left to the layer below, as a voice's untouched lamps always are.
+  // Idle washes and releases are beds; when the Disco reveals its gaps, an
+  // owned lamp's share that neither its bed nor its level covers takes the
+  // Background too.
+  const reveal = f.revealGaps === true && !requiresAcknowledgement(f.spec);
   for (let i = 0; i < room.n; i++) {
     const { background, ...light } = sample(s.lamps[i], s.now);
-    out[i] = { ...light, ...(background.coverage > 0 ? { background } : {}), strength: s.lamps[i].commanded || !s.layout.grouped[i] ? 1 : 0 };
+    const owned = s.lamps[i].commanded || !s.layout.grouped[i];
+    const unlit = reveal && owned ? (1 - background.coverage) * Math.max(0, 1 - light.level) : 0;
+    const field = unlit > 0 ? (background.coverage > 0 ? { ...background, coverage: background.coverage + unlit } : gap(light.level))
+      : background.coverage > 0 ? background : undefined;
+    out[i] = { ...light, ...(field ? { background: field } : {}), strength: owned ? 1 : 0 };
   }
 }
 

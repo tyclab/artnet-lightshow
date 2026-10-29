@@ -17,10 +17,24 @@ export type BackgroundSettings = z.infer<typeof backgroundSchema>;
 export const DEFAULT_BACKGROUND: BackgroundSettings = {
   version: 1, mode: 'follow', level: 1, colour: { r: 255, g: 160, b: 70, w: 0, a: 0, uv: 0 },
 };
+/**
+ * What an effect publishes under a slot's light. A bed (level or fullLevel above zero) is
+ * ambient light it authors (writeFloor, FADE_FLOOR/HIT_FLOOR, V2 floors, LDJ baselines,
+ * Disco idles): Follow keeps it, Fixed replaces it, Off removes it. A gap (no authored
+ * level) is the share the foreground leaves uncovered, published only by an effect that
+ * reveals its gaps (gapsOf): Fixed fills it. An explicit dark cue, a rapid flash's rest
+ * (`dark`) or a black foreground at full opacity (coverage 0), takes nothing. Without a
+ * field the slot is the effect's own black: owned, never the look beneath (bundle.ts).
+ */
 export interface BackgroundField { colour: Colour; level: number; fullLevel?: number; coverage: number; dark?: boolean }
 export interface BackgroundLight { colour: Colour; level: number }
 export const DARK_BACKGROUND: Colour = Object.freeze({ r: 0, g: 0, b: 0, w: 0, a: 0, uv: 0 });
 export const ambient = (colour: Colour, level: number, coverage = 1, fullLevel = coverage > 0 ? level / coverage : 0): BackgroundField => ({ colour, level, fullLevel, coverage });
+/** A revealed gap: the share of the slot a foreground of this opacity leaves uncovered, none when it covers all of it. */
+export function gap(opacity: number): BackgroundField | undefined {
+  const coverage = 1 - Math.max(0, Math.min(1, opacity));
+  return coverage > 0 ? { colour: DARK_BACKGROUND, level: 0, fullLevel: 0, coverage } : undefined;
+}
 
 // The patched fixtures the setting reaches, by patch index (null: all). Wash fixtures are the single-light
 // ones (no cells, the rig's 'pars'); the others keep the effect's own background, as Follow at 100 %.

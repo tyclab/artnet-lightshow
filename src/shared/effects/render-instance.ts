@@ -4,7 +4,7 @@ import { resolveGradient } from '../palette-model.ts';
 
 import type { Colour } from '../../types/rig.ts';
 import type { Room } from '../room.ts';
-import { kindOf, requiresAcknowledgement } from './registry.ts';
+import { familyGaps, kindOf, requiresAcknowledgement } from './registry.ts';
 import { createPaletteAccess, resolvePalette } from './palette.ts';
 import { EffectStepper } from './stepper.ts';
 import type { EffectInstance } from './stepper.ts';
@@ -23,8 +23,9 @@ function renderCore(inst: EffectInstance, frame: FrameBase & { roll?: number }, 
   const at = lamps ?? room;
   const prepared = stepper.palette(inst.id, inst.spec, frame.nowMs);
   const initialRoll = frame.roll ?? 0;
+  const gaps = inst.spec.background?.gaps ?? frame.gaps;
   const f: EffectFrame = { ...frame, spec: inst.spec, seed: inst.seed, anchorBeat: inst.anchorBeat, startedAtMs: inst.startedAtMs, instanceId: inst.id,
-    palette: [], roll: initialRoll };
+    palette: [], roll: initialRoll, gaps, revealGaps: (gaps ?? familyGaps(inst.spec.kind)) === 'reveal' };
   if (lamps && frame.fixtureIds) f.fixtureIds = lamps.slots.map((slots) => frame.fixtureIds![slots[0]]);
   const paletteAt = (roll: number) => resolvePalette(inst.spec, frame.paletteOverride, frame.lookPalette, inst.seed, roll, prepared);
   const state = stepper.get(inst.id, () => {

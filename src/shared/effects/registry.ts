@@ -4,7 +4,7 @@
 import { z } from 'zod';
 import { admissionPolicySchema } from '../hardware.ts';
 import { HEX_COLOUR, gradientFields, checkGradients, paletteBodySchema } from '../palette-model.ts';
-import type { EffectKindDef, EffectSpec } from './types.ts';
+import type { EffectKindDef, EffectSpec, GapPolicy } from './types.ts';
 
 export const KINDS = new Map<string, EffectKindDef>();
 
@@ -20,6 +20,21 @@ export function kindOf(kind: string): EffectKindDef | null {
 export function requiresAcknowledgement(spec: EffectSpec): boolean {
   const def = kindOf(spec.kind);
   return Boolean(spec.rapidFlash || def?.rapidFlash || def?.rapidFlashWhen?.(spec.params));
+}
+
+/**
+ * What a kind does between its hits when its spec chooses nothing: the LDJ families
+ * (the bitmap raster included) and Disco kept their gaps dark before an effect could
+ * choose, every other family revealed the Background layer in them.
+ */
+export function familyGaps(kind: string): GapPolicy {
+  const def = kindOf(kind);
+  return def?.app === 'ldj' || def?.kind === 'hd.disco' ? 'dark' : 'reveal';
+}
+
+/** A spec's own "Between effect hits" choice, or its family's. */
+export function gapsOf(spec: EffectSpec): GapPolicy {
+  return spec.background?.gaps ?? familyGaps(spec.kind);
 }
 
 /** Does a kind ride the expression level on a curve of its own (glow), so a layer's level is not multiplied by it again. */
@@ -46,7 +61,7 @@ const specSchema = z.object({
   ])).min(1).max(8).nullable().optional(),
   ...gradientFields,
   brightness: z.number().min(0).max(1).optional(),
-  background: z.object({ version: z.literal(1), level: z.number().min(0).max(1) }).strict().optional(),
+  background: z.object({ version: z.literal(1), level: z.number().min(0).max(1), gaps: z.enum(['dark', 'reveal']).optional() }).strict().optional(),
   rapidFlash: z.boolean().optional(),
   minFlashIntervalMs: z.number().min(0).optional(),
   scope: z.enum(['singleBeat', 'measure']).optional(),

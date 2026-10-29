@@ -64,3 +64,34 @@ test('background fixtures: wash fixtures and a picked set persist, and the pick 
   await expect(picker.getByRole('checkbox', { name: fixtures[1].label })).toBeChecked();
   await request.post('/api/set', { data: { background: { version: 1, mode: 'follow', level: 1, colour: { r: 255, g: 160, b: 70, w: 0, a: 0, uv: 0 } } } });
 });
+
+test('the effect editor sets Between effect hits per effect, showing the family default, and saves it with the preset', async ({ page, request }) => {
+  const NAME = 'E2E Reveal Fade';
+  const removeOwn = async () => {
+    for (const e of (await state(request)).effects || []) if (e.name === NAME) await request.delete(`/api/effects/${encodeURIComponent(e.id)}`);
+  };
+  await reset(request);
+  await removeOwn();
+  // The entertainment rows are compatibility entries, out of the list: the one on stage opens from its chip.
+  await request.post('/api/set', { data: { pattern: 'ldj.FadeCycle' } });
+  await open(page, 'effects');
+  await page.getByRole('button', { name: /^Edit Fade Cycle/ }).first().click();
+  const sheet = page.getByRole('dialog', { name: 'Edit effect' });
+  const gaps = sheet.getByLabel('Between effect hits');
+  await expect(gaps).toHaveValue('dark');
+  await expect(gaps.locator('option:checked')).toHaveText('Keep dark (family default)');
+  await expect(sheet).toContainText('Explicit dark cues stay dark.');
+  await gaps.selectOption('reveal');
+  await expect(sheet.locator('.insp-dirty')).toHaveText('Changed');
+  await sheet.getByLabel('Authored background level').fill('0.5');
+  await sheet.getByRole('button', { name: 'Save as…' }).click();
+  await sheet.getByLabel('Preset name').fill(NAME);
+  await sheet.getByRole('button', { name: 'Save copy' }).click();
+  const s = await until(request, (st) => (st.effects || []).some((e) => e.name === NAME));
+  const saved = s.effects.find((e) => e.name === NAME);
+  const lib = await (await request.get('/api/effects')).json();
+  expect(lib.user.find((p) => p.id === saved.id).spec.background).toEqual({ version: 1, level: .5, gaps: 'reveal' });
+  await expect(sheet.locator('.effect-inspector-head strong')).toHaveText(NAME);
+  await expect(gaps).toHaveValue('reveal');
+  await removeOwn();
+});

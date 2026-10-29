@@ -10,7 +10,7 @@ import { parseHex, toHex, HEX_COLOUR } from '../../src/shared/palette-model.ts';
 import { FieldInput } from './setup/FieldInput.jsx';
 import { useVoicePads } from '../voice-pad.js';
 import { useSafetyGate } from './Photosensitivity.jsx';
-import { requiresAcknowledgement } from '../../src/shared/effects/registry.ts';
+import { familyGaps, requiresAcknowledgement } from '../../src/shared/effects/registry.ts';
 
 /**
  * The preset picked in the Effects list, with every setting its family can
@@ -114,6 +114,14 @@ export function withRecommended(spec, def) {
   // No kind recommends a background level; it follows the recommended brightness, as a fresh spec's does.
   if (carried.background === undefined) carried.background = { version: 1, level: d.brightness ?? 1 };
   return { ...spec, ...(spec.gradients || d.gradients ? gradientSettings(d) : {}), kind: def.kind, params: clone(d.params) || {}, ...carried };
+}
+
+const GAPS = { dark: 'Keep dark', reveal: 'Reveal background' };
+/** "Between effect hits": a macro may leave the choice to its steps; any other kind shows its family's default as the choice. */
+export function gapOptions(kind) {
+  if (kind === 'macro') return { '': 'Each step’s own', ...GAPS };
+  const family = familyGaps(kind);
+  return Object.fromEntries(Object.entries(GAPS).map(([id, text]) => [id, id === family ? `${text} (family default)` : text]));
 }
 
 // The entertainment backlit rows are kinds of their own (BL…): a row with a twin gets
@@ -610,9 +618,18 @@ export function Inspector({ id, onSelect, onPlay, onClose, inline = null, onAppl
           <input id={fid('name')} type="text" value={draft.name} maxLength={80} onInput={(e) => update((d) => ({ ...d, name: e.target.value }))} />
         </Field>}
         <UnitField label="Foreground brightness" path="brightness" value={spec.brightness ?? 1} onChange={(v) => setSpec('brightness', v)} />
-        <UnitField label="Authored background level" path="background.level" value={spec.background?.level ?? spec.brightness ?? 1} onChange={(v) => setSpec('background', { version: 1, level: v })} />
+        <UnitField label="Authored background level" path="background.level" value={spec.background?.level ?? spec.brightness ?? 1}
+          onChange={(v) => setSpec('background', { ...spec.background, version: 1, level: v })} />
+        <SelectField label="Between effect hits" path="background.gaps" value={spec.background?.gaps ?? (spec.kind === 'macro' ? '' : familyGaps(spec.kind))}
+          options={gapOptions(spec.kind)} onChange={(v) => {
+            const { gaps: _gaps, ...rest } = spec.background ?? { version: 1, level: spec.brightness ?? 1 };
+            setSpec('background', v ? { ...rest, gaps: v } : rest);
+          }} />
         <HardwareFit spec={spec} />
       </div>
+      <p class="effect-inspector-desc">Authored background level scales this effect’s own ambient beds. Between its hits, Keep dark leaves
+        the gaps black; Reveal background lets the Background card’s colour into them. Explicit dark cues stay dark. Background Off
+        removes the ambient layer, while effects can still produce light.</p>
       {!spatial && advancedControls}
       {ask && (
         <div class="insp-ask" role="group" aria-label="Recommended settings">
