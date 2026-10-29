@@ -3,9 +3,15 @@ import { colourMixer } from './color.ts';
 import type { Colour } from '../types/rig.ts';
 
 const channel = z.number().int().min(0).max(255);
+export const BACKGROUND_FIXTURES = ['rig', 'wash', 'selected'] as const;
+export type BackgroundFixtures = typeof BACKGROUND_FIXTURES[number];
+const fixtureId = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER - 1);
+// `fixtures` absent is the whole rig; `selected` is kept while another scope is chosen, so the picker remembers it.
 export const backgroundSchema = z.object({
   version: z.literal(1), mode: z.enum(['follow', 'fixed', 'off']), level: z.number().min(0).max(1),
   colour: z.object({ r: channel, g: channel, b: channel, w: channel, a: channel, uv: channel }).strict(),
+  fixtures: z.enum(BACKGROUND_FIXTURES).optional(),
+  selected: z.array(fixtureId).max(1024).refine((ids) => new Set(ids).size === ids.length, 'a fixture is selected twice').optional(),
 }).strict();
 export type BackgroundSettings = z.infer<typeof backgroundSchema>;
 export const DEFAULT_BACKGROUND: BackgroundSettings = {
@@ -15,6 +21,16 @@ export interface BackgroundField { colour: Colour; level: number; fullLevel?: nu
 export interface BackgroundLight { colour: Colour; level: number }
 export const DARK_BACKGROUND: Colour = Object.freeze({ r: 0, g: 0, b: 0, w: 0, a: 0, uv: 0 });
 export const ambient = (colour: Colour, level: number, coverage = 1, fullLevel = coverage > 0 ? level / coverage : 0): BackgroundField => ({ colour, level, fullLevel, coverage });
+
+// The patched fixtures the setting reaches, by patch index (null: all). Wash fixtures are the single-light
+// ones (no cells, the rig's 'pars'); the others keep the effect's own background, as Follow at 100 %.
+export function backgroundScope(settings: BackgroundSettings | undefined, cellMaps: readonly (readonly unknown[] | null)[],
+  idOf: (fixture: number) => number | string | undefined): Uint8Array | null {
+  const fixtures = settings?.fixtures ?? 'rig';
+  if (fixtures === 'rig') return null;
+  const chosen = fixtures === 'selected' ? new Set<unknown>(settings!.selected ?? []) : null;
+  return Uint8Array.from(cellMaps, (maps, i) => Number(chosen ? chosen.has(idOf(i)) : !maps));
+}
 
 export function backgroundLight(field: BackgroundField | undefined, settings = DEFAULT_BACKGROUND, stopped = false): BackgroundLight {
   if (settings.mode === 'off' || (field?.dark && !stopped)) return { colour: DARK_BACKGROUND, level: 0 };

@@ -29,3 +29,38 @@ test('background modes and six-channel colour persist without changing transport
   await until(request, s => s.background?.mode === 'follow');
   await expect(level).toHaveValue('34');
 });
+
+test('background fixtures: wash fixtures and a picked set persist, and the pick is kept while another scope is chosen', async ({ page, request }) => {
+  await reset(request);
+  await request.post('/api/set', { data: { background: { version: 1, mode: 'fixed', level: .4, colour: { r: 255, g: 120, b: 0, w: 0, a: 0, uv: 0 } } } });
+  const { fixtures } = await state(request);
+  expect(fixtures.length).toBeGreaterThan(1);
+  await open(page, 'effects');
+  const panel = page.getByRole('region', { name: 'Background lighting' });
+  const scope = panel.getByRole('combobox', { name: 'Background fixtures' });
+  await expect(scope).toHaveValue('rig');
+  await scope.selectOption('wash');
+  await until(request, (s) => s.background?.fixtures === 'wash');
+  await expect(panel).toContainText(`of ${fixtures.length} fixtures: the single-light ones`);
+
+  await scope.selectOption('selected');
+  const picker = panel.getByRole('group', { name: 'Fixtures the background reaches' });
+  await expect(picker.getByRole('checkbox')).toHaveCount(fixtures.length);
+  await picker.getByRole('checkbox', { name: fixtures[1].label }).check();
+  await picker.getByRole('checkbox', { name: fixtures[0].label }).check();
+  const picked = await until(request, (s) => s.background?.fixtures === 'selected' && s.background.selected?.length === 2);
+  expect(picked.background.selected).toEqual([fixtures[0].id, fixtures[1].id]);
+  expect(picked.background.mode).toBe('fixed');
+  await expect(panel).toContainText(`2 of ${fixtures.length} fixtures picked`);
+
+  await page.reload();
+  await expect(scope).toHaveValue('selected');
+  await expect(picker.getByRole('checkbox', { name: fixtures[0].label })).toBeChecked();
+  await scope.selectOption('rig');
+  const whole = await until(request, (s) => s.background?.fixtures === 'rig');
+  expect(whole.background.selected).toEqual([fixtures[0].id, fixtures[1].id]);
+  await expect(picker).toHaveCount(0);
+  await scope.selectOption('selected');
+  await expect(picker.getByRole('checkbox', { name: fixtures[1].label })).toBeChecked();
+  await request.post('/api/set', { data: { background: { version: 1, mode: 'follow', level: 1, colour: { r: 255, g: 160, b: 70, w: 0, a: 0, uv: 0 } } } });
+});

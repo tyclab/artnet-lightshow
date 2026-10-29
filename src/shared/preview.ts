@@ -1,4 +1,4 @@
-import { ambient, composeBackground } from './background.ts';
+import { ambient, backgroundScope, composeBackground } from './background.ts';
 import type { BackgroundSettings } from './background.ts';
 import { drawnByTheShow, strobeLevel } from './strobe-fx.ts';
 import { outputEmitters } from './emitter-capability.ts';
@@ -457,8 +457,15 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
     return slots;
   };
 
+  /** The Background setting each unit takes: the look's inside its fixture scope, none (as authored) outside it. */
+  function backgroundOf(s: PreviewLook, rig: Rig): (u: number) => BackgroundSettings | undefined {
+    const scope = backgroundScope(s.background, rig.cellMaps, (i) => (rig.fixtures[i] as PreviewFixture | undefined)?.id);
+    return (u) => (!scope || scope[rig.units[u].fixture] ? s.background : undefined);
+  }
+
   function drawPattern(f: Frame, positionMs: number, rig: Rig, colors: Colour[], expr: Expression, phase: number, bpm: number, hardware?: HardwareCaps[], hardwareClock?: HardwareClock): LayerEntry[] {
     const s = f.look;
+    const settingsOf = backgroundOf(s, rig);
     const division = Math.max(1, s.beatDivision || 1);
     const beatPos = beatAt(positionMs, f);
     const step = stepAt(beatPos, f.anchor, division);
@@ -489,7 +496,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       pixelTwinkle: rig.units.map(() => 0),
       panelTwinkle: rig.units.map(() => 0),
     }, (u, color, dim, strobe, background) => {
-      const resolved = composeBackground(color, dim / 255, background, s.background);
+      const resolved = composeBackground(color, dim / 255, background, settingsOf(u));
       layer[u] = { color: resolved.colour, dim: resolved.level * 255, strobe };
     });
     return layer;
@@ -722,6 +729,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
 
     const colors = coloursOf(s, presets);
     const spec = e.specs.get(s.pattern) ?? null;
+    const settingsOf = backgroundOf(s, rig);
     const { voices, admitted } = playingVoices(w, t, beatPos, f);
     const n = rig.units.length;
     const units: UnitLight[] = new Array<UnitLight>(n);
@@ -767,7 +775,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       const instance: EffectInstance = { id, spec, seed: w.base.seed, anchorBeat: f.anchor / division, startedAtMs: w.base.startedAtMs, targets: null };
       const modulation = s.pixelSpan ? { ...fb.modulation, spanProgress: fb.modulation?.sectionProgress } : fb.modulation;
       renderEffectLayer(rig, cells.layout, { ...fb, modulation, fixtureIds: cells.ids, hardware: cells.hardware }, instance, w.stepper, (u, colour, dim, strobe, kind, owner, background) => {
-        const resolved = composeBackground(colour, dim / 255, background, s.background);
+        const resolved = composeBackground(colour, dim / 255, background, settingsOf(u));
         units[u] = unitLight(resolved.colour, resolved.level * 255, strobe);
         baseKind[u] = kind;
         baseOwner[u] = owner;
@@ -776,7 +784,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
         const { start, count } = rig.ranges[i];
         for (let u = start; u < start + count; u++) {
           const colour = colourSlots(paletteOverride ?? colors)[1];
-          const resolved = composeBackground(colour, 1, ambient(colour, 1), s.background);
+          const resolved = composeBackground(colour, 1, ambient(colour, 1), settingsOf(u));
           units[u] = unitLight(resolved.colour, resolved.level * 255); baseKind[u] = null;
         }
       }
@@ -793,7 +801,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       const lights = new Array<UnitLight | null>(n).fill(null);
       const covered = renderSequenceLayer(rig, voiceCells.layout, { ...fb, fixtureIds: voiceCells.ids, hardware: voiceCells.hardware }, sequence.table, sequence.transport, w.seq, w.stepper,
         (u, colour, dim, strobe, kind, owner, background) => {
-          const resolved = composeBackground(colour, dim / 255, background, s.background);
+          const resolved = composeBackground(colour, dim / 255, background, settingsOf(u));
           lights[u] = unitLight(resolved.colour, resolved.level * 255, strobe); clipKind[u] = kind; clipOwner[u] = owner;
         });
       if (covered) clips = lights;
@@ -828,7 +836,7 @@ function createPreviewSampler(events: readonly PreviewEvent[] = [], grid: GridSo
       const voice = voiceTop ? voiceTop[u] : null;
       if (voice) {
         // A voice stands where the energy burst always stood, at its own level.
-        const resolved = composeBackground(voice.colour, voice.level, voice.background, s.background);
+        const resolved = composeBackground(voice.colour, voice.level, voice.background, settingsOf(u));
         cols[u] = resolved.colour;
         dims[u] = 255 * resolved.level;
       } else {
