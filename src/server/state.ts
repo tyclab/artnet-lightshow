@@ -1,3 +1,5 @@
+import { DEFAULT_BACKGROUND } from '../shared/background.ts';
+import type { BackgroundSettings } from '../shared/background.ts';
 import { isHueProfile } from '../shared/hue-lamp.ts';
 import { BUILTIN_PROFILE_ID, BUILTIN_PROFILE_IDS, getProfile, listProfiles } from './profiles.ts';
 import { settings } from './settings.ts';
@@ -31,6 +33,7 @@ export interface PatternAnchor {
 }
 
 export interface ShowState {
+  background: BackgroundSettings;
   artnet: Settings['artnet'];
   bpm: number;
   /** Whether the clock follows the music or holds `bpm` (settings `clock.tempoMode`). */
@@ -81,6 +84,7 @@ export type ClientFixture = Fixture & { universe: number; maxBrightness: number 
 const DEFAULT_ADDRESSES = [1, 13, 25, 37];
 
 const state: ShowState = {
+  background: structuredClone(DEFAULT_BACKGROUND),
   // The default universe: new fixtures land on it, and fixtures on it follow it (setDefaultUniverse).
   artnet: settings.group('artnet'),
   bpm: 120,
@@ -359,6 +363,7 @@ function getLiveState() {
     colorC: state.colorC,
     colorD: state.colorD,
     masterDimmer: state.masterDimmer,
+    background: structuredClone(state.background),
     masterBlackout: state.masterBlackout,
     flashLimit: state.flashLimit,
     strobeSpeed: state.strobeSpeed,

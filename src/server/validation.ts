@@ -1,3 +1,4 @@
+import { backgroundSchema } from '../shared/background.ts';
 import { z } from 'zod';
 import { admissionPolicySchema, rateOverrideSchema } from '../shared/hardware.ts';
 import net from 'node:net';
@@ -135,6 +136,7 @@ const patchSchema = z.object({
     level: unitValue, bass: unitValue, vocal: unitValue, air: unitValue,
     width: unitValue, motion: unitValue, decay: unitValue,
   }).strict().nullable().optional(),
+  background: backgroundSchema.optional(),
   masterDimmer: u8.optional(),
   masterBlackout: z.boolean().optional(),
   strobeSpeed: u8.optional(),

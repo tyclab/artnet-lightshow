@@ -345,7 +345,9 @@ test("uncached colours advance only on whole lamp frames", () => {
     const first = sample(h, 0), selected = first.findIndex((s) => s.level === .5);
     assert.ok(selected >= 0, name);
     const settled = sample(h, LDJ_FRAME_MS / 2);
-    assert.deepEqual(settled[selected], first[selected], 'uncached draw holds within the lamp frame');
+    const visible = ({ background: _background, ...light }) => light;
+    assert.deepEqual(visible(settled[selected]), visible(first[selected]), 'uncached foreground holds within the lamp frame');
+    if (name.startsWith('BL')) assert.deepEqual(settled[selected].background.colour, settled.find((s, i) => i !== selected).colour, 'the covered bed follows the same cached background refresh');
     // The initial cached backlight refresh is consumed once on this render.
     assert.deepEqual(sample(h, LDJ_FRAME_MS / 2), settled);
     const colours = [hex(first[selected])];

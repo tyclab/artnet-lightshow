@@ -90,14 +90,18 @@ function huePulseLevel(sinceMs: number, floor = HUE_PULSE_FLOOR): number {
   return Math.round(255 - (255 - floor) * fall);
 }
 
+/** The beds the fade and hit curves rest on (0-255): backgrounds, not foreground content. */
+export const FADE_FLOOR = 25;
+export const HIT_FLOOR = 35;
+
 function fadeBrightness(phase: number): number {
-  return Math.round(((Math.sin(phase * Math.PI * 2 - Math.PI / 2) + 1) / 2) * 230 + 25);
+  return Math.round(((Math.sin(phase * Math.PI * 2 - Math.PI / 2) + 1) / 2) * (255 - FADE_FLOOR) + FADE_FLOOR);
 }
 
 // Clamp hit phase so a decay holds its floor instead of retriggering after one beat.
 function hitBrightness(phase: number): number {
   const p = Math.max(0, Math.min(1, phase));
-  return Math.round(35 + Math.pow(1 - p, 1.8) * 220);
+  return Math.round(HIT_FLOOR + Math.pow(1 - p, 1.8) * (255 - HIT_FLOOR));
 }
 
 const GRID_UNDER_GROOVE = 0.5;

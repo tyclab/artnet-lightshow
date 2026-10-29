@@ -40,8 +40,8 @@ function strobeCycle(ctx: LdjCtx, swapped = false): void {
   // rest hold the background, a change of colour rather than a flash.
   const mark: LampMark | undefined = ctx.pal.length > 1 ? undefined : 'flash';
   each(ctx, (slot, channel) => {
-    if (channel === mod(ctx.iter, 4)) ctx.lamps.set(slot, p, 1, INSTANT, 0, mark);
-    else if (ctx.pal.length > 1) ctx.lamps.set(slot, s, 1, INSTANT);
+    if (channel === mod(ctx.iter, 4)) ctx.lamps.set(slot, p, 1, INSTANT, 0, mark, ctx.pal.length > 1 ? s : undefined);
+    else if (ctx.pal.length > 1) ctx.lamps.set(slot, s, 1, INSTANT, 0, 'background');
     else ctx.lamps.off(slot);
   });
   refreshCount(ctx, 2);
@@ -70,13 +70,13 @@ export const LDJ_CHANNEL_ROWS: Record<string, LdjRow> = {
     selected(ctx, mod(ctx.iter, 4), at(ctx, 1, 1), { kind: 'fade', beats: 1 }); refreshCount(ctx, 4);
   } },
   SoftStrobe: { cadence: 2, step(ctx) {
-    each(ctx, (slot, channel) => ctx.lamps.set(slot, at(ctx, 1, channel), 1, channel === mod(ctx.iter, 4) ? { kind: 'fade', beats: 2 } : INSTANT));
+    each(ctx, (slot, channel) => ctx.lamps.set(slot, at(ctx, 1, channel), 1, channel === mod(ctx.iter, 4) ? { kind: 'fade', beats: 2 } : INSTANT, 0, channel === mod(ctx.iter, 4) ? undefined : 'background'));
     refreshCount(ctx, mod(ctx.iter, 4));
   } },
   FillCycle: { cadence: .5, step(ctx) {
     const phase = mod(ctx.iter, 8), p = primary(ctx), s = at(ctx, 0, 1);
     const filling = phase < 4 ? p : s, background = phase < 4 ? s : p;
-    each(ctx, (slot, channel) => ctx.lamps.set(slot, channel <= phase % 4 ? filling : background, 1, INSTANT));
+    each(ctx, (slot, channel) => ctx.lamps.set(slot, channel <= phase % 4 ? filling : background, 1, INSTANT, 0, channel <= phase % 4 ? undefined : 'background', background));
     if (phase % 4 === 0) ctx.refresh(phase);
   } },
   Split: { cadence: 1, channels: 2, step(ctx) {

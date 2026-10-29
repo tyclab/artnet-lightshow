@@ -274,7 +274,7 @@ test("concurrent preset edits persist in order", async (t) => {
   const [saved] = s.effectLibrary.list().user;
   assert.ok(['First', 'Second'].includes(saved.name));
   assert.equal(saved.spec.params.cadence, saved.name === 'First' ? 4 : 8, 'one edit whole, never half of each');
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(s.dir, 'effects.json'), 'utf8')), { version: 2, presets: [saved] });
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(s.dir, 'effects.json'), 'utf8')), { version: 3, presets: [saved] });
   assert.deepEqual(fs.readdirSync(s.dir).filter((f) => f.endsWith('.tmp')), []);
 });
 

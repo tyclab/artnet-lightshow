@@ -46,6 +46,7 @@ const specSchema = z.object({
   ])).min(1).max(8).nullable().optional(),
   ...gradientFields,
   brightness: z.number().min(0).max(1).optional(),
+  background: z.object({ version: z.literal(1), level: z.number().min(0).max(1) }).strict().optional(),
   rapidFlash: z.boolean().optional(),
   minFlashIntervalMs: z.number().min(0).optional(),
   scope: z.enum(['singleBeat', 'measure']).optional(),
@@ -88,7 +89,7 @@ function validateAdmitted(raw: unknown): EffectSpec {
   const present = Object.fromEntries(Object.entries(supplied).filter(([, value]) => value !== undefined));
   const merged = specSchema.parse({ ...def.defaults, ...present, brightness: supplied.brightness ?? def.defaults.brightness ?? 1 });
   const params = paramsSchema.parse(parseParams(def, fillDefaults(def.defaults.params, supplied.params)));
-  return { ...merged, params };
+  return { ...merged, params, background: supplied.background ?? { version: 1, level: merged.brightness ?? 1 } };
 }
 
 // A kind's schema sees the params alone; its issues are moved under `params`,

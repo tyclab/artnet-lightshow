@@ -1,3 +1,4 @@
+import { ambient } from '../background.ts';
 // Studio keeps note brightness separate from colour ownership. Commands can
 // change the background without stealing an active note or its queued start.
 
@@ -269,7 +270,10 @@ for (const name of names) registerKind({
     advanceStudio(state, frame.nowMs, frame.bpm, frame.paletteAccess);
     for (let slot = 0; slot < room.n; slot++) {
       const lamp = readStudio(state, slot);
-      out[slot] = { colour: lamp.colour, level: lamp.bri, strength: 1 };
+      const note = state.lamps[slot].note;
+      const coverage = note ? Math.max(0, Math.min(1, (1 - lamp.bri) / (1 - BASELINE))) : 1;
+      out[slot] = { colour: lamp.colour, level: lamp.bri, strength: 1,
+        background: ambient(lamp.colour, note ? BASELINE * coverage : lamp.bri, coverage, note ? BASELINE : lamp.bri) };
     }
   },
 });

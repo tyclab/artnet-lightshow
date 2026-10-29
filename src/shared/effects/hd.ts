@@ -6,6 +6,7 @@ import { HEX_COLOUR } from '../palette-model.ts';
 import { z } from 'zod';
 import type { ZodType } from 'zod';
 import type { Colour } from '../../types/rig.ts';
+import type { BackgroundField } from '../background.ts';
 import type { LampRoom, Room } from '../room.ts';
 import { activeEvents, composeEvents, curveApply, envelopeLength, eventInterval, EventAdmission, isReversed, sampleEnvelope, staggerOffset } from './envelope.ts';
 import { hash01 } from './hash.ts';
@@ -20,6 +21,19 @@ const TICK = 1 / 960;
 const clamp = (x: number, low = 0, high = 1) => Math.max(low, Math.min(high, x));
 const frac = (x: number) => x - Math.floor(x);
 const BLACK: Colour = { r: 0, g: 0, b: 0, w: 0, a: 0, uv: 0 };
+const EMPTY: BackgroundField = Object.freeze({ colour: BLACK, level: 0, fullLevel: 0, coverage: 1 });
+const COVERED: BackgroundField = Object.freeze({ colour: BLACK, level: 0, fullLevel: 0, coverage: 0 });
+const DARK_REST: BackgroundField = Object.freeze({ ...COVERED, dark: true });
+
+// HD has no authored ambient colour. Its envelope, spatial kernel and audio gate
+// explicitly define foreground opacity, independently of palette RGB or output
+// brightness. Ordinary gaps expose a Fixed wash; rapid rests still own black.
+function behind(opacity: number, rapid: boolean): BackgroundField {
+  if (rapid) return DARK_REST;
+  if (opacity <= 0) return EMPTY;
+  if (opacity >= 1) return COVERED;
+  return { ...EMPTY, coverage: 1 - opacity };
+}
 
 // These are the shared starting controls, before a family supplies its
 // recommendation. Palette fallback belongs to the shared instance renderer.
@@ -225,18 +239,21 @@ function sampleAhdsr(e: Ahdsr, progress: number, curve: Curve): number {
 }
 function renderAdsr(p: HdParams, s: HdState, room: Room, frame: EffectFrame, out: EffectSlot[]): void {
   const progress = frac(Math.max(0, frame.beatPos - frame.anchorBeat) / scopedLoopLength(frame.spec, p));
-  let colour: Colour, level: number;
+  let colour: Colour, level: number, opacity: number;
   if (s.rgb.colourMode === 'singleColour') {
     const peak = Math.max(s.single.r, s.single.g, s.single.b, s.single.w ?? 0, s.single.a ?? 0, s.single.uv ?? 0) / 255;
-    level = peak * sampleAhdsr(s.rgb.brightness, progress, p.curve);
+    opacity = sampleAhdsr(s.rgb.brightness, progress, p.curve);
+    level = peak * opacity;
     const channel = (key: keyof Colour) => Math.round((s.single[key] ?? 0) / peak);
     colour = level > 0 ? { r: channel('r'), g: channel('g'), b: channel('b'), w: channel('w'), a: channel('a'), uv: channel('uv') } : BLACK;
   } else {
     const r = sampleAhdsr(s.rgb.r, progress, p.curve), g = sampleAhdsr(s.rgb.g, progress, p.curve), b = sampleAhdsr(s.rgb.b, progress, p.curve);
     level = Math.max(r, g, b);
+    opacity = level;
     colour = level > 0 ? { r: Math.round(255 * r / level), g: Math.round(255 * g / level), b: Math.round(255 * b / level), w: 0, a: 0, uv: 0 } : BLACK;
   }
-  for (let i = 0; i < room.n; i++) out[i] = { colour, level, strength: level > 0 ? 1 : 0 };
+  const background = behind(opacity, !!frame.spec.rapidFlash);
+  for (let i = 0; i < room.n; i++) out[i] = { colour, level, strength: level > 0 ? 1 : 0, background };
 }
 
 function reactiveLevel(kind: HdKind, p: HdParams, state: HdState, frame: EffectFrame): number {
@@ -342,7 +359,8 @@ function renderHd(kind: HdKind, p: HdParams, state: HdState, room: Room, f: Effe
       return { strength: clamp(envelope * sample.strength), palettePos: sample.palettePos };
     });
     const level = composed.strength * reactive;
-    out[target] = { colour: f.gradient?.sample(composed.palettePos) ?? samplePalette(f.palette, composed.palettePos), level, strength: level > 0 ? 1 : 0 };
+    out[target] = { colour: f.gradient?.sample(composed.palettePos) ?? samplePalette(f.palette, composed.palettePos), level, strength: level > 0 ? 1 : 0,
+      background: behind(composed.strength * reactive, kind === 'hd.frequencyBurst' || !!f.spec.rapidFlash) };
   }
 }
 

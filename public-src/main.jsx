@@ -1,3 +1,4 @@
+import { Background } from './components/Background.jsx';
 import { render } from 'preact';
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { field } from './state.js';
@@ -117,7 +118,7 @@ function EffectsView() {
   return (
     <div class="manual-view">
       <div class="manual-col col-patterns"><Cues /><Effects /></div>
-      <div class="manual-col col-colors"><Colors /></div>
+      <div class="manual-col col-colors"><Colors /><Background /></div>
       <div class="manual-col col-fixtures"><StagePreview /><Fixtures /></div>
     </div>
   );

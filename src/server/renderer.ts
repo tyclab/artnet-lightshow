@@ -1,3 +1,5 @@
+import { ambient, blendBackground, composeBackground } from '../shared/background.ts';
+import type { BackgroundField, BackgroundSettings } from '../shared/background.ts';
 import { fixedColours, colourSlots, resolveGradient } from '../shared/palette-model.ts';
 import type { UnitSpace } from '../shared/space.ts';
 import type { PaletteBody } from '../shared/palette-model.ts';
@@ -75,6 +77,7 @@ export interface SyncTestRequest {
 }
 
 export interface RenderInput {
+  background?: BackgroundSettings;
   hardware?: HardwareSettings;
   running: boolean;
   pattern: string;
@@ -330,6 +333,10 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
   let sequence: SequenceTable | null = null;
   const seqRun = newSequenceRun();
   const seqLight: (UnitLight | null)[] = [];
+  const baseBackground: (BackgroundField | undefined)[] = [];
+  const seqBackground: (BackgroundField | undefined)[] = [];
+  const shownBackground: (BackgroundField | undefined)[] = [];
+  let fadeBackground: (BackgroundField | undefined)[] = [];
   const seqKind: (string | null)[] = [];
   const seqOwner: (string | undefined)[] = [];
   let seqUnits = false;
@@ -563,9 +570,11 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     seqLight.length = count;
     while (seqKind.length < count) seqKind.push(null);
     seqKind.length = count;
+    baseBackground.length = seqBackground.length = shownBackground.length = count;
   }
 
-  function setUnitColor(u: number, color: Colour, dim: number, strobe: number): void {
+  function setUnitColor(u: number, color: Colour, dim: number, strobe: number, background?: BackgroundField): void {
+    baseBackground[u] = background;
     unitColors[u] = {
       r: color.r,
       g: color.g,
@@ -582,6 +591,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     const f = input.fade;
     if (f && f.seq !== adopted.fade) {
       adopted.fade = f.seq;
+      fadeBackground = shownBackground.slice();
       fade = f.ms > 0 ? { start: f.at, ms: f.ms, from: shown.map((c) => ({ ...c })) } : null;
     }
     const s = input.syncTest;
@@ -721,8 +731,8 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     };
     baseKinds = true;
     const modulation = input.pixelSpan ? { ...fb.modulation, spanProgress: fb.modulation?.sectionProgress } : fb.modulation;
-    renderEffectLayer(rigNow, cells.layout, { ...fb, modulation, fixtureIds: cells.ids, hardware: cellHardware(cells.layout, rigNow) }, instance, stepper, (u, colour, dim, strobe, kind, owner) => {
-      setUnitColor(u, colour, dim, strobe);
+    renderEffectLayer(rigNow, cells.layout, { ...fb, modulation, fixtureIds: cells.ids, hardware: cellHardware(cells.layout, rigNow) }, instance, stepper, (u, colour, dim, strobe, kind, owner, background) => {
+      setUnitColor(u, colour, dim, strobe, background);
       baseKind[u] = kind;
       baseOwner[u] = owner;
     }, commands.due.length ? prepare : undefined);
@@ -731,7 +741,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     for (const i of cells.layout.wash) {
       const { start, count } = rigNow.ranges[i];
       for (let u = start; u < start + count; u++) {
-        setUnitColor(u, colourB, 255, 0);
+        setUnitColor(u, colourB, 255, 0, ambient(colourB, 1));
         baseKind[u] = null;
       }
     }
@@ -750,8 +760,9 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
     }
     const cells = voiceCells!;
     seqUnits = renderSequenceLayer(rigNow, cells.layout, { ...fb, fixtureIds: cells.ids, hardware: cellHardware(cells.layout, rigNow) }, sequence!, input.sequenceTransport!, seqRun, stepper,
-      (u, colour, dim, strobe, kind, owner) => {
+      (u, colour, dim, strobe, kind, owner, background) => {
         seqLight[u] = { r: colour.r, g: colour.g, b: colour.b, w: colour.w || 0, a: colour.a || 0, uv: colour.uv || 0, dim, strobe };
+        seqBackground[u] = background;
         seqKind[u] = kind;
         seqOwner[u] = owner;
       });
@@ -777,12 +788,18 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
   }
 
   function lightOf(u: number, fix: RenderFixture, energy: EnergyLook | null, fadeT: number,
-    target: ShowDynamics | null, pixel: Colour | null = null): LightValue {
+    target: ShowDynamics | null, pixel: Colour | null = null, input?: FrameInput): LightValue {
     // Keep the shown base under bursts so later fades do not capture the burst.
-    const layer = fade && fade.from[u] ? blendFixture(fade.from[u], unitColors[u], fadeT) : unitColors[u];
+    const raw = unitColors[u];
+    const unchanged = !input?.background || input.background.mode === 'follow' && input.background.level === 1;
+    const resolved = unchanged ? null : composeBackground(raw, raw.dim / 255, baseBackground[u], input?.background);
+    const current = resolved ? { ...resolved.colour, dim: 255 * resolved.level, strobe: raw.strobe } : raw;
+    const layer = fade && fade.from[u] ? blendFixture(fade.from[u], current, fadeT) : current;
     shown[u] = layer;
+    shownBackground[u] = fade ? blendBackground(fadeBackground[u], baseBackground[u], fadeT) : baseBackground[u];
     const clip = seqUnits ? seqLight[u] : null;
-    const below = pixel ? { ...pixel, dim: 255, strobe: 0 } : clip ?? layer;
+    const selected = clip && !unchanged ? composeBackground(clip, clip.dim / 255, seqBackground[u], input?.background) : null;
+    const below = pixel ? { ...pixel, dim: 255, strobe: 0 } : selected ? { ...selected.colour, dim: selected.level * 255, strobe: clip!.strobe } : clip ?? layer;
 
     let col: Colour; let dim: number; let strobe: number;
     if (energy) {
@@ -1049,7 +1066,8 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
       for (let u = start; u < start + count; u++) {
         if (seqUnits && seqLight[u] && !overridden && !pixel) clip = true;
         const voice = sync || !voiceTop ? null : voiceTop[u];
-        const top = sync ?? (voice ? { col: voice.colour, dim: 255 * voice.level, strobe: voice.strobe ?? 0 } : null);
+        const resolvedVoice = voice && composeBackground(voice.colour, voice.level, voice.background, input.background);
+        const top = sync ?? (voice && resolvedVoice ? { col: resolvedVoice.colour, dim: 255 * resolvedVoice.level, strobe: voice.strobe ?? 0 } : null);
         if (top && !first) first = top;
         let colour: Colour | null = null;
         if (pixel && !top && !overridden) {
@@ -1064,7 +1082,7 @@ function createRenderer({ profileOf, profilesRevision = () => 0, now = performan
           colour = { r, g, b, w: 0, a: 0, uv: 0 };
           pixelOwners[u] = `picture:${painted.leaseId}`;
         }
-        lights.push(lightOf(u, fix, top, fadeT, target, colour));
+        lights.push(lightOf(u, fix, top, fadeT, target, colour, input));
         if (!watch) continue;
         const kind = top ? (voice ? voice.kind ?? null : null) : overridden || pixelOwners[u] ? null : seqUnits && seqLight[u] ? seqKind[u] : baseKind[u];
         topKind[u] = kind;

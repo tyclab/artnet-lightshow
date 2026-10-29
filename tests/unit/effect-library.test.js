@@ -344,3 +344,20 @@ test('invalid preset files are quarantined', (t) => {
   assert.deepEqual(library.list().user, [{ ...good, spec: migrateEffectSpec(good.spec) }]);
   assert.deepEqual(library.resolve(good.id), migrateEffectSpec(good.spec));
 });
+
+test("the first save after an upgrade keeps the older library beside the new file", (t) => {
+  quietly(t);
+  const { file } = place(t);
+  new EffectLibrary(file).load().create({ name: 'Slow fade', spec: FADE });
+  const older = { ...onDisk(file), version: EFFECT_LIBRARY_VERSION - 1 };
+  fs.writeFileSync(file, JSON.stringify(older));
+  const library = new EffectLibrary(file).load();
+  assert.equal(fs.existsSync(`${file}.v${EFFECT_LIBRARY_VERSION - 1}`), false, 'reading alone keeps nothing');
+  library.create({ name: 'Another', spec: FADE });
+  const kept = `${file}.v${EFFECT_LIBRARY_VERSION - 1}`;
+  assert.deepEqual(onDisk(kept), older, 'the pre-upgrade file is kept as it was');
+  assert.equal(onDisk(file).version, EFFECT_LIBRARY_VERSION);
+  library.create({ name: 'Third', spec: FADE });
+  assert.deepEqual(onDisk(kept), older, 'later saves leave the kept copy alone');
+  assert.equal(fs.readdirSync(path.dirname(file)).filter((f) => f.startsWith('effects.json.v')).length, 1);
+});

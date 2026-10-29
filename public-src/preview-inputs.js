@@ -34,6 +34,7 @@ export function previewOptions(s, { table = null, library = null } = {}) {
     safety: s.safety ? { acknowledged: !!s.safety.photosensitivityAcknowledged, hdFlashIntervalMs: s.safety.hdFlashIntervalMs ?? 350 } : null,
     paletteOverride: override,
     basePalette: s.basePalette ?? null,
+    background: s.background,
     overridePalette: s.overridePalette ?? null,
     sequence: table && seq && seq.playing ? { table, transport: { startBeat: 0, loop: seq.loop ?? null, generation: 0 } } : null,
   };

@@ -1,3 +1,5 @@
+import { ambient } from './background.ts';
+import type { BackgroundField } from './background.ts';
 import type { ResolvedGradient } from './palette-model.ts';
 import { FLASH_MS, MIN_SLOT_MS, flashLit, scatter, rampUp, rampDown, randomSwell, swellsIn } from './strobe-fx.ts';
 import { colourMixer } from './color.ts';
@@ -28,7 +30,7 @@ export interface PatternContext {
   noFlash?: readonly boolean[] | null;
   // Older direct pattern callers retain pulse when this setting is absent.
   hueStrobe?: 'flash' | 'pulse';
-  write(i: number, colour: Colour, dim: number, strobe: number): void;
+  write(i: number, colour: Colour, dim: number, strobe: number, background?: BackgroundField): void;
 }
 
 export type PatternFn = (ctx: PatternContext) => void;
@@ -51,6 +53,11 @@ function hsvToRgb(h: number, s: number, v: number): Colour {
     b: Math.round((b + m) * 255),
     w: 0,
   };
+}
+
+function writeFloor(ctx: PatternContext, i: number, colour: Colour, dim: number, floor: number): void {
+  const coverage = Math.max(0, Math.min(1, (255 - dim) / Math.max(1, 255 - floor)));
+  ctx.write(i, colour, dim, 0, ambient(colour, floor * coverage / 255, coverage, floor / 255));
 }
 
 const BED = 45;
@@ -134,7 +141,7 @@ const PATTERN_FUNCS: Record<string, PatternFn> = {
       const sweep = Math.pow((1 + Math.sin(phase * Math.PI * 2 - x * spread)) / 2, 1.6);
       const bed = .06 + .5 * (d.bass * (1 - centre) + d.vocal * centre);
       const strength = bed + (.35 + .5 * d.air) * sweep;
-      ctx.write(i, pal[(centre > .5 ? 0 : 1) % pal.length], Math.round(Math.min(1, strength) * 255), 0);
+      writeFloor(ctx, i, pal[(centre > .5 ? 0 : 1) % pal.length], Math.round(Math.min(1, strength) * 255), .06 * 255);
     }
   },
   ribbon(ctx) {
@@ -147,7 +154,7 @@ const PATTERN_FUNCS: Record<string, PatternFn> = {
       const x = ctx.xs ? ctx.xs[i] : i / Math.max(1, ctx.fixtureCount - 1);
       const wave = (1 + Math.sin(phase * Math.PI * 2 + x * d.width * Math.PI * 2)) / 2;
       const crest = Math.pow(wave, 1.5);
-      ctx.write(i, mix ? mix(wave) : pal[0], Math.round(floor + crest * (255 - floor)), 0);
+      writeFloor(ctx, i, mix ? mix(wave) : pal[0], Math.round(floor + crest * (255 - floor)), floor);
     }
   },
 
@@ -172,7 +179,7 @@ const PATTERN_FUNCS: Record<string, PatternFn> = {
     const N = ctx.fixtureCount;
     for (let i = 0; i < N; i++) {
       const active = i === ctx.step % N;
-      ctx.write(i, active ? pal[ctx.step % pal.length] : pal[pal.length - 1], active ? 255 : bed, 0);
+      ctx.write(i, active ? pal[ctx.step % pal.length] : pal[pal.length - 1], active ? 255 : bed, 0, ambient(pal[pal.length - 1], (active ? 0 : bed) / 255, active ? 0 : 1, bed / 255));
     }
   },
 
@@ -182,7 +189,7 @@ const PATTERN_FUNCS: Record<string, PatternFn> = {
     const N = ctx.fixtureCount;
     for (let i = 0; i < N; i++) {
       const active = i === (N - 1 - ctx.step % N);
-      ctx.write(i, active ? pal[ctx.step % pal.length] : pal[pal.length - 1], active ? 255 : bed, 0);
+      ctx.write(i, active ? pal[ctx.step % pal.length] : pal[pal.length - 1], active ? 255 : bed, 0, ambient(pal[pal.length - 1], (active ? 0 : bed) / 255, active ? 0 : 1, bed / 255));
     }
   },
 
@@ -195,7 +202,7 @@ const PATTERN_FUNCS: Record<string, PatternFn> = {
     const idx = pos < N ? pos : (span - pos);
     for (let i = 0; i < N; i++) {
       const active = i === idx;
-      ctx.write(i, active ? pal[ctx.step % pal.length] : pal[pal.length - 1], active ? 255 : bed, 0);
+      ctx.write(i, active ? pal[ctx.step % pal.length] : pal[pal.length - 1], active ? 255 : bed, 0, ambient(pal[pal.length - 1], (active ? 0 : bed) / 255, active ? 0 : 1, bed / 255));
     }
   },
 
@@ -211,7 +218,7 @@ const PATTERN_FUNCS: Record<string, PatternFn> = {
       const b = dist === 0 ? 255
         : dist <= tail ? Math.round(255 * Math.pow(1 - dist / (tail + 1), 1.5))
           : bed;
-      ctx.write(i, col, b, 0);
+      ctx.write(i, col, b, 0, ambient(col, dist > tail ? bed / 255 : 0, dist > tail ? 1 : 0, bed / 255));
     }
   },
 
@@ -222,7 +229,7 @@ const PATTERN_FUNCS: Record<string, PatternFn> = {
     const pos = ctx.step % N;
     for (let i = 0; i < N; i++) {
       const on = (i === pos || i === (pos + 1) % N);
-      ctx.write(i, on ? pal[ctx.step % pal.length] : pal[pal.length - 1], on ? 255 : bed, 0);
+      ctx.write(i, on ? pal[ctx.step % pal.length] : pal[pal.length - 1], on ? 255 : bed, 0, ambient(pal[pal.length - 1], (on ? 0 : bed) / 255, on ? 0 : 1, bed / 255));
     }
   },
 
@@ -236,7 +243,7 @@ const PATTERN_FUNCS: Record<string, PatternFn> = {
         : (i * (Math.PI * 2 / N) * spread);
       const phase = (ctx.step * (Math.PI * 2 / 8)) - offset;
       const b = Math.round(((Math.sin(phase) + 1) / 2) * 215 + 40);
-      ctx.write(i, colA, b, 0);
+      writeFloor(ctx, i, colA, b, 40);
     }
   },
 
@@ -247,7 +254,7 @@ const PATTERN_FUNCS: Record<string, PatternFn> = {
     const pos = ctx.step % Math.max(1, N);
     for (let i = 0; i < N; i++) {
       const lit = i <= pos;
-      ctx.write(i, lit ? pal[i % pal.length] : pal[pal.length - 1], lit ? 255 : bed, 0);
+      ctx.write(i, lit ? pal[i % pal.length] : pal[pal.length - 1], lit ? 255 : bed, 0, ambient(pal[pal.length - 1], (lit ? 0 : bed) / 255, lit ? 0 : 1, bed / 255));
     }
   },
 
@@ -292,7 +299,7 @@ const PATTERN_FUNCS: Record<string, PatternFn> = {
     const target = Math.floor((ctx.random ?? Math.random)() * Math.max(1, N));
     const bed = Math.round(bedOf(ctx) * 0.5);
     for (let i = 0; i < N; i++) {
-      ctx.write(i, pal[ctx.step % pal.length], i === target ? 255 : bed, 0);
+      ctx.write(i, pal[ctx.step % pal.length], i === target ? 255 : bed, 0, ambient(pal[ctx.step % pal.length], (i === target ? 0 : bed) / 255, i === target ? 0 : 1, bed / 255));
     }
   },
 };
@@ -319,9 +326,9 @@ Object.assign(PATTERN_FUNCS, {
       const behind = head - xOf(ctx, i);
       if (behind >= 0 && behind < tail) {
         const level = Math.pow(1 - behind / tail, 1.6);
-        ctx.write(i, colour, Math.round(bed + (255 - bed) * level), 0);
+        writeFloor(ctx, i, colour, Math.round(bed + (255 - bed) * level), bed);
       } else {
-        ctx.write(i, pal[pal.length - 1], bed, 0);
+        writeFloor(ctx, i, pal[pal.length - 1], bed, bed);
       }
     }
   },
@@ -335,7 +342,7 @@ Object.assign(PATTERN_FUNCS, {
     for (let i = 0; i < ctx.fixtureCount; i++) {
       const dist = Math.hypot(xOf(ctx, i) - 0.5, yOf(ctx, i) - 0.5) / 0.5;
       const ring = Math.exp(-(((dist - radius) / width) ** 2)) * (1 - 0.5 * Math.min(1, radius));
-      ctx.write(i, ring > 0.2 ? colour : pal[pal.length - 1], Math.round(bed + (255 - bed) * ring), 0);
+      writeFloor(ctx, i, ring > 0.2 ? colour : pal[pal.length - 1], Math.round(bed + (255 - bed) * ring), bed);
     }
   },
 
@@ -348,7 +355,7 @@ Object.assign(PATTERN_FUNCS, {
       const x = xOf(ctx, i);
       const y = yOf(ctx, i);
       const v = (Math.sin(x * f + t) + Math.sin(y * f * 0.8 - t * 1.3) + Math.sin((x + y) * f * 0.5 + t * 0.7) + 3) / 6;
-      ctx.write(i, contextGradient(ctx, pal, v), Math.round(floor + Math.pow(v, 1.5) * (255 - floor)), 0);
+      writeFloor(ctx, i, contextGradient(ctx, pal, v), Math.round(floor + Math.pow(v, 1.5) * (255 - floor)), floor);
     }
   },
 
@@ -362,7 +369,7 @@ Object.assign(PATTERN_FUNCS, {
     const fill = Math.min(1, loud * (0.25 + 0.75 * low) * 0.85 + kick);
     for (let i = 0; i < ctx.fixtureCount; i++) {
       const x = xOf(ctx, i);
-      if (x > fill) ctx.write(i, pal[pal.length - 1], bed, 0);
+      if (x > fill) writeFloor(ctx, i, pal[pal.length - 1], bed, bed);
       else ctx.write(i, fill - x < 0.08 ? pal[1 % pal.length] : pal[0], 255, 0);
     }
   },
@@ -379,13 +386,13 @@ Object.assign(PATTERN_FUNCS, {
       const snare = hits.snare * clamp01((fromMiddle - 0.55) / 0.3);
       const hat = scatter(i, hatSeed) < 0.28 ? hits.hats : 0;
       if (kick >= snare && kick >= hat && kick > 0.02) {
-        ctx.write(i, pal[0], Math.round(bed + (255 - bed) * kick), 0);
+        writeFloor(ctx, i, pal[0], Math.round(bed + (255 - bed) * kick), bed);
       } else if (snare >= hat && snare > 0.02) {
-        ctx.write(i, pal[1 % pal.length], Math.round(bed + (255 - bed) * snare), 0);
+        writeFloor(ctx, i, pal[1 % pal.length], Math.round(bed + (255 - bed) * snare), bed);
       } else if (hat > 0.02) {
-        ctx.write(i, pal[2 % pal.length], Math.round(bed + (255 - bed) * hat), 0);
+        writeFloor(ctx, i, pal[2 % pal.length], Math.round(bed + (255 - bed) * hat), bed);
       } else {
-        ctx.write(i, pal[pal.length - 1], bed, 0);
+        writeFloor(ctx, i, pal[pal.length - 1], bed, bed);
       }
     }
   },
@@ -401,7 +408,7 @@ Object.assign(PATTERN_FUNCS, {
       const fromMiddle = Math.min(0.999, Math.abs(xOf(ctx, i) - 0.5) * 2);
       const zone = Math.floor(fromMiddle * 4);
       const v = levels[zone];
-      ctx.write(i, pal[zone % pal.length], Math.round(floor + (255 - floor) * Math.pow(v, 1.4)), 0);
+      writeFloor(ctx, i, pal[zone % pal.length], Math.round(floor + (255 - floor) * Math.pow(v, 1.4)), floor);
     }
   },
 
@@ -414,7 +421,7 @@ Object.assign(PATTERN_FUNCS, {
     const level = (0.35 + 0.65 * progress) * stutter;
     for (let i = 0; i < ctx.fixtureCount; i++) {
       const x = xOf(ctx, i);
-      if (x > fill) { ctx.write(i, pal[pal.length - 1], bed, 0); continue; }
+      if (x > fill) { writeFloor(ctx, i, pal[pal.length - 1], bed, bed); continue; }
       const edge = fill - x < 0.06;
       ctx.write(i, edge ? pal[1 % pal.length] : pal[0], Math.round(255 * (edge ? Math.max(level, 0.85 * stutter) : level)), 0);
     }
@@ -434,9 +441,9 @@ Object.assign(PATTERN_FUNCS, {
       const ring = Math.exp(-(((dist - radius) / width) ** 2)) * (1 - 0.45 * Math.min(1, radius));
       const spark = scatter(i, sparkSeed) < density ? kick : 0;
       if (spark > ring && spark > 0.05) {
-        ctx.write(i, pal[pal.length - 1], Math.round(bed + (255 - bed) * spark), 0);
+        writeFloor(ctx, i, pal[pal.length - 1], Math.round(bed + (255 - bed) * spark), bed);
       } else {
-        ctx.write(i, ring > 0.2 ? ringColour : pal[pal.length - 1], Math.round(bed + (255 - bed) * ring), 0);
+        writeFloor(ctx, i, ring > 0.2 ? ringColour : pal[pal.length - 1], Math.round(bed + (255 - bed) * ring), bed);
       }
     }
   },
@@ -452,11 +459,11 @@ Object.assign(PATTERN_FUNCS, {
       const band = Math.min(levels.length - 1, Math.floor(xOf(ctx, i) * levels.length));
       const level = levels[band];
       if (!rows) {
-        ctx.write(i, pal[band % pal.length], Math.round(bed + (255 - bed) * Math.pow(level, 1.2)), 0);
+        writeFloor(ctx, i, pal[band % pal.length], Math.round(bed + (255 - bed) * Math.pow(level, 1.2)), bed);
         continue;
       }
       const height = rows(i);
-      if (height > level) { ctx.write(i, pal[pal.length - 1], bed, 0); continue; }
+      if (height > level) { writeFloor(ctx, i, pal[pal.length - 1], bed, bed); continue; }
       const top = level - height < 0.07;
       ctx.write(i, contextGradient(ctx, pal, height * (pal.length - 1) / pal.length), top ? 255 : Math.round(170 + 60 * height), 0);
     }
@@ -507,9 +514,9 @@ Object.assign(PATTERN_FUNCS, {
         }
       }
       const spark = scatter(i, sparkSeed) < 0.04 * hats ? hats : 0;
-      if (spark > level) ctx.write(i, pal[pal.length - 1], Math.round(bed + (255 - bed) * spark), 0);
-      else if (level > 0) ctx.write(i, head ? pal[pal.length - 1] : pal[0], Math.round(bed + (255 - bed) * level), 0);
-      else ctx.write(i, pal[0], bed, 0);
+      if (spark > level) writeFloor(ctx, i, pal[pal.length - 1], Math.round(bed + (255 - bed) * spark), bed);
+      else if (level > 0) writeFloor(ctx, i, head ? pal[pal.length - 1] : pal[0], Math.round(bed + (255 - bed) * level), bed);
+      else writeFloor(ctx, i, pal[0], bed, bed);
     }
   },
 } satisfies Record<string, PatternFn>);
@@ -853,12 +860,13 @@ function ringStrobe(ctx: PatternContext, backlit: boolean): void {
     const colour = backlit ? pal[0] : pal[((lap % pal.length) + pal.length) % pal.length];
     if (isHueSlot(ctx, i)) {
       const sinceMs = (ago + phase) * slotMs;
-      if (backlit && sinceMs >= HUE_PULSE_MS) ctx.write(i, rest, BACKLIGHT, 0);
-      else ctx.write(i, colour, huePulse(sinceMs, backlit ? BACKLIGHT : HUE_PULSE_FLOOR), 0);
+      if (backlit && sinceMs >= HUE_PULSE_MS) ctx.write(i, rest, BACKLIGHT, 0, ambient(rest, BACKLIGHT / 255));
+      else ctx.write(i, colour, huePulse(sinceMs, backlit ? BACKLIGHT : HUE_PULSE_FLOOR), 0,
+        backlit ? ambient(colour, Math.max(0, BACKLIGHT - huePulse(sinceMs, 0)) / 255) : undefined);
     } else if (ago === 0 && lit) {
       ctx.write(i, colour, 255, 0);
     } else {
-      ctx.write(i, backlit ? rest : colour, backlit ? BACKLIGHT : 0, 0);
+      ctx.write(i, backlit ? rest : colour, backlit ? BACKLIGHT : 0, 0, backlit ? ambient(rest, BACKLIGHT / 255) : undefined);
     }
   }
 }
@@ -884,7 +892,7 @@ const PARTY_PATTERNS = {
     for (let i = 0; i < ctx.fixtureCount; i++) {
       const level = envelope(into - rank[i] * STAGGER, ATTACK, HOLD, RELEASE, 'out');
       const colour = pal[(rank[i] + run) % pal.length];
-      ctx.write(i, level > 0 ? colour : pal[pal.length - 1], lift(bed, level), 0);
+      writeFloor(ctx, i, level > 0 ? colour : pal[pal.length - 1], lift(bed, level), bed);
     }
   },
 
@@ -899,7 +907,7 @@ const PARTY_PATTERNS = {
     for (let i = 0; i < ctx.fixtureCount; i++) {
       const d = room.dist[i];
       const ring = 1 - smoothstep(0.12, 0.45, Math.abs(d - progress));
-      ctx.write(i, contextGradient(ctx, pal, (d + progress) / 2 + event / pal.length), lift(bed, env * ring * drive), 0);
+      writeFloor(ctx, i, contextGradient(ctx, pal, (d + progress) / 2 + event / pal.length), lift(bed, env * ring * drive), bed);
     }
   },
 
@@ -923,7 +931,7 @@ const PARTY_PATTERNS = {
     const [before, beforePhase] = wash(event - 1, 1 + progress);
     for (let i = 0; i < ctx.fixtureCount; i++) {
       const fromNow = now[i] >= before[i];
-      ctx.write(i, contextGradient(ctx, pal, fromNow ? nowPhase[i] : beforePhase[i]), lift(bed, fromNow ? now[i] : before[i]), 0);
+      writeFloor(ctx, i, contextGradient(ctx, pal, fromNow ? nowPhase[i] : beforePhase[i]), lift(bed, fromNow ? now[i] : before[i]), bed);
     }
   },
 
@@ -938,7 +946,7 @@ const PARTY_PATTERNS = {
     const colour = pal[pass % pal.length];
     for (let i = 0; i < ctx.fixtureCount; i++) {
       const level = Math.exp(-4.5 * Math.pow((along[i] - head) / 0.18, 2));
-      ctx.write(i, level > 0.05 ? colour : pal[pal.length - 1], lift(bed, level), 0);
+      writeFloor(ctx, i, level > 0.05 ? colour : pal[pal.length - 1], lift(bed, level), bed);
     }
   },
 
@@ -949,7 +957,7 @@ const PARTY_PATTERNS = {
     const { event, progress } = eventAt(posOf(ctx), 2);
     const rest = pal[pal.length - 1];
     if (scatter(event, 4242) > 0.68) {
-      for (let i = 0; i < ctx.fixtureCount; i++) ctx.write(i, rest, bed, 0);
+      for (let i = 0; i < ctx.fixtureCount; i++) writeFloor(ctx, i, rest, bed, bed);
       return;
     }
     const reverse = scatter(event, 77) >= 0.5;
@@ -960,7 +968,7 @@ const PARTY_PATTERNS = {
     for (let i = 0; i < ctx.fixtureCount; i++) {
       const behind = head - (reverse ? 1 - along[i] : along[i]);
       const level = behind >= 0 && behind <= TRAIL * 4 ? Math.exp((-3.2 * behind) / TRAIL) : 0;
-      ctx.write(i, level > 0 ? colour : rest, lift(bed, level), 0);
+      writeFloor(ctx, i, level > 0 ? colour : rest, lift(bed, level), bed);
     }
   },
 
@@ -971,7 +979,7 @@ const PARTY_PATTERNS = {
     for (let i = 0; i < ctx.fixtureCount; i++) {
       const roll = scatter(i, event * 131 + 1);
       const level = roll <= 0.35 ? 0.82 * envelope(progress, 0, 0.08, 0.72, 'out') : 0;
-      ctx.write(i, contextGradient(ctx, pal, roll + event * 0.07), lift(bed, level), 0);
+      writeFloor(ctx, i, contextGradient(ctx, pal, roll + event * 0.07), lift(bed, level), bed);
     }
   },
 
@@ -1052,7 +1060,7 @@ const PARTY_PATTERNS = {
     const along = room.along(Math.round(25.7 + 51.4 * (((lap % 7) + 7) % 7)) % 360);
     for (let i = 0; i < ctx.fixtureCount; i++) {
       const travel = along[i] - progress;
-      ctx.write(i, contextGradient(ctx, pal, travel), lift(bed, Math.pow(crest(travel / 2), 1.3)), 0);
+      writeFloor(ctx, i, contextGradient(ctx, pal, travel), lift(bed, Math.pow(crest(travel / 2), 1.3)), bed);
     }
   },
 
@@ -1079,7 +1087,7 @@ const PARTY_PATTERNS = {
           colour = contextGradient(ctx, pal, e / pal.length + 0.15 * d);
         }
       }
-      ctx.write(i, colour, lift(bed, best), 0);
+      writeFloor(ctx, i, colour, lift(bed, best), bed);
     }
   },
 
@@ -1095,12 +1103,13 @@ const PARTY_PATTERNS = {
       if (isHueSlot(ctx, i)) {
         let ago = 0;
         while (ago < 8 && !lit(event - ago)) ago++;
-        if (ago >= 8) { ctx.write(i, colourOf(event), bed, 0); continue; }
-        ctx.write(i, colourOf(event - ago), Math.max(bed, huePulse((ago + progress) * stepMs)), 0);
+        if (ago >= 8) { writeFloor(ctx, i, colourOf(event), bed, bed); continue; }
+        ctx.write(i, colourOf(event - ago), Math.max(bed, huePulse((ago + progress) * stepMs)), 0,
+          ambient(colourOf(event - ago), Math.max(0, bed - huePulse((ago + progress) * stepMs)) / 255));
         continue;
       }
       const level = lit(event) ? envelope(progress, 0, 0.12, 0.08, 'out') : 0;
-      ctx.write(i, colourOf(event), lift(bed, level), 0);
+      writeFloor(ctx, i, colourOf(event), lift(bed, level), bed);
     }
   },
 
@@ -1111,7 +1120,7 @@ const PARTY_PATTERNS = {
     const t = posOf(ctx) / 8;
     for (let i = 0; i < ctx.fixtureCount; i++) {
       const phase = room.turn[i] - t;
-      ctx.write(i, contextGradient(ctx, pal, phase), lift(bed, Math.pow(crest(phase), 1.2)), 0);
+      writeFloor(ctx, i, contextGradient(ctx, pal, phase), lift(bed, Math.pow(crest(phase), 1.2)), bed);
     }
   },
 } satisfies Record<string, PatternFn>;

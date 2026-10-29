@@ -24,6 +24,7 @@ const audio = (eventT, beat, section, { t = eventT, generation } = {}) => ({
 const vis = (room, params = {}, options = {}) => harness('ldj.visualizer', room, { params, seed: 'visualizer', ...options });
 const hear = (h, when, a, over = {}) => h.draw({ ...when, audio: a, audioMode: 'reactive', ...over });
 const slotOf = (h) => h.state().bed.ring[h.state().lastRank];
+const visible = ({ background: _background, ...light }) => light;
 const bedOnly = (s, slot) => { const lamp = readStudio(s.bed, slot); return { colour: { ...lamp.colour }, level: lamp.bri, strength: 1 }; };
 const close = (actual, expected, message) => assert.ok(Math.abs(actual - expected) < 1e-9, `${message ?? ''} ${actual} ≠ ${expected}`);
 const finite = (out) => out.every((slot) => Number.isFinite(slot.level) && KEYS.every((key) => Number.isFinite(slot.colour[key] ?? 0)));
@@ -193,8 +194,8 @@ test('the mellow swirl runs under the spikes and blends by brightness', () => {
   const out = hear(h, at(41), audio(1, 'loud', 'soft'));
   const slot = slotOf(h), spike = s.lamps.read(slot), bed = readStudio(s.bed, slot);
   assert.equal(spike.bri, 1);
-  assert.deepEqual(out[slot], { colour: expectedBlend(bed.colour, bed.bri, spike.colour, spike.bri), level: 1, strength: 1 });
-  for (let i = 0; i < 6; i++) if (i !== slot) assert.deepEqual(out[i], bedOnly(s, i), 'other lamps show the bed alone');
+  assert.deepEqual(visible(out[slot]), { colour: expectedBlend(bed.colour, bed.bri, spike.colour, spike.bri), level: 1, strength: 1 });
+  for (let i = 0; i < 6; i++) if (i !== slot) assert.deepEqual(visible(out[i]), bedOnly(s, i), 'other lamps show the bed alone');
   // The bed keeps moving underneath while the spike holds.
   const swirl = s.bed.swirl;
   const next = hear(h, at(42), audio(1, 'loud', 'soft'));
@@ -367,7 +368,7 @@ test("spikes return their lamps to the bed at their prescribed rate", () => {
   assert.equal(s.handoffs[slot].tick, 21);
   out = hear(h, at(57), audio(1, 'loud', 'soft'));
   assert.equal(s.handoffs[slot], null, 'transparent at t22');
-  assert.deepEqual(out[slot], bedOnly(s, slot));
+  assert.deepEqual(visible(out[slot]), bedOnly(s, slot));
 
   // Pulse leaves at its first baseline frame, with no second of residue.
   const p = runningBed(row(4), { active: 'pulse' });
@@ -379,7 +380,7 @@ test("spikes return their lamps to the bed at their prescribed rate", () => {
   out = hear(p, at(53), audio(1, 'loud', 'soft'));
   assert.equal(p.state().spikes[pulseSlot], null);
   assert.equal(p.state().handoffs[pulseSlot], null);
-  assert.deepEqual(out[pulseSlot], bedOnly(p.state(), pulseSlot));
+  assert.deepEqual(visible(out[pulseSlot]), bedOnly(p.state(), pulseSlot));
 
   // Mellow none hands over to black; a stopped bed takes nothing and cancels a running handoff.
   const none = runningBed(row(4), { active: 'flash', mellow: 'none' });
@@ -426,7 +427,7 @@ test("Hue Pulse spikes soften their cut before returning to the bed", () => {
   };
   const draw = (h, nowMs, over = {}) => hear(h, ms(nowMs), audio(1, 'loud', null), over);
   const h = launch('pulse'), s = h.state(), slot = slotOf(h), colour = { ...s.lamps.read(slot).colour };
-  const spike = (out, level) => assert.deepEqual(out[slot], { colour: expectedBlend(readStudio(s.bed, slot).colour, readStudio(s.bed, slot).bri, colour, level), level: 1, strength: 1 });
+  const spike = (out, level) => assert.deepEqual(visible(out[slot]), { colour: expectedBlend(readStudio(s.bed, slot).colour, readStudio(s.bed, slot).bri, colour, level), level: 1, strength: 1 });
   spike(draw(h, 999), 1);
   // The plateau ends at 1000 ms, as the matrix envelope says; from there the cut is the strobe's Hue pulse.
   spike(draw(h, 1000), 1);
@@ -435,8 +436,8 @@ test("Hue Pulse spikes soften their cut before returning to the bed", () => {
   const copy = h.stepper.clone(), mid = [1150, 1199, 1200, 1300];
   const original = mid.map((t) => draw(h, t)[slot]);
   assert.deepEqual(mid.map((t) => h.draw({ ...ms(t), audio: audio(1, 'loud', null), audioMode: 'reactive' }, copy)[slot]), original, 'a clone mid-tail continues alike');
-  assert.deepEqual(original[1], { colour: expectedBlend(BLACK, 0, colour, 41 / 255), level: 1, strength: 1 });
-  assert.deepEqual(original[2], bedOnly(s, slot), 'no floor is left behind');
+  assert.deepEqual(visible(original[1]), { colour: expectedBlend(BLACK, 0, colour, 41 / 255), level: 1, strength: 1 });
+  assert.deepEqual(visible(original[2]), bedOnly(s, slot), 'no floor is left behind');
   assert.equal(s.hueTails[slot], null);
 
   // Under a running bed the softened spike is blended, once, before the output.
@@ -447,17 +448,17 @@ test("Hue Pulse spikes soften their cut before returning to the bed", () => {
   const soft = hear(bed, ms(22 * F + 1100), audio(1, 'loud', 'soft'));
   const under = readStudio(bed.state().bed, lit);
   assert.ok(under.bri > FLOOR, 'the bed is up');
-  assert.deepEqual(soft[lit], { colour: expectedBlend(under.colour, under.bri, shown, 148 / 255), level: 1, strength: 1 });
+  assert.deepEqual(visible(soft[lit]), { colour: expectedBlend(under.colour, under.bri, shown, 148 / 255), level: 1, strength: 1 });
 
   // Flash mode keeps the hard cut but remembers the event, so switching modes shows its tail, never a new one.
   const flash = launch('flash'), flashSlot = slotOf(flash), flashColour = { ...flash.state().lamps.read(flashSlot).colour };
-  assert.deepEqual(draw(flash, 1000)[flashSlot], bedOnly(flash.state(), flashSlot), 'flash mode cuts at the endpoint');
-  assert.deepEqual(draw(flash, 1100)[flashSlot], bedOnly(flash.state(), flashSlot));
-  assert.deepEqual(draw(flash, 1150, { hueStrobe: 'pulse' })[flashSlot], { colour: expectedBlend(BLACK, 0, flashColour, 94 / 255), level: 1, strength: 1 },
+  assert.deepEqual(visible(draw(flash, 1000)[flashSlot]), bedOnly(flash.state(), flashSlot), 'flash mode cuts at the endpoint');
+  assert.deepEqual(visible(draw(flash, 1100)[flashSlot]), bedOnly(flash.state(), flashSlot));
+  assert.deepEqual(visible(draw(flash, 1150, { hueStrobe: 'pulse' })[flashSlot]), { colour: expectedBlend(BLACK, 0, flashColour, 94 / 255), level: 1, strength: 1 },
     'switched to pulse 150 ms into the tail');
   // Lamps that are not Hue lamps are not touched.
   const plain = launch('pulse', row(4)), plainSlot = slotOf(plain);
-  assert.deepEqual(draw(plain, 1000)[plainSlot], bedOnly(plain.state(), plainSlot));
+  assert.deepEqual(visible(draw(plain, 1000)[plainSlot]), bedOnly(plain.state(), plainSlot));
   assert.ok(plain.state().hueTails.every((tail) => tail === null));
   // A new spike on the lamp replaces its tail.
   const one = launch('pulse', hueRow(1));
@@ -467,7 +468,7 @@ test("Hue Pulse spikes soften their cut before returning to the bed", () => {
   const again = hear(one, ms(1100), audio(2, 'loud', null));
   assert.equal(one.state().hueTails[0], null);
   assert.equal(one.state().lamps.read(0).bri, 1);
-  assert.deepEqual(again[0], { colour: expectedBlend(BLACK, 0, one.state().lamps.read(0).colour, 1), level: 1, strength: 1 });
+  assert.deepEqual(visible(again[0]), { colour: expectedBlend(BLACK, 0, one.state().lamps.read(0).colour, 1), level: 1, strength: 1 });
 });
 
 test("random spike colours freeze at their endpoint", () => {

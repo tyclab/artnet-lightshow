@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import type { Colour } from '../../../types/rig.ts';
+import { requiresAcknowledgement } from '../registry.ts';
 import { sampleEnvelope } from '../envelope.ts';
 import { parseHex, samplePalette } from '../palette.ts';
 import type { Room } from '../../room.ts';
@@ -139,6 +141,16 @@ export function soft(distance: number, width: number, size: number): number {
   return (integral(d + size) - integral(d - size)) / (integral(size) - integral(-size));
 }
 
+const backgroundColours = new WeakMap<V2Common, { hex: string; colour: Colour }>();
+function backgroundColour(common: V2Common): Colour {
+  let cached = backgroundColours.get(common);
+  if (!cached || cached.hex !== common.backgroundColour) {
+    cached = { hex: common.backgroundColour, colour: parseHex(common.backgroundColour) };
+    backgroundColours.set(common, cached);
+  }
+  return cached.colour;
+}
+
 /** Write a slot: colour from the palette by colour mode, level over the background floor. */
 export function paint(common: V2Common, frame: EffectFrame, position01: number, level: number, out: EffectSlot): void {
   const pos = common.colour === 'solid' ? 0
@@ -146,6 +158,8 @@ export function paint(common: V2Common, frame: EffectFrame, position01: number, 
   const foreground = clamp(level);
   const background = common.background * (1 - foreground);
   const lit = foreground + background;
+  out.background = { colour: backgroundColour(common), level: background, fullLevel: common.background, coverage: 1 - foreground,
+    dark: foreground === 0 && requiresAcknowledgement(frame.spec) };
   if (!(lit > 0)) {
     out.colour = { r: 0, g: 0, b: 0, w: 0, a: 0, uv: 0 };
     out.level = 0;
@@ -155,7 +169,7 @@ export function paint(common: V2Common, frame: EffectFrame, position01: number, 
   }
   const colour = frame.gradient?.sample(pos) ?? samplePalette(frame.palette, pos);
   if (background > 0) {
-    const base = parseHex(common.backgroundColour);
+    const base = backgroundColour(common);
     const mix = (a = 0, b = 0) => (a * foreground + b * background) / lit;
     out.colour = { r: mix(colour.r, base.r), g: mix(colour.g, base.g), b: mix(colour.b, base.b),
       w: mix(colour.w, base.w), a: mix(colour.a, base.a), uv: mix(colour.uv, base.uv) };

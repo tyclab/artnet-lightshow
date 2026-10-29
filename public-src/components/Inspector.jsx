@@ -108,9 +108,11 @@ export function scopedLoopLength(spec) {
 export function withRecommended(spec, def) {
   const d = def.defaults || {};
   const carried = {};
-  for (const key of ['brightness', 'rapidFlash', 'minFlashIntervalMs', 'scope', 'palette']) {
+  for (const key of ['brightness', 'background', 'rapidFlash', 'minFlashIntervalMs', 'scope', 'palette']) {
     if (d[key] !== undefined) carried[key] = clone(d[key]);
   }
+  // No kind recommends a background level; it follows the recommended brightness, as a fresh spec's does.
+  if (carried.background === undefined) carried.background = { version: 1, level: d.brightness ?? 1 };
   return { ...spec, ...(spec.gradients || d.gradients ? gradientSettings(d) : {}), kind: def.kind, params: clone(d.params) || {}, ...carried };
 }
 
@@ -607,7 +609,8 @@ export function Inspector({ id, onSelect, onPlay, onClose, inline = null, onAppl
         {!inline && <Field label="Name" path="name">
           <input id={fid('name')} type="text" value={draft.name} maxLength={80} onInput={(e) => update((d) => ({ ...d, name: e.target.value }))} />
         </Field>}
-        <UnitField label="Brightness" path="brightness" value={spec.brightness ?? 1} onChange={(v) => setSpec('brightness', v)} />
+        <UnitField label="Foreground brightness" path="brightness" value={spec.brightness ?? 1} onChange={(v) => setSpec('brightness', v)} />
+        <UnitField label="Authored background level" path="background.level" value={spec.background?.level ?? spec.brightness ?? 1} onChange={(v) => setSpec('background', { version: 1, level: v })} />
         <HardwareFit spec={spec} />
       </div>
       {!spatial && advancedControls}

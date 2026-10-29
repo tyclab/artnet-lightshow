@@ -1,3 +1,4 @@
+import { composeBackground, DEFAULT_BACKGROUND } from '../background.ts';
 import { resolveGradient } from '../palette-model.ts';
 // Containers import this module to avoid validating the catalogue before all kinds register.
 
@@ -46,7 +47,18 @@ function renderCore(inst: EffectInstance, frame: FrameBase & { roll?: number }, 
   const copy = (i: number) => {
     if (Number.isInteger(i) && i >= 0 && i < room.n) {
       const slot = slots[lamps && !cellsPass ? lamps.lampOf[i] : i];
-      out[i] = { ...slot, level: slot.level * brightness };
+      const authored = inst.spec.background?.level ?? brightness;
+      const background = authored === 1 ? slot.background : slot.background && { ...slot.background, level: slot.background.level * authored, fullLevel: (slot.background.fullLevel ?? slot.background.level) * authored };
+      if (background && authored !== brightness) {
+        const foreground = composeBackground(slot.colour, slot.level, slot.background, { ...DEFAULT_BACKGROUND, mode: 'off' });
+        const level = foreground.level * brightness + background.level;
+        const mix = (key: keyof Colour) => level > 0 ? ((foreground.colour[key] ?? 0) * foreground.level * brightness
+          + (background.colour[key] ?? 0) * background.level) / level : 0;
+        out[i] = { ...slot, colour: { r: mix('r'), g: mix('g'), b: mix('b'), w: mix('w'), a: mix('a'), uv: mix('uv') }, level, background };
+      } else {
+        out[i] = { ...slot, level: slot.level * brightness };
+        if (background) out[i].background = background;
+      }
     }
   };
   if (inst.targets === null) for (let i = 0; i < room.n; i++) copy(i);

@@ -1,3 +1,4 @@
+import { backgroundSchema } from '../shared/background.ts';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 
@@ -31,6 +32,7 @@ const lookSchema = z.object({
   colorB: colorIdx,
   colorC: colorIdx,
   colorD: colorIdx,
+  background: backgroundSchema.optional(),
   masterDimmer: z.number().int().min(0).max(255),
   masterBlackout: z.boolean(),
   strobeSpeed: z.number().int().min(0).max(255),
@@ -95,6 +97,7 @@ function captureLook() {
     colorC: state.colorC,
     colorD: state.colorD,
     masterDimmer: state.masterDimmer,
+    background: structuredClone(state.background),
     masterBlackout: state.masterBlackout,
     strobeSpeed: state.strobeSpeed,
     strobeFunction: state.strobeFunction,
@@ -112,10 +115,10 @@ function captureLook() {
   };
 }
 
-function recallLook(look: Look): void {
-  const { fixtureIds, overrides, bpm, audioMode, strobe, running: _running, ...rest } = look;
+function recallLook(look: Look, restoreBackground = false): void {
+  const { fixtureIds, overrides, bpm, audioMode, strobe, background, running: _running, ...rest } = look;
   const patch: typeof rest & { bpm?: number; running?: boolean } = {
-    ...rest, pixelPattern: rest.pixelPattern ?? null, panelPattern: rest.panelPattern ?? null,
+    ...rest, ...(restoreBackground && background ? { background } : {}), pixelPattern: rest.pixelPattern ?? null, panelPattern: rest.panelPattern ?? null,
     paletteOverride: rest.paletteOverride ?? null,
     basePalette: rest.basePalette ?? null,
     overridePalette: rest.overridePalette ?? (rest.paletteOverride ? { colours: rest.paletteOverride } : null),
@@ -264,10 +267,10 @@ class CueStore extends JsonStore {
     return this._cues;
   }
 
-  recall(id: string): boolean {
+  recall(id: string, restoreBackground = false): boolean {
     const cue = this.get(id);
     if (!cue) return false;
-    recallLook(cue.look);
+    recallLook(cue.look, restoreBackground);
     return true;
   }
 

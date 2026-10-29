@@ -32,8 +32,8 @@ function single(ctx: LdjCtx, rank: number, colour: Colour, background?: Colour, 
   env: LdjEnvelope = INSTANT, mark?: LampMark): void {
   for (let j = 0; j < ctx.n; j++) {
     const slot = ctx.ringOrder[j];
-    if (j === rank) ctx.lamps.set(slot, colour, bri, env, 0, mark);
-    else if (background) ctx.lamps.set(slot, background, 1, INSTANT);
+    if (j === rank) ctx.lamps.set(slot, colour, bri, env, 0, mark, background);
+    else if (background) ctx.lamps.set(slot, background, 1, INSTANT, 0, 'background');
     else ctx.lamps.off(slot);
   }
 }
@@ -60,7 +60,7 @@ function fadeRow(scatter: boolean, backlit: boolean): LdjRow {
     if (backlit && mod(ctx.iter, ctx.n) === 0) ctx.refresh(1);
     const rank = scatter ? pick(ctx) : mod(ctx.iter, ctx.n), from = ctx.colour(0, 0), to = ctx.colour(1, 1);
     single(ctx, rank, from, backlit ? to : undefined, 1, backlit ? INSTANT : { kind: 'fade', beats: 1 });
-    if (backlit) ctx.lamps.set(ctx.ringOrder[rank], to, 1, { kind: 'blend', beats: 1 });
+    if (backlit) ctx.lamps.set(ctx.ringOrder[rank], to, 1, { kind: 'blend', beats: 1 }, 0, 'background');
   } };
 }
 

@@ -72,11 +72,11 @@ export function putBack(saved: SavedLook): boolean {
   const { audioMode: _audioMode, strobe: _strobe, ...look } = saved.look;
   try {
     try {
-      recallLook({ ...look, energyOverride: null });
+      recallLook({ ...look, energyOverride: null }, true);
     } catch (err) {
       if (statusOf(err) !== 409) throw err;
       console.warn(`[look] the look from ${saved.savedAt} comes back without ${look.pattern}: ${messageOf(err)}`);
-      recallLook({ ...look, pattern: state.pattern, energyOverride: null });
+      recallLook({ ...look, pattern: state.pattern, energyOverride: null }, true);
     }
     if (look.running !== undefined) applyPatch({ running: look.running });
     return true;

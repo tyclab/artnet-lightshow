@@ -1,9 +1,11 @@
+import { ambient } from './background.ts';
+import type { BackgroundField } from './background.ts';
 import { hardwareDecision } from './hardware.ts';
 import type { HardwareCaps } from './hardware.ts';
 import type { HardwareClock } from './hardware-clock.ts';
 import type { ResolvedGradient } from './palette-model.ts';
 import { PATTERN_FUNCS, CELL_PATTERNS, LAMP_PATTERNS } from './patterns.ts';
-import { fadeBrightness, grooveBrightness, hitBrightness } from './look-math.ts';
+import { FADE_FLOOR, HIT_FLOOR, fadeBrightness, grooveBrightness, hitBrightness } from './look-math.ts';
 import { fadePhase, hitPhase } from './beat-clock.ts';
 import type { PatternContext } from './patterns.ts';
 import type { LayerPart, Layout, Rig } from './rig.ts';
@@ -43,7 +45,7 @@ export interface LayerClock {
 
 interface Span { beats: number; from: number }
 
-export type LayerSet = (unit: number, colour: Colour, dim: number, strobe: number) => void;
+export type LayerSet = (unit: number, colour: Colour, dim: number, strobe: number, background?: BackgroundField) => void;
 
 function renderLayer(rig: Rig, look: LayerLook, clock: LayerClock | null, set: LayerSet,
   { skipPattern = false, skipPixelPattern = false, skipPanelPattern = false } = {}): void {
@@ -74,7 +76,7 @@ function renderLayer(rig: Rig, look: LayerLook, clock: LayerClock | null, set: L
   // Apply wash after the pattern so its selected fixtures keep the contrast colour.
   for (const i of whole.wash) {
     const { start, count } = rig.ranges[i];
-    for (let u = start; u < start + count; u++) set(u, look.colors[1], 255, 0);
+    for (let u = start; u < start + count; u++) set(u, look.colors[1], 255, 0, ambient(look.colors[1], 1));
   }
 }
 
@@ -97,8 +99,12 @@ function paintCore(rig: Rig, layout: Layout, pattern: string, look: LayerLook, c
       ? fadeBrightness(fadePhase(clock.beatPos, clock.anchor, clock.division))
       : groove === undefined ? hitBrightness(hitPhase(clock.beatPos, clock.division))
         : grooveBrightness(hitBrightness(hitPhase(clock.beatPos, clock.division)), groove);
-    if (everyUnit) for (let u = 0; u < rig.units.length; u++) set(u, colors[0], bright, 0);
-    else for (const u of layout.units.list) set(u, colors[0], bright, 0);
+    // The floor each curve holds (fade 25, hit 35) is a bed, as wave's is: Off removes it, Fixed replaces it.
+    const floor = pattern === 'fade' ? FADE_FLOOR : HIT_FLOOR;
+    const coverage = Math.max(0, Math.min(1, (255 - bright) / Math.max(1, 255 - floor)));
+    const bed = ambient(colors[0], floor * coverage / 255, coverage, floor / 255);
+    if (everyUnit) for (let u = 0; u < rig.units.length; u++) set(u, colors[0], bright, 0, bed);
+    else for (const u of layout.units.list) set(u, colors[0], bright, 0, bed);
     return;
   }
   const fn = PATTERN_FUNCS[pattern];
@@ -135,7 +141,7 @@ function patternContext(rig: Rig, layout: Layout, pattern: string, colors: reado
       ys,
       plan,
       noFlash,
-      write: (k, colour, dim, strobe) => set(list[k], colour, dim, strobe),
+      write: (k, colour, dim, strobe, background) => set(list[k], colour, dim, strobe, background),
     };
   }
   if (LAMP_PATTERNS.has(pattern)) {
@@ -145,9 +151,9 @@ function patternContext(rig: Rig, layout: Layout, pattern: string, colors: reado
       ...common, fixtureCount: lamps?.slots.length ?? list.length,
       xs: lamps ? lamps.xs : xs, ys: lamps ? null : ys, plan: lamps ? lamps.plan : plan,
       noFlash: lamps && noFlash ? lamps.slots.map((slots) => noFlash[slots[0]]) : noFlash,
-      write: (k, colour, dim, strobe) => {
-        if (lamps) for (const cell of lamps.slots[k]) set(list[cell], colour, dim, strobe);
-        else set(list[k], colour, dim, strobe);
+      write: (k, colour, dim, strobe, background) => {
+        if (lamps) for (const cell of lamps.slots[k]) set(list[cell], colour, dim, strobe, background);
+        else set(list[k], colour, dim, strobe, background);
       },
     };
   }
@@ -162,10 +168,10 @@ function patternContext(rig: Rig, layout: Layout, pattern: string, colors: reado
       ys: null,
       plan: null,
       noFlash: noFlash && folded.map((pair) => pair.some((slot) => noFlash[slotOf(slot)])),
-      write: (k, colour, dim, strobe) => {
+      write: (k, colour, dim, strobe, background) => {
         for (const slot of folded[k]) {
           const { start, count } = rig.ranges[members[slot]];
-          for (let u = start; u < start + count; u++) set(u, colour, dim, strobe);
+          for (let u = start; u < start + count; u++) set(u, colour, dim, strobe, background);
         }
       },
     };
@@ -177,9 +183,9 @@ function patternContext(rig: Rig, layout: Layout, pattern: string, colors: reado
     ys: null,
     plan,
     noFlash,
-    write: (k, colour, dim, strobe) => {
+    write: (k, colour, dim, strobe, background) => {
       const { start, count } = rig.ranges[members[order[k]]];
-      for (let u = start; u < start + count; u++) set(u, colour, dim, strobe);
+      for (let u = start; u < start + count; u++) set(u, colour, dim, strobe, background);
     },
   };
 }
@@ -217,10 +223,10 @@ function paint(rig: Rig, layout: Layout, pattern: string, look: LayerLook, clock
       if (draw === draws.length) draws.push((clock.random ?? Math.random)());
       return draws[draw++];
     };
-    paintCore(rig, layout, pattern, look, { ...scaled, random }, first ? twinkle : [...originalTwinkle], span, (u, colour, dim, strobe) => {
+    paintCore(rig, layout, pattern, look, { ...scaled, random }, first ? twinkle : [...originalTwinkle], span, (u, colour, dim, strobe, background) => {
       if (!fixtures.has(rig.units[u].fixture)) return;
       const held = mode === 'hold' ? clock.hardwareClock?.hold(`${pattern}:${key}`, u, colour, dim) : null;
-      set(u, held?.colour ?? colour, mode === 'exclude' ? 0 : held?.dim ?? dim, mode === 'hold' ? 0 : strobe);
+      set(u, held?.colour ?? colour, mode === 'exclude' ? 0 : held?.dim ?? dim, mode === 'hold' ? 0 : strobe, mode === 'exclude' ? undefined : background);
     }, everyUnit);
     first = false;
   }
