@@ -1,7 +1,7 @@
 // Components rendered in Node through a hooks stand-in whose slots persist
 // between calls (effects do not run), inside a signals effect: every signal a
 // render reads is then a subscription a test can see. `count` maps shared
-// modules to a function whose calls StagePreview makes are counted.
+// modules to a function whose calls the `importer` component makes are counted.
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -24,7 +24,7 @@ const HOOKS = `
   export function useReducer(reducer, initial, init) { return [useMemo(() => (init ? init(initial) : initial), []), () => {}]; }
 `;
 
-export async function loadAudited(exports, { count = {} } = {}) {
+export async function loadAudited(exports, { count = {}, importer = 'StagePreview.jsx' } = {}) {
   const names = Object.values(count);
   const built = await esbuild.build({
     stdin: { contents: `${exports}\nexport { effect } from '@preact/signals';\nexport { runner } from 'preact/hooks';\nexport { calls } from 'call-counts';`, resolveDir: root },
@@ -36,7 +36,7 @@ export async function loadAudited(exports, { count = {} } = {}) {
       build.onResolve({ filter: /^call-counts$/ }, () => ({ path: 'counts', namespace: 'audit' }));
       build.onResolve({ filter: /\.ts$/ }, (args) => {
         const file = path.relative(root, path.resolve(args.resolveDir, args.path));
-        return args.importer.endsWith('StagePreview.jsx') && count[file] ? { path: file, namespace: 'counted' } : undefined;
+        return args.importer.endsWith(importer) && count[file] ? { path: file, namespace: 'counted' } : undefined;
       });
       build.onLoad({ filter: /.*/, namespace: 'counted' }, (args) => ({ resolveDir: root, loader: 'js', contents: `
         import * as real from './${args.path}';

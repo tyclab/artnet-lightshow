@@ -181,7 +181,11 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
     }
   }
 
+  let roomModel;
   function setRoom(model) {
+    // The room this scene already shows: a view that mounts again keeps it, and its materials' programs.
+    if (model === roomModel) return;
+    roomModel = model;
     invalidate();
     if (roomGroup) { scene.remove(roomGroup); roomGroup.clear(); }
     for (const resource of roomDisposables) resource.dispose();
@@ -323,8 +327,11 @@ export function createStageScene(canvas, { haze = 0.6, room, lightRGB }) {
     return p;
   }
 
-  /** Build the rig from placeRig(): its lamps, beams, pools, cells and trusses. */
+  let rigPlaced = null;
+  /** Build the rig from placeRig(): its lamps, beams, pools, cells and trusses; the placement it shows already is kept. */
   function setRig(placed, unitCount) {
+    if (placed === rigPlaced && unitCount === units) return;
+    rigPlaced = placed;
     invalidate();
     lastLights = null;
     objectLights = placed.objectLights || [];

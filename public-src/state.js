@@ -199,6 +199,8 @@ export async function api(path, init) {
       ...init,
       ...(init && init.body ? { headers: { 'Content-Type': 'application/json', ...(init.headers || {}) } } : {}),
     });
+    // Only a request that asked whether something changed (If-None-Match) is answered 304.
+    if (res.status === 304) return { ok: true, notModified: true };
     const body = await res.json().catch(() => ({}));
     if (!res.ok || body.ok === false) {
       // Work the operator called off, or a newer track overtook, is not a failure.
