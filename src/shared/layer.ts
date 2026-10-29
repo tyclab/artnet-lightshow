@@ -5,7 +5,7 @@ import type { HardwareCaps } from './hardware.ts';
 import type { HardwareClock } from './hardware-clock.ts';
 import type { ResolvedGradient } from './palette-model.ts';
 import { PATTERN_FUNCS, CELL_PATTERNS, LAMP_PATTERNS } from './patterns.ts';
-import { fadeBrightness, grooveBrightness, hitBrightness } from './look-math.ts';
+import { FADE_FLOOR, HIT_FLOOR, fadeBrightness, grooveBrightness, hitBrightness } from './look-math.ts';
 import { fadePhase, hitPhase } from './beat-clock.ts';
 import type { PatternContext } from './patterns.ts';
 import type { LayerPart, Layout, Rig } from './rig.ts';
@@ -99,8 +99,12 @@ function paintCore(rig: Rig, layout: Layout, pattern: string, look: LayerLook, c
       ? fadeBrightness(fadePhase(clock.beatPos, clock.anchor, clock.division))
       : groove === undefined ? hitBrightness(hitPhase(clock.beatPos, clock.division))
         : grooveBrightness(hitBrightness(hitPhase(clock.beatPos, clock.division)), groove);
-    if (everyUnit) for (let u = 0; u < rig.units.length; u++) set(u, colors[0], bright, 0);
-    else for (const u of layout.units.list) set(u, colors[0], bright, 0);
+    // The floor each curve holds (fade 25, hit 35) is a bed, as wave's is: Off removes it, Fixed replaces it.
+    const floor = pattern === 'fade' ? FADE_FLOOR : HIT_FLOOR;
+    const coverage = Math.max(0, Math.min(1, (255 - bright) / Math.max(1, 255 - floor)));
+    const bed = ambient(colors[0], floor * coverage / 255, coverage, floor / 255);
+    if (everyUnit) for (let u = 0; u < rig.units.length; u++) set(u, colors[0], bright, 0, bed);
+    else for (const u of layout.units.list) set(u, colors[0], bright, 0, bed);
     return;
   }
   const fn = PATTERN_FUNCS[pattern];
