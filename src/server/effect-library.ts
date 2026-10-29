@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import { z } from 'zod';
 
 // The entry point registers every kind, so a stored spec validates against it.
@@ -9,7 +10,7 @@ import { canonical } from '../shared/effects/layer.ts';
 import { PATTERN_FUNCS } from '../shared/patterns.ts';
 import { PATTERN_IDS } from './presets.ts';
 import { validate, ValidationError } from './validation.ts';
-import { HttpError, messageOf } from '../errors.ts';
+import { codeOf, HttpError, messageOf } from '../errors.ts';
 import { JsonStore } from './json-store.ts';
 import type { CataloguePreset } from '../shared/effects/index.ts';
 import type { EffectSpec } from '../shared/effects/types.ts';
@@ -99,6 +100,7 @@ export class EffectLibrary extends JsonStore {
   declare _admit: Admission | null;
   declare _now: () => Date;
   declare _summaries: readonly PresetSummary[] | null;
+  declare _savedVersion: number | null;
 
   constructor(file: string, { now = () => new Date() }: EffectLibraryOptions = {}) {
     super(file, { tag: 'effects', fallback: 'starting with the built-in presets only' });
@@ -106,12 +108,16 @@ export class EffectLibrary extends JsonStore {
     this._listeners = [];
     this._admit = null;
     this._now = now;
+    this._savedVersion = null;
     this._install([]);
   }
 
   load(): this {
     const saved = this.readValid(fileSchema);
-    if (saved) this._install(saved.presets.map((preset) => ({ ...preset, spec: migrateEffectSpec(preset.spec, saved.version) })));
+    if (saved) {
+      this._savedVersion = saved.version;
+      this._install(saved.presets.map((preset) => ({ ...preset, spec: migrateEffectSpec(preset.spec, saved.version) })));
+    }
     return this;
   }
 
@@ -198,9 +204,24 @@ export class EffectLibrary extends JsonStore {
     return true;
   }
 
+  // The first save after an upgrade keeps the file an older build can still read beside the new one.
+  _keepPrevious(): void {
+    const version = this._savedVersion;
+    if (version === null || version >= EFFECT_LIBRARY_VERSION) return;
+    this._savedVersion = EFFECT_LIBRARY_VERSION;
+    const copy = `${this.file}.v${version}`;
+    try {
+      fs.copyFileSync(this.file, copy, fs.constants.COPYFILE_EXCL);
+      console.warn(`[effects] kept the version ${version} library as ${copy} before saving version ${EFFECT_LIBRARY_VERSION}`);
+    } catch (err) {
+      if (codeOf(err) !== 'EEXIST') throw err;
+    }
+  }
+
   // Persist before publishing so runtime state cannot diverge from the saved library.
   _commit(next: readonly UserPreset[]): void {
     try {
+      this._keepPrevious();
       this.writeJson({ version: EFFECT_LIBRARY_VERSION, presets: next });
     } catch (err) {
       console.warn(`[effects] could not save ${this.file}: ${messageOf(err)}`);

@@ -393,7 +393,10 @@ that field with your RGB, white, amber and UV values; **Off** removes its contri
 The background level is independent of the effect editor's foreground brightness.
 Effects without an ambient field stay dark between their notes in Follow mode.
 Wash, Breathe, Fire and continuous gradients remain effect content. Required dark
-rests stay dark even with a Fixed background.
+rests stay dark even with a Fixed background. Fixed fills the gaps of the classic
+patterns, the V2 generators and the HD effects; the LDJ, Disco and bitmap families
+keep their authored rests dark, so a Fixed colour shows there only where they
+author an ambient field.
 
 Changing effects keeps the operator's background setting. Cue recall also keeps it
 unless **Restore saved background on recall** is selected. The restart record saves
@@ -403,10 +406,12 @@ before foreground and background levels are edited independently. Nested macro a
 sequence effects keep their own authored gains.
 
 Effect-library files now use version 3. Reading an older library validates and
-converts it in memory; its next normal save writes the new version. Keep a copy of
-the writable configuration before upgrading. Restore that copy when rolling back
-to a build without background support: its strict look and library readers cannot
-load the new fields and version.
+converts it in memory; its next normal save writes the new version and keeps the
+old file beside it as `<file>.v2`. The restart record and the cues gain the
+background field on their first save after the upgrade, so keep a copy of the
+writable configuration before upgrading. Restore that copy when rolling back to a
+build without background support: its strict look and library readers cannot load
+the new fields and version and would move the files aside.
 
 For an incoming visualizer, select **Picture → Colour + motion** and a Visualizer
 Flow or Drift look. The room sender supplies frames; the effect extracts dominant
